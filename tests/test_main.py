@@ -106,12 +106,14 @@ class TestApplicationSetup:
 
 
 @pytest.mark.asyncio
+@pytest.mark.asyncio
 class TestApplicationStart:
     """Tests for Application start phase."""
     
-    @pytest.fixture
-    async def configured_app(self):
-        """Create a configured Application instance."""
+    async def test_start_initializes_all_components(self):
+        """Test that start initializes all components."""
+        import main as main_module
+        
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log') as f:
             log_path = Path(f.name)
         
@@ -120,7 +122,7 @@ class TestApplicationStart:
             mock_config = MagicMock()
             mock_config.factorio_log_path = log_path
             mock_config.health_check_host = "0.0.0.0"
-            mock_config.health_check_port = 8999  # Use different port for tests
+            mock_config.health_check_port = 8999
             mock_config.discord_webhook_url = "https://discord.com/api/webhooks/test/token"
             mock_config.bot_name = "Test Bot"
             mock_config.bot_avatar_url = None
@@ -135,58 +137,78 @@ class TestApplicationStart:
             app.health_server.start = AsyncMock()
             app.health_server.stop = AsyncMock()
             
-            yield app
+            with patch.object(main_module, 'DiscordClient') as mock_discord:
+                with patch.object(main_module, 'EventParser') as mock_parser:
+                    with patch.object(main_module, 'LogTailer') as mock_tailer:
+                        # Setup mocks
+                        mock_discord_instance = AsyncMock()
+                        mock_discord_instance.connect = AsyncMock()
+                        mock_discord_instance.test_connection = AsyncMock(return_value=True)
+                        mock_discord_instance.disconnect = AsyncMock()
+                        mock_discord.return_value = mock_discord_instance
+                        
+                        mock_parser_instance = MagicMock()
+                        mock_parser.return_value = mock_parser_instance
+                        
+                        mock_tailer_instance = AsyncMock()
+                        mock_tailer_instance.start = AsyncMock()
+                        mock_tailer_instance.stop = AsyncMock()
+                        mock_tailer.return_value = mock_tailer_instance
+                        
+                        # Start application
+                        await app.start()
+                        
+                        # Verify components were initialized
+                        assert app.discord_client is not None
+                        assert app.event_parser is not None
+                        assert app.log_tailer is not None
+                        
+                        # Verify connections were made
+                        mock_discord_instance.connect.assert_called_once()
+                        mock_discord_instance.test_connection.assert_called_once()
+                        mock_tailer_instance.start.assert_called_once()
         finally:
             log_path.unlink(missing_ok=True)
     
-    async def test_start_initializes_all_components(self, configured_app):
-        """Test that start initializes all components."""
-        import main as main_module
-        
-        with patch.object(main_module, 'DiscordClient') as mock_discord:
-            with patch.object(main_module, 'EventParser') as mock_parser:
-                with patch.object(main_module, 'LogTailer') as mock_tailer:
-                    # Setup mocks
-                    mock_discord_instance = AsyncMock()
-                    mock_discord_instance.connect = AsyncMock()
-                    mock_discord_instance.test_connection = AsyncMock(return_value=True)
-                    mock_discord_instance.disconnect = AsyncMock()
-                    mock_discord.return_value = mock_discord_instance
-                    
-                    mock_parser_instance = MagicMock()
-                    mock_parser.return_value = mock_parser_instance
-                    
-                    mock_tailer_instance = AsyncMock()
-                    mock_tailer_instance.start = AsyncMock()
-                    mock_tailer_instance.stop = AsyncMock()
-                    mock_tailer.return_value = mock_tailer_instance
-                    
-                    # Start application
-                    await configured_app.start()
-                    
-                    # Verify components were initialized
-                    assert configured_app.discord_client is not None
-                    assert configured_app.event_parser is not None
-                    assert configured_app.log_tailer is not None
-                    
-                    # Verify connections were made
-                    mock_discord_instance.connect.assert_called_once()
-                    mock_discord_instance.test_connection.assert_called_once()
-                    mock_tailer_instance.start.assert_called_once()
-    
-    async def test_start_fails_on_discord_connection_error(self, configured_app):
+    async def test_start_fails_on_discord_connection_error(self):
         """Test that start raises error when Discord connection fails."""
         import main as main_module
         
-        with patch.object(main_module, 'DiscordClient') as mock_discord:
-            mock_discord_instance = AsyncMock()
-            mock_discord_instance.connect = AsyncMock()
-            mock_discord_instance.test_connection = AsyncMock(return_value=False)
-            mock_discord_instance.disconnect = AsyncMock()
-            mock_discord.return_value = mock_discord_instance
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log') as f:
+            log_path = Path(f.name)
+        
+        try:
+            # Create mock config
+            mock_config = MagicMock()
+            mock_config.factorio_log_path = log_path
+            mock_config.health_check_host = "0.0.0.0"
+            mock_config.health_check_port = 8999
+            mock_config.discord_webhook_url = "https://discord.com/api/webhooks/test/token"
+            mock_config.bot_name = "Test Bot"
+            mock_config.bot_avatar_url = None
+            mock_config.log_level = "info"
+            mock_config.log_format = "console"
             
-            with pytest.raises(ConnectionError, match="Failed to connect to Discord webhook"):
-                await configured_app.start()
+            app = Application()
+            app.config = mock_config
+            
+            # Mock health server
+            app.health_server = AsyncMock()
+            app.health_server.start = AsyncMock()
+            app.health_server.stop = AsyncMock()
+            
+            with patch.object(main_module, 'DiscordClient') as mock_discord:
+                mock_discord_instance = AsyncMock()
+                mock_discord_instance.connect = AsyncMock()
+                mock_discord_instance.test_connection = AsyncMock(return_value=False)
+                mock_discord_instance.disconnect = AsyncMock()
+                mock_discord.return_value = mock_discord_instance
+                
+                with pytest.raises(ConnectionError, match="Failed to connect to Discord webhook"):
+                    await app.start()
+        finally:
+            log_path.unlink(missing_ok=True)
+
 
 
 @pytest.mark.asyncio
