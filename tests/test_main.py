@@ -1,11 +1,11 @@
 """
 Pytest test suite for main.py
-
 Tests for application orchestration, component initialization,
 and graceful shutdown.
 """
 
 import pytest
+import pytest_asyncio  # Add this import
 import asyncio
 import sys
 import tempfile
@@ -19,7 +19,6 @@ sys.path.insert(0, str(project_root / "src"))
 
 from main import Application, setup_logging, main
 from config import Config
-
 
 class TestSetupLogging:
     """Tests for logging setup."""
@@ -80,7 +79,6 @@ class TestApplicationSetup:
                 mock_load.return_value = mock_config
                 
                 app = Application()
-                
                 with pytest.raises(ValueError, match="Configuration validation failed"):
                     await app.setup()
     
@@ -105,7 +103,6 @@ class TestApplicationSetup:
                 assert app.config is not None
 
 
-@pytest.mark.asyncio
 @pytest.mark.asyncio
 class TestApplicationStart:
     """Tests for Application start phase."""
@@ -208,7 +205,6 @@ class TestApplicationStart:
                     await app.start()
         finally:
             log_path.unlink(missing_ok=True)
-
 
 
 @pytest.mark.asyncio
@@ -398,7 +394,6 @@ class TestApplicationIntegration:
                 # Verify components were used
                 assert app.config is not None
                 assert app.event_parser is not None
-                
         finally:
             log_path.unlink(missing_ok=True)
             # Clean up environment
