@@ -5,7 +5,7 @@
 ![Docker Image Size](https://img.shields.io/docker/image-size/slautomaton/factorio-isr?arch=amd64&style=plastic&logo=docker&label=Image%20Size)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg?style=plastic)](https://www.python.org/downloads/) 
 ![GitHub Release](https://img.shields.io/github/v/release/stephenclau/factorio-isr?sort=semver&display_name=release&style=plastic&logo=github) \
-![GitHub License](https://img.shields.io/github/license/stephenclau/factorio-isr?style=plastic&logo=github&lable=License) \
+![GitHub License](https://img.shields.io/github/license/stephenclau/factorio-isr?style=plastic&logo=github&label=License&link=https%3A%2F%2Fgithub.com%2Fstephenclau%2Ffactorio-isr%2Fblob%2Fmain%2FLICENSE) \
 ![GitHub last commit](https://img.shields.io/github/last-commit/stephenclau/factorio-isr?style=plastic&logo=github&label=Last%20Commit) 
 ![Codecov](https://img.shields.io/codecov/c/github/stephenclau/factorio-isr?style=plastic&logo=codecov&label=Coverage&color=orange&link=(https%3A%2F%2Fcodecov.io%2Fgh%2Fstephenclau%2Ffactorio-isr)) \
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/01.yml?style=plastic&logo=github&label=Build) 
