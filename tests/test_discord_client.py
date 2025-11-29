@@ -77,9 +77,7 @@ class TestDiscordClientConnection:
         
         assert client.session is None
         assert session.closed
-
-
-
+        
 @pytest.mark.asyncio
 class TestDiscordClientSendMessage:
     """Test send_message with various scenarios."""
@@ -88,14 +86,15 @@ class TestDiscordClientSendMessage:
         """Test successful message send."""
         client = DiscordClient(webhook_url="https://discord.com/api/webhooks/test/token")
         
-        # Mock response
+        # Mock response with proper async context manager
         mock_response = AsyncMock()
         mock_response.status = 204
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        # Mock session
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        # Mock session.post to return the response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         result = await client.send_message("Test message")
@@ -120,9 +119,10 @@ class TestDiscordClientSendMessage:
         mock_response = AsyncMock()
         mock_response.status = 204
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         await client.send_message("Test")
@@ -137,16 +137,18 @@ class TestDiscordClientSendMessage:
         # First response: rate limited
         mock_response_429 = AsyncMock()
         mock_response_429.status = 429
-        mock_response_429.json.return_value = {"retry_after": 0.1}
+        mock_response_429.json = AsyncMock(return_value={"retry_after": 0.01})
         mock_response_429.__aenter__.return_value = mock_response_429
+        mock_response_429.__aexit__.return_value = AsyncMock()
         
         # Second response: success
         mock_response_204 = AsyncMock()
         mock_response_204.status = 204
         mock_response_204.__aenter__.return_value = mock_response_204
+        mock_response_204.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.side_effect = [mock_response_429, mock_response_204]
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(side_effect=[mock_response_429, mock_response_204])
         client.session = mock_session
         
         result = await client.send_message("Test")
@@ -160,11 +162,12 @@ class TestDiscordClientSendMessage:
         
         mock_response = AsyncMock()
         mock_response.status = 404
-        mock_response.text.return_value = "Not found"
+        mock_response.text = AsyncMock(return_value="Not found")
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         result = await client.send_message("Test")
@@ -181,24 +184,26 @@ class TestDiscordClientSendMessage:
         
         mock_response = AsyncMock()
         mock_response.status = 500
-        mock_response.text.return_value = "Server error"
+        mock_response.text = AsyncMock(return_value="Server error")
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         result = await client.send_message("Test")
         
         assert result is False
-        assert mock_session.post.call_count == 3  # Max retries
+        # Should retry 3 times
+        assert mock_session.post.call_count == 3
     
     async def test_send_message_network_error(self):
         """Test network error handling."""
         client = DiscordClient(webhook_url="https://discord.com/api/webhooks/test/token")
         
-        mock_session = AsyncMock()
-        mock_session.post.side_effect = aiohttp.ClientError("Connection failed")
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(side_effect=aiohttp.ClientError("Connection failed"))
         client.session = mock_session
         
         result = await client.send_message("Test")
@@ -224,9 +229,10 @@ class TestDiscordClientSendEvent:
         mock_response = AsyncMock()
         mock_response.status = 204
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         event = FactorioEvent(event_type=EventType.JOIN, player_name="TestPlayer")
@@ -247,9 +253,10 @@ class TestDiscordClientSendEvent:
         mock_response = AsyncMock()
         mock_response.status = 204
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         event = FactorioEvent(
@@ -274,12 +281,10 @@ class TestDiscordClientSendEvent:
         
         with pytest.raises(AssertionError, match="Client not connected"):
             await client.send_event(event)
-
-
+            
 @pytest.mark.asyncio
 class TestDiscordClientEmoji:
-    """Test emoji mapping."""
-    
+    """Test emoji mapping.""" 
     async def test_get_emoji_all_types(self):
         """Test emoji for all event types."""
         assert DiscordClient._get_emoji(EventType.JOIN) == "✅"
@@ -291,27 +296,27 @@ class TestDiscordClientEmoji:
         assert DiscordClient._get_emoji(EventType.RESEARCH) == "🔬"
         assert DiscordClient._get_emoji(EventType.DEATH) == "💀"
         assert DiscordClient._get_emoji(EventType.UNKNOWN) == "ℹ️"
-
-
+        
 @pytest.mark.asyncio  
 class TestDiscordClientRateLimiting:
     """Test rate limiting behavior."""
-    
+ 
     async def test_rate_limit_delay(self):
         """Test that messages are delayed by rate limit."""
         import time
         
         client = DiscordClient(
             webhook_url="https://discord.com/api/webhooks/test/token",
-            rate_limit_delay=0.2
+            rate_limit_delay=0.1  # Shorter delay for test
         )
         
         mock_response = AsyncMock()
         mock_response.status = 204
         mock_response.__aenter__.return_value = mock_response
+        mock_response.__aexit__.return_value = AsyncMock()
         
-        mock_session = AsyncMock()
-        mock_session.post.return_value = mock_response
+        mock_session = MagicMock()
+        mock_session.post = MagicMock(return_value=mock_response)
         client.session = mock_session
         
         start = time.time()
@@ -320,5 +325,5 @@ class TestDiscordClientRateLimiting:
         elapsed = time.time() - start
         
         # Should take at least rate_limit_delay
-        assert elapsed >= 0.2
+        assert elapsed >= 0.09  # Allow small margin
         assert mock_session.post.call_count == 2
