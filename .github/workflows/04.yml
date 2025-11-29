@@ -1,4 +1,4 @@
-name: 04. Codecov Tests
+name: 04.Codecov Tests
 
 on:
   push:
