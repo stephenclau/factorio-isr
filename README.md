@@ -224,7 +224,7 @@ pytest-watch
 ## 🔧 Development
 
 ### Project Structure
-
+```
 factorio-isr/
 ├── src/
 │ ├── init.py
@@ -244,7 +244,7 @@ factorio-isr/
 ├── Dockerfile # Production container
 ├── docker-compose.yml # Docker Compose config
 └── README.md
-
+```
 
 ### Code Style
 
