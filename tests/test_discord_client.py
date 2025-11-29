@@ -8,7 +8,9 @@ These tests require a real webhook URL in .env
 import pytest
 import asyncio
 import sys
+import os
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # Add project root to path
 project_root = Path(__file__).parent.parent
@@ -16,150 +18,252 @@ sys.path.insert(0, str(project_root / "src"))
 
 from discord_client import DiscordClient
 from event_parser import FactorioEvent, EventType
-from config import load_config
+
+# Skip all tests in this file if DISCORD_WEBHOOK_URL is not set
+pytestmark = pytest.mark.skipif(
+    not os.getenv('DISCORD_WEBHOOK_URL'),
+    reason="DISCORD_WEBHOOK_URL not set - skipping integration tests"
+)
+
+
+def get_webhook_url() -> str:
+    """Get webhook URL from environment with type safety."""
+    webhook_url = os.getenv('DISCORD_WEBHOOK_URL')
+    assert webhook_url is not None, "DISCORD_WEBHOOK_URL must be set"
+    return webhook_url
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration  # Mark as integration test
 class TestDiscordClient:
     """Tests for Discord client (requires real webhook)."""
     
-    @pytest.fixture
-    async def client(self):
-        """Create and connect Discord client."""
-        config = load_config()
-        client = DiscordClient(
-            webhook_url=config.discord_webhook_url,
-            bot_name=config.bot_name,
-            bot_avatar_url=config.bot_avatar_url,
-        )
-        await client.connect()
-        yield client
-        await client.disconnect()
-    
-    async def test_connection(self, client):
+    async def test_connection(self):
         """Test Discord webhook connection."""
-        result = await client.test_connection()
-        assert result is True, "Webhook connection test failed"
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
+        )
+        
+        try:
+            await client.connect()
+            result = await client.test_connection()
+            assert result is True, "Webhook connection test failed"
+        finally:
+            await client.disconnect()
     
-    async def test_send_join_event(self, client):
+    async def test_send_join_event(self):
         """Test sending JOIN event."""
-        event = FactorioEvent(event_type=EventType.JOIN, player_name="TestPlayer")
-        result = await client.send_event(event)
-        assert result is True, "Failed to send JOIN event"
-        await asyncio.sleep(0.5)
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
+        )
+        
+        try:
+            await client.connect()
+            event = FactorioEvent(event_type=EventType.JOIN, player_name="TestPlayer")
+            result = await client.send_event(event)
+            assert result is True, "Failed to send JOIN event"
+            await asyncio.sleep(0.5)
+        finally:
+            await client.disconnect()
     
-    async def test_send_leave_event(self, client):
+    async def test_send_leave_event(self):
         """Test sending LEAVE event."""
-        event = FactorioEvent(event_type=EventType.LEAVE, player_name="TestPlayer")
-        result = await client.send_event(event)
-        assert result is True, "Failed to send LEAVE event"
-        await asyncio.sleep(0.5)
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
+        )
+        
+        try:
+            await client.connect()
+            event = FactorioEvent(event_type=EventType.LEAVE, player_name="TestPlayer")
+            result = await client.send_event(event)
+            assert result is True, "Failed to send LEAVE event"
+            await asyncio.sleep(0.5)
+        finally:
+            await client.disconnect()
     
-    async def test_send_chat_event(self, client):
+    async def test_send_chat_event(self):
         """Test sending CHAT event."""
-        event = FactorioEvent(
-            event_type=EventType.CHAT,
-            player_name="TestPlayer",
-            message="Hello from pytest!"
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
         )
-        result = await client.send_event(event)
-        assert result is True, "Failed to send CHAT event"
-        await asyncio.sleep(0.5)
+        
+        try:
+            await client.connect()
+            event = FactorioEvent(
+                event_type=EventType.CHAT,
+                player_name="TestPlayer",
+                message="Hello from pytest!"
+            )
+            result = await client.send_event(event)
+            assert result is True, "Failed to send CHAT event"
+            await asyncio.sleep(0.5)
+        finally:
+            await client.disconnect()
     
-    async def test_send_milestone_event(self, client):
+    async def test_send_milestone_event(self):
         """Test sending MILESTONE event."""
-        event = FactorioEvent(
-            event_type=EventType.MILESTONE,
-            player_name="TestPlayer",
-            message="First automation"
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
         )
-        result = await client.send_event(event)
-        assert result is True, "Failed to send MILESTONE event"
-        await asyncio.sleep(0.5)
+        
+        try:
+            await client.connect()
+            event = FactorioEvent(
+                event_type=EventType.MILESTONE,
+                player_name="TestPlayer",
+                message="First automation"
+            )
+            result = await client.send_event(event)
+            assert result is True, "Failed to send MILESTONE event"
+            await asyncio.sleep(0.5)
+        finally:
+            await client.disconnect()
     
-    async def test_send_research_event(self, client):
+    async def test_send_research_event(self):
         """Test sending RESEARCH event."""
-        event = FactorioEvent(
-            event_type=EventType.RESEARCH,
-            message="Automation technology"
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
         )
-        result = await client.send_event(event)
-        assert result is True, "Failed to send RESEARCH event"
-        await asyncio.sleep(0.5)
+        
+        try:
+            await client.connect()
+            event = FactorioEvent(
+                event_type=EventType.RESEARCH,
+                message="Automation technology"
+            )
+            result = await client.send_event(event)
+            assert result is True, "Failed to send RESEARCH event"
+            await asyncio.sleep(0.5)
+        finally:
+            await client.disconnect()
     
-    async def test_send_death_event(self, client):
+    async def test_send_death_event(self):
         """Test sending DEATH event."""
-        event = FactorioEvent(
-            event_type=EventType.DEATH,
-            player_name="TestPlayer",
-            metadata={"cause": "a biter"}
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
         )
-        result = await client.send_event(event)
-        assert result is True, "Failed to send DEATH event"
-        await asyncio.sleep(0.5)
+        
+        try:
+            await client.connect()
+            event = FactorioEvent(
+                event_type=EventType.DEATH,
+                player_name="TestPlayer",
+                metadata={"cause": "a biter"}
+            )
+            result = await client.send_event(event)
+            assert result is True, "Failed to send DEATH event"
+            await asyncio.sleep(0.5)
+        finally:
+            await client.disconnect()
     
-    async def test_rate_limiting(self, client):
+    async def test_rate_limiting(self):
         """Test that rate limiting works."""
         import time
         
-        event = FactorioEvent(event_type=EventType.JOIN, player_name="RateLimitTest")
+        webhook_url = get_webhook_url()
+        client = DiscordClient(
+            webhook_url=webhook_url,
+            bot_name="Test Bot",
+            bot_avatar_url=None,
+        )
         
-        start = time.time()
-        await client.send_event(event)
-        await client.send_event(event)
-        elapsed = time.time() - start
-        
-        # Should take at least rate_limit_delay (0.5s)
-        assert elapsed >= 0.5, "Rate limiting not working"
-
-
-# Keep the manual test function for direct execution
-async def manual_test():
-    """Manual test that can be run directly."""
-    print("Loading config...")
-    config = load_config()
-    
-    print(f"Creating Discord client...")
-    client = DiscordClient(
-        webhook_url=config.discord_webhook_url,
-        bot_name=config.bot_name,
-        bot_avatar_url=config.bot_avatar_url,
-    )
-    
-    try:
-        print("Connecting...")
-        await client.connect()
-        
-        print("Testing webhook...")
-        success = await client.test_connection()
-        
-        if success:
-            print("✓ Webhook test successful!")
-            print("\n📤 Sending test events...")
+        try:
+            await client.connect()
+            event = FactorioEvent(event_type=EventType.JOIN, player_name="RateLimitTest")
             
-            events = [
-                (FactorioEvent(event_type=EventType.JOIN, player_name="TestPlayer"), "JOIN"),
-                (FactorioEvent(event_type=EventType.CHAT, player_name="TestPlayer", message="Hello!"), "CHAT"),
-                (FactorioEvent(event_type=EventType.MILESTONE, player_name="TestPlayer", message="First automation"), "MILESTONE"),
-                (FactorioEvent(event_type=EventType.RESEARCH, message="Automation"), "RESEARCH"),
-                (FactorioEvent(event_type=EventType.DEATH, player_name="TestPlayer", metadata={"cause": "a biter"}), "DEATH"),
-                (FactorioEvent(event_type=EventType.LEAVE, player_name="TestPlayer"), "LEAVE"),
-            ]
+            start = time.time()
+            await client.send_event(event)
+            await client.send_event(event)
+            elapsed = time.time() - start
             
-            for event, name in events:
-                await client.send_event(event)
-                print(f"  ✓ Sent {name} event")
-                await asyncio.sleep(1)
-            
-            print("\n✅ All Discord tests passed!")
-            print("📱 Check your Discord channel for the messages.")
-        else:
-            print("❌ Webhook test failed")
-            print("⚠️  Check your DISCORD_WEBHOOK_URL in .env")
+            # Should take at least rate_limit_delay (0.5s)
+            assert elapsed >= 0.5, "Rate limiting not working"
+        finally:
+            await client.disconnect()
+
+
+@pytest.mark.asyncio
+class TestDiscordClientUnit:
+    """Unit tests for Discord client (no network calls)."""
     
-    finally:
-        await client.disconnect()
-
-
-if __name__ == "__main__":
-    asyncio.run(manual_test())
+    async def test_get_emoji(self):
+        """Test emoji mapping."""
+        assert DiscordClient._get_emoji(EventType.JOIN) == "✅"
+        assert DiscordClient._get_emoji(EventType.LEAVE) == "❌"
+        assert DiscordClient._get_emoji(EventType.CHAT) == "💬"
+        assert DiscordClient._get_emoji(EventType.SERVER) == "🖥️"
+        assert DiscordClient._get_emoji(EventType.MILESTONE) == "🏆"
+        assert DiscordClient._get_emoji(EventType.TASK) == "✔️"
+        assert DiscordClient._get_emoji(EventType.RESEARCH) == "🔬"
+        assert DiscordClient._get_emoji(EventType.DEATH) == "💀"
+    
+    async def test_client_initialization(self):
+        """Test client initializes with correct defaults."""
+        client = DiscordClient(
+            webhook_url="https://discord.com/api/webhooks/test/token"
+        )
+        
+        assert client.webhook_url == "https://discord.com/api/webhooks/test/token"
+        assert client.bot_name == "Factorio Bridge"
+        assert client.bot_avatar_url is None
+        assert client.rate_limit_delay == 0.5
+        assert client.max_retries == 3
+        assert client.session is None
+    
+    async def test_client_custom_config(self):
+        """Test client accepts custom configuration."""
+        client = DiscordClient(
+            webhook_url="https://discord.com/api/webhooks/test/token",
+            bot_name="Custom Bot",
+            bot_avatar_url="https://example.com/avatar.png",
+            rate_limit_delay=1.0,
+            max_retries=5
+        )
+        
+        assert client.bot_name == "Custom Bot"
+        assert client.bot_avatar_url == "https://example.com/avatar.png"
+        assert client.rate_limit_delay == 1.0
+        assert client.max_retries == 5
+    
+    async def test_format_event_message(self):
+        """Test event formatting."""
+        client = DiscordClient(
+            webhook_url="https://discord.com/api/webhooks/test/token"
+        )
+        
+        # Test JOIN event
+        join_event = FactorioEvent(event_type=EventType.JOIN, player_name="TestPlayer")
+        formatted = client.formatter.format_for_discord(join_event)
+        assert "TestPlayer" in formatted
+        assert "joined" in formatted.lower()
+        
+        # Test CHAT event
+        chat_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="TestPlayer",
+            message="Hello world"
+        )
+        formatted = client.formatter.format_for_discord(chat_event)
+        assert "TestPlayer" in formatted
+        assert "Hello world" in formatted
