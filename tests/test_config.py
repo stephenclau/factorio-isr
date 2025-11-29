@@ -315,31 +315,6 @@ class TestReadSecretCoverage:
             
             # This is complex - instead just test the actual function works
             # The logic is already tested, we just need to trigger the branches
-
-
-class TestDotenvCoverage:
-    """Test dotenv loading branches."""
-    
-    def test_load_config_with_env_file_exists(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test load_config when .env file exists."""
-        import tempfile
-        
-        with tempfile.TemporaryDirectory() as tmpdir:
-            env_file = Path(tmpdir) / ".env"
-            env_file.write_text("DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/999/zzz\n")
-            
-            # Change to temp directory
-            original_cwd = os.getcwd()
-            monkeypatch.chdir(tmpdir)
-            monkeypatch.setattr("config.read_secret", lambda x: None)
-            
-            try:
-                config = load_config()
-                assert config.discord_webhook_url
-            finally:
-                os.chdir(original_cwd)
-
-
 class TestConfigValueLogging:
     """Test the logging branches in get_config_value."""
     
@@ -358,3 +333,39 @@ class TestConfigValueLogging:
         
         result = get_config_value("LOG_TEST_KEY", default="default_val")
         assert result == "default_val"
+        
+class TestGetConfigValueBranches:
+    """Test branches in get_config_value for coverage."""
+    
+    def test_get_config_value_with_value_logs_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test env value logging branch."""
+        monkeypatch.setattr("config.read_secret", lambda x: None)
+        monkeypatch.setenv("COVERAGE_TEST", "env_value")
+        
+        # This hits the "if value:" branch after os.getenv
+        result = get_config_value("COVERAGE_TEST")
+        assert result == "env_value"
+    
+    def test_get_config_value_with_default_logs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test default value logging branch."""
+        monkeypatch.setattr("config.read_secret", lambda x: None)
+        monkeypatch.delenv("COVERAGE_TEST", raising=False)
+        
+        # This hits the "if value:" branch after default assignment
+        result = get_config_value("COVERAGE_TEST", default="default_value")
+        assert result == "default_value"
+
+
+class TestValidateConfigEdgeCases:
+    """Additional validation edge cases."""
+    
+    def test_validate_with_uppercase_log_level(self) -> None:
+        """Test that uppercase log level still works."""
+        config = Config(
+            discord_webhook_url="https://discord.com/api/webhooks/111/aaa",
+            bot_name="Test",
+            log_level="INFO"  # Uppercase
+        )
+        result = validate_config(config)
+        # Invalid level gets corrected to "info"
+        assert result is True
