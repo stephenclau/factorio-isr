@@ -20,7 +20,7 @@ Real-time Factorio server event monitoring with Discord integration. Stream JOIN
 
 ## ✨ Features
 
-### Phase 1 Minimum Viable Product (Current)
+### Current Offering
 - 🔄 **Real-time log tailing** - Monitors Factorio console.log with file rotation support
 - 💬 **Core event parsing** - JOIN, LEAVE, CHAT, and SERVER messages
 - 🎮 **Extra support** - MILESTONE, TASK/TODO, RESEARCH, and DEATH events
