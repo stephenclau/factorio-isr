@@ -1,0 +1,33 @@
+# Factorio vanilla event patterns
+# Regex patterns for parsing console.log
+
+events:
+  player_join:
+    pattern: '(\S+) joined the game'
+    type: join
+    color: 0x00FF00  # Green
+    icon: ✅
+    
+  player_leave:
+    pattern: '(\S+) left the game'
+    type: leave
+    color: 0xFF0000  # Red
+    icon: ❌
+    
+  chat_message:
+    pattern: '\[CHAT\] (\S+): (.+)'
+    type: chat
+    color: 0x7289DA  # Discord blurple
+    icon: 💬
+    
+  server_start:
+    pattern: 'Loading map .+ finished'
+    type: system
+    color: 0x00FFFF  # Cyan
+    icon: 🚀
+    
+  server_save:
+    pattern: 'Saving finished'
+    type: system
+    color: 0xFFFF00  # Yellow
+    icon: 💾
