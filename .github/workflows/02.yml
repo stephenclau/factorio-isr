@@ -1,0 +1,21 @@
+name: 02.Google OSV Scheduled Scan
+
+on:
+  schedule:
+    - cron: "30 2 15,30 * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  security-events: write
+  contents: read
+
+jobs:
+  osv-scheduled-scan:
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v2.2.4
+    with:
+      scan-args: |-
+        --results-file-name=osv-results.sarif
+        --upload-sarif:true
+  
+

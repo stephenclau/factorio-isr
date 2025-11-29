@@ -159,7 +159,7 @@ def load_config() -> Config:
     assert discord_webhook_url is not None  # Type narrowing
     
     # Optional fields with safe defaults
-    bot_name = get_config_value_safe("BOT_NAME", default="Factorio Bridge")
+    bot_name = get_config_value_safe("BOT_NAME", default="FactorioISR Bridge")
     bot_avatar_url = get_config_value("BOT_AVATAR_URL")  # Can be None
     
     factorio_log_path = Path(
@@ -192,93 +192,6 @@ def load_config() -> Config:
     )
     
     return config
-
-# def load_config_old() -> Config:
-#     """
-#     Load application configuration from Docker secrets and environment variables.
-    
-#     Returns:
-#         Config object with all settings
-    
-#     Raises:
-#         ValueError: If required configuration is missing
-#     """
-#     # Load .env file if present (for local development)
-#     try:
-#         from dotenv import load_dotenv
-#         env_file = Path(".env")
-#         if env_file.exists():
-#             load_dotenv()
-#             logger.info("loaded_dotenv", path=str(env_file))
-#     except ImportError:
-#         logger.debug("python-dotenv_not_installed")
-    
-#     # Required fields
-#     discord_webhook_url = get_config_value(
-#         "DISCORD_WEBHOOK_URL",
-#         required=True
-#     )
-    
-#     # Optional fields with defaults
-#     bot_name = get_config_value("BOT_NAME", default="FactorioISR")
-#     bot_avatar_url = get_config_value("BOT_AVATAR_URL")
-    
-#     log_path_str = get_config_value(
-#         "FACTORIO_LOG_PATH",
-#         default="/logs/console.log"
-#     )
-
-#     if log_path_str is None:
-#         log_path_str = "/logs/console.log"
-#     factorio_log_path = Path(log_path_str)
-    
-#     health_host = get_config_value(
-#         "HEALTH_CHECK_HOST",
-#         default="0.0.0.0"
-#     )
-#     if health_host is None:
-#         health_host = "0.0.0.0"
-
-#     health_port_str = get_config_value(
-#         "HEALTH_CHECK_PORT",
-#         default="8080"
-#     )
-#     if health_port_str is None:
-#         health_port_str = "8080"
-#     health_port = int(health_port_str)
-
-#     log_level_str = get_config_value("LOG_LEVEL", default="info")
-#     if log_level_str is None:
-#         log_level_str = "info"
-#     log_level = log_level_str.lower()
-
-#     log_format_str = get_config_value("LOG_FORMAT", default="json")
-#     if log_format_str is None:
-#         log_format_str = "json"
-#     log_format = log_format_str.lower()
-
-#     assert discord_webhook_url is not None
-#     config = Config(
-#         discord_webhook_url=discord_webhook_url,
-#         bot_name=bot_name or "FactorioISR Agent",
-#         bot_avatar_url=bot_avatar_url,
-#         factorio_log_path=factorio_log_path,
-#         health_check_host=health_host,
-#         health_check_port=health_port,
-#         log_level=log_level,
-#         log_format=log_format,
-#     )
-    
-#     logger.info(
-#         "config_loaded",
-#         log_level=config.log_level,
-#         log_format=config.log_format,
-#         health_port=config.health_check_port,
-#         factorio_log=str(config.factorio_log_path)
-#     )
-    
-#     return config
-
 
 # Convenience function for testing
 def validate_config(config: Config) -> bool:

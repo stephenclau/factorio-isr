@@ -1,9 +1,8 @@
+####Stand Alone Docker
+
 services:
   factorio-isr:
-    # Accept UID/GID as build args, default to 1001
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: slautomaton/factorio-isr:latest  
     container_name: factorio-isr
     restart: unless-stopped
     user: "1001:1001" # Set to match UID:GID of host non root user i.e. factorio (or different if standalone)
@@ -18,7 +17,7 @@ services:
       - FACTORIO_LOG_PATH=/logs/console.log
       - HEALTH_CHECK_HOST=0.0.0.0
       - HEALTH_CHECK_PORT=8080
-      - BOT_NAME=Factorio Bridge
+      - BOT_NAME=FactorioISR Agent
     ports:
       - "8080:8080"
     networks:
