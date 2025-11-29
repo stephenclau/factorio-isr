@@ -4,8 +4,8 @@ on:
   push:
     paths:
       - 'Dockerfile'
-      - '/src'
-      - '/tests'
+      - 'src/*.py'
+      - 'tests/*.py'
       - 'requirements.txt'
    
 
