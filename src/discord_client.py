@@ -188,7 +188,7 @@ class DiscordClient:
         # Assert session is connected
         assert self.session is not None, "Client not connected - call connect() first"
         
-        test_message = f"🔗 **{self.bot_name}** connection test"
+        test_message = f"🔗 **{self.bot_name}** is now online!"
         result = await self.send_message(test_message)
         
         if result:
