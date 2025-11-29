@@ -7,8 +7,7 @@
 ![GitHub Release](https://img.shields.io/github/v/release/stephenclau/factorio-isr?sort=semver&display_name=release&style=plastic&logo=github) \
 ![GitHub License](https://img.shields.io/github/license/stephenclau/factorio?style=plastic&logo=github&lable=License) \
 ![GitHub last commit](https://img.shields.io/github/last-commit/stephenclau/factorio?style=plastic&logo=github&label=Last%20Commit) 
-![Codecov](https://img.shields.io/codecov/c/github/stephenclau/factorio-isr?style=plastic&logo=codecov&label=Coverage)
-[![codecov](https://codecov.io/gh/stephenclau/factorio-isr/branch/main/graph/badge.svg)](https://codecov.io/gh/stephenclau/factorio-isr) \
+![Codecov](https://img.shields.io/codecov/c/github/stephenclau/factorio-isr?style=plastic&logo=codecov&label=Coverage&color=orange&link=(https%3A%2F%2Fcodecov.io%2Fgh%2Fstephenclau%2Ffactorio-isr)) \
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio/01.yml?style=plastic&logo=github&label=Build) 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio/02.yml?style=plastic&logo=google&label=OSV%20Scan%20Check)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio/03.yml?style=plastic&logo=trivy&label=Trivy%20CVE)
