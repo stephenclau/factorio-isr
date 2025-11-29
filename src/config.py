@@ -17,7 +17,7 @@ class Config:
     
     # Discord
     discord_webhook_url: str
-    bot_name: str = "FactorioISR"
+    bot_name: str 
     bot_avatar_url: Optional[str] = None
     
     # Factorio
