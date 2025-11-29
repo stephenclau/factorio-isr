@@ -1,33 +1,48 @@
 # Factorio vanilla event patterns
 # Regex patterns for parsing console.log
+# Vanilla Factorio Event Patterns
+#
+# Phase 2 Feature: YAML-based event pattern configuration
+# 
+# This file will contain regex patterns for parsing vanilla Factorio events.
+# Currently unused - patterns are hard-coded in src/event_parser.py
+#
+# Future structure:
+# events:
+#   join:
+#     pattern: "(?:\\[JOIN\\]\\s*)?(\\w+)\\s+joined(?:\\s+the\\s+game)?"
+#     emoji: "✅"
+#     message: "{player} joined the game"
+#     enabled: true
+#   
+#   leave:
+#     pattern: "(?:\\[LEAVE\\]\\s*)?(\\w+)\\s+(?:left|leaving)(?:\\s+the\\s+game)?"
+#     emoji: "❌"
+#     message: "{player} left the game"
+#     enabled: true
+#   
+#   chat:
+#     pattern: "(?:\\[CHAT\\]\\s*)?(\\w+):\\s+(.+)"
+#     emoji: "💬"
+#     message: "{player}: {message}"
+#     enabled: true
+#   
+#   server:
+#     pattern: "(?:\\[CHAT\\]\\s*)?<server>:\\s*(.+)"
+#     emoji: "🖥️"
+#     message: "Server: {message}"
+#     enabled: true
 
-events:
-  player_join:
-    pattern: '(\S+) joined the game'
-    type: join
-    color: 0x00FF00  # Green
-    icon: ✅
+  # server_start:
+  #   pattern: 'Loading map .+ finished'
+  #   type: system
+  #   color: 0x00FFFF  # Cyan
+  #   icon: 🚀
     
-  player_leave:
-    pattern: '(\S+) left the game'
-    type: leave
-    color: 0xFF0000  # Red
-    icon: ❌
-    
-  chat_message:
-    pattern: '\[CHAT\] (\S+): (.+)'
-    type: chat
-    color: 0x7289DA  # Discord blurple
-    icon: 💬
-    
-  server_start:
-    pattern: 'Loading map .+ finished'
-    type: system
-    color: 0x00FFFF  # Cyan
-    icon: 🚀
-    
-  server_save:
-    pattern: 'Saving finished'
-    type: system
-    color: 0xFFFF00  # Yellow
-    icon: 💾
+  # server_save:
+  #   pattern: 'Saving finished'
+  #   type: system
+  #   color: 0xFFFF00  # Yellow
+  #   icon: 💾
+#
+# TODO: Implement pattern loader in Phase 2

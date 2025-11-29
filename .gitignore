@@ -29,3 +29,7 @@ htmlcov/
 
 # Docker
 *.dockerignore
+
+# Add to .gitignore
+patterns/*.test.yml
+patterns/.DS_Store
