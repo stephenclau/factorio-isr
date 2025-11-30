@@ -2,6 +2,7 @@
 Configuration management with support for both .env files and Docker secrets.
 Prioritizes Docker secrets over environment variables for production security.
 """
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -15,21 +16,25 @@ logger = structlog.get_logger()
 class Config:
     """Application configuration."""
     
-    # Discord
+    # Required fields (no defaults)
     discord_webhook_url: str
-    bot_name: str 
+    bot_name: str
+    
+    # Optional fields with defaults (must come after required fields)
     bot_avatar_url: Optional[str] = None
-    
-    # Factorio
     factorio_log_path: Path = Path("/logs/console.log")
-    
-    # Health check
     health_check_host: str = "0.0.0.0"
     health_check_port: int = 8080
-    
-    # Logging
     log_level: str = "info"
     log_format: str = "json"  # json or console
+    send_test_message: bool = False
+    
+    # RCON fields (Phase 3)
+    rcon_enabled: bool = False
+    rcon_host: str = "factorio"
+    rcon_port: int = 27015
+    rcon_password: Optional[str] = None
+    stats_interval: int = 300
 
 
 def read_secret(secret_name: str) -> Optional[str]:
@@ -60,6 +65,7 @@ def read_secret(secret_name: str) -> Optional[str]:
                 error=str(e)
             )
             return None
+    
     return None
 
 
@@ -114,6 +120,7 @@ def get_config_value(
     
     return value
 
+
 def get_config_value_safe(
     key: str,
     default: str,
@@ -133,6 +140,7 @@ def get_config_value_safe(
     value = get_config_value(key, default=default, required=required)
     # This should never happen with a non-None default, but satisfies type checker
     return value if value is not None else default
+
 
 def load_config() -> Config:
     """
@@ -172,6 +180,23 @@ def load_config() -> Config:
     log_level = get_config_value_safe("LOG_LEVEL", default="info").lower()
     log_format = get_config_value_safe("LOG_FORMAT", default="json").lower()
     
+    # Test message flag
+    send_test_message_str = get_config_value_safe("SEND_TEST_MESSAGE", default="false")
+    send_test_message = send_test_message_str.lower() in ("true", "yes", "1")
+    
+    # RCON configuration (Phase 3)
+    rcon_enabled_str = get_config_value_safe("RCON_ENABLED", default="false")
+    rcon_enabled = rcon_enabled_str.lower() in ("true", "yes", "1")
+    
+    rcon_host = get_config_value_safe("RCON_HOST", default="factorio")
+    rcon_port_str = get_config_value_safe("RCON_PORT", default="27015")
+    rcon_port = int(rcon_port_str)
+    
+    rcon_password = get_config_value("RCON_PASSWORD")  # Optional
+    
+    stats_interval_str = get_config_value_safe("STATS_INTERVAL", default="300")
+    stats_interval = int(stats_interval_str)
+    
     config = Config(
         discord_webhook_url=discord_webhook_url,
         bot_name=bot_name,
@@ -181,6 +206,12 @@ def load_config() -> Config:
         health_check_port=health_port,
         log_level=log_level,
         log_format=log_format,
+        send_test_message=send_test_message,
+        rcon_enabled=rcon_enabled,
+        rcon_host=rcon_host,
+        rcon_port=rcon_port,
+        rcon_password=rcon_password,
+        stats_interval=stats_interval,
     )
     
     logger.info(
@@ -188,12 +219,13 @@ def load_config() -> Config:
         log_level=config.log_level,
         log_format=config.log_format,
         health_port=config.health_check_port,
-        factorio_log=str(config.factorio_log_path)
+        factorio_log=str(config.factorio_log_path),
+        rcon_enabled=config.rcon_enabled
     )
     
     return config
 
-# Convenience function for testing
+
 def validate_config(config: Config) -> bool:
     """
     Validate configuration values.

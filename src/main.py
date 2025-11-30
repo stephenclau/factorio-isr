@@ -1,7 +1,8 @@
 """
 Factorio ISR - Main Entry Point
 
-Near Real-time Factorio server event monitoring with Discord integration.
+Real-time Factorio server event monitoring with Discord integration.
+Phase 3 adds optional RCON support for server statistics.
 """
 
 import asyncio
@@ -9,6 +10,7 @@ import logging
 import signal
 import sys
 from pathlib import Path
+from typing import Optional, Any
 import structlog
 
 # Use try/except to support both relative and absolute imports
@@ -21,11 +23,25 @@ try:
     from .event_parser import EventParser
 except ImportError:
     # Absolute imports (when run directly or from tests)
-    from config import load_config, validate_config
-    from health import HealthCheckServer
-    from log_tailer import LogTailer
-    from discord_client import DiscordClient
-    from event_parser import EventParser
+    from config import load_config, validate_config  # type: ignore
+    from health import HealthCheckServer  # type: ignore
+    from log_tailer import LogTailer  # type: ignore
+    from discord_client import DiscordClient  # type: ignore
+    from event_parser import EventParser  # type: ignore
+
+# RCON imports - optional for Phase 3
+try:
+    from .rcon_client import RconClient, RconStatsCollector  # type: ignore
+    RCON_AVAILABLE = True
+except ImportError:
+    try:
+        from rcon_client import RconClient, RconStatsCollector  # type: ignore
+        RCON_AVAILABLE = True
+    except ImportError:
+        # RCON module not available - Phase 3 features disabled
+        RconClient = None  # type: ignore
+        RconStatsCollector = None  # type: ignore
+        RCON_AVAILABLE = False
 
 logger = structlog.get_logger()
 
@@ -84,10 +100,12 @@ class Application:
     def __init__(self):
         """Initialize application components."""
         self.config = None
-        self.health_server = None
-        self.log_tailer = None
-        self.discord_client = None
-        self.event_parser = None
+        self.health_server: Optional[HealthCheckServer] = None
+        self.log_tailer: Optional[LogTailer] = None
+        self.discord_client: Optional[DiscordClient] = None
+        self.event_parser: Optional[EventParser] = None
+        self.rcon_client: Optional[Any] = None  # Type: Optional[RconClient] when available
+        self.stats_collector: Optional[Any] = None  # Type: Optional[RconStatsCollector] when available
         self.shutdown_event = asyncio.Event()
     
     async def setup(self) -> None:
@@ -161,16 +179,31 @@ class Application:
         
         await self.discord_client.connect()
         
-        # Test Discord connection
-        if not await self.discord_client.test_connection():
-            logger.error("discord_connection_failed")
-            raise ConnectionError("Failed to connect to Discord webhook")
+        # Test Discord connection only if enabled
+        if self.config.send_test_message:
+            if not await self.discord_client.test_connection():
+                logger.error("discord_connection_failed")
+                raise ConnectionError("Failed to connect to Discord webhook")
+        else:
+            logger.info("discord_client_connected", test_skipped=True)
         
         # Initialize event parser
         self.event_parser = EventParser()
         
         # Assert event parser was created
         assert self.event_parser is not None
+        
+        # Initialize RCON if enabled (Phase 3)
+        if self.config.rcon_enabled:
+            if RCON_AVAILABLE:
+                await self._start_rcon()
+            else:
+                logger.warning(
+                    "rcon_unavailable",
+                    message="RCON enabled but module not available. Install with: pip install aiorcon"
+                )
+        else:
+            logger.info("rcon_disabled")
         
         # Start log tailer
         self.log_tailer = LogTailer(
@@ -184,6 +217,52 @@ class Application:
         await self.log_tailer.start()
         
         logger.info("application_running")
+    
+    async def _start_rcon(self) -> None:
+        """Start RCON client and stats collector (Phase 3)."""
+        assert self.config is not None
+        assert self.discord_client is not None
+        
+        if not RCON_AVAILABLE or RconClient is None or RconStatsCollector is None:
+            logger.error("rcon_not_available", message="RCON module not imported")
+            return
+        
+        if not self.config.rcon_password:
+            logger.warning("rcon_enabled_but_no_password")
+            return
+        
+        try:
+            # Initialize RCON client
+            self.rcon_client = RconClient(
+                host=self.config.rcon_host,
+                port=self.config.rcon_port,
+                password=self.config.rcon_password
+            )
+            
+            # Connect
+            assert self.rcon_client is not None
+            await self.rcon_client.connect()
+            
+            # Initialize stats collector
+            self.stats_collector = RconStatsCollector(
+                rcon_client=self.rcon_client,
+                discord_client=self.discord_client,
+                interval=self.config.stats_interval
+            )
+            # Type narrowing - assert it's not None before calling methods
+            # Start collecting stats
+            assert self.stats_collector is not None
+            await self.stats_collector.start()
+            
+            logger.info(
+                "rcon_started",
+                host=self.config.rcon_host,
+                port=self.config.rcon_port,
+                stats_interval=self.config.stats_interval
+            )
+        except Exception as e:
+            logger.error("rcon_start_failed", error=str(e))
+            # Don't raise - RCON is optional feature
     
     async def handle_log_line(self, line: str) -> None:
         """
@@ -213,6 +292,16 @@ class Application:
         """Gracefully stop all components."""
         logger.info("application_stopping")
         
+        # Stop stats collector (Phase 3)
+        if self.stats_collector is not None:
+            await self.stats_collector.stop()
+            logger.debug("stats_collector_stopped")
+        
+        # Disconnect RCON (Phase 3)
+        if self.rcon_client is not None:
+            await self.rcon_client.disconnect()
+            logger.debug("rcon_disconnected")
+        
         # Stop log tailer
         if self.log_tailer is not None:
             await self.log_tailer.stop()
@@ -238,7 +327,6 @@ class Application:
             
             # Wait for shutdown signal
             await self.shutdown_event.wait()
-            
         except KeyboardInterrupt:
             logger.info("received_keyboard_interrupt")
         except Exception as e:
@@ -256,7 +344,7 @@ async def main() -> None:
     assert app is not None
     
     # Set up signal handlers for graceful shutdown
-    def signal_handler(signum, frame):
+    def signal_handler(signum: int, frame: Any) -> None:
         logger.info("received_signal", signal=signal.Signals(signum).name)
         app.shutdown_event.set()
     

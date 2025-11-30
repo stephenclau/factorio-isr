@@ -4,6 +4,10 @@ watchdog==6.0.0         # File system monitoring
 pyyaml==6.0.2           # YAML config parsing
 python-dotenv==1.0.1    # .env file support
 
+# Add RCON support
+# DO NOT USE AIORCON or MCRCON
+rcon>=2.4.9  # Async RCON client
+
 # Logging and observability
 structlog==24.4.0       # Structured logging (latest)
 python-json-logger==3.2.1
@@ -11,11 +15,9 @@ python-json-logger==3.2.1
 # Health checks
 aiohttp-cors==0.7.0     # CORS support
 
-# Development
-pytest==8.3.4
-pytest-asyncio==0.24.0
-pytest-cov==6.0.0
-black==24.10.0          # Code formatting
-ruff==0.8.4             # Fast linting
-mypy==1.13.0            # Type checking
-pytest-cov>=4.1.0
+# Discord integration
+discord-webhook>=1.4.1
+
+
+
+

@@ -7,6 +7,7 @@ __pycache__/
 venv/
 env/
 ENV/
+*.egg-info
 
 # IDE
 .vscode/
@@ -35,3 +36,4 @@ codecov.*
 # Add to .gitignore
 patterns/*.test.yml
 patterns/.DS_Store
+*.token

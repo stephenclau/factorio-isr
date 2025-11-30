@@ -251,6 +251,17 @@ Run tests
 ```bash
 pytest
 ```
+
+## 📚 Documentation
+
+- **[Installation Guide](docs/installation.md)** - Detailed setup instructions
+- **[Configuration](docs/configuration.md)** - Environment variables and settings
+- **[Docker Deployment](docs/docker-deployment.md)** - Production deployment guide
+- **[Development](docs/development.md)** - Contributing and local development
+- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
+- **[Architecture](docs/architecture.md)** - System design and components
+- **[Roadmap](docs/roadmap.md)** - Future features and timeline
+
 ## 🙏 Acknowledgments
 
 - [Factorio](https://www.factorio.com/) - The amazing game this tool supports
