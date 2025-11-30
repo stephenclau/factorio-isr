@@ -26,10 +26,8 @@ ENV/
 .coverage
 htmlcov/
 .pytest_cache/
-*.toml
 coverage.*
 codecov.*
-requirements-dev.txt
 
 # Docker
 *.dockerignore
