@@ -29,6 +29,7 @@ htmlcov/
 *.toml
 coverage.*
 codecov.*
+requirements-dev.txt
 
 # Docker
 *.dockerignore
