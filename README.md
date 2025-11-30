@@ -92,15 +92,13 @@ Contributions welcome! Please see our [Development Guide](docs/development.md) f
 
 ## 📄 License
 
-TBD
+MIT
 
 ## 📞 Support
 
 - 🐛 **Issues**: [GitHub Issues](https://github.com/stephenclau/factorio-isr/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/stephenclau/factorio-isr/discussions)
 - 📧 **Email**: stephen.c.lau@gmail.com
-
----
 
 **Made with ❤️ for the Factorio community**
 

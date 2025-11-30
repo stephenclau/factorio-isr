@@ -4,21 +4,21 @@
 - [x] Real-time log monitoring
 - [x] Discord webhook integration
 - [x] Core event parsing
-- [x] Mod event support
 - [x] Docker deployment
 - [x] Health checks
 - [x] Comprehensive tests
 
-### Phase 2 - Enhanced Parsing 
+### Phase 2 - RCON Integration ✅ 
+- [x] Read-only RCON commands
+- [x] Server statistics (players, uptime)
+- [x] Scheduled status updates (set intervals)
+
+### Phase 3 - Enhanced Parsing 
 - [ ] YAML-based pattern configuration
 - [ ] Custom event filters
 - [ ] Multiple Discord channels
 - [ ] Event statistics and aggregation
-
-### Phase 3 - RCON Integration
-- [ ] Read-only RCON commands
-- [ ] Server statistics (players, uptime)
-- [ ] Scheduled status updates
+- [ ] Milestone/Todo Mod event support
 
 ### Phase 4 - Discord Bot
 - [ ] Replace webhook with Discord bot
