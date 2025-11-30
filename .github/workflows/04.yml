@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  code-cov-test:
+  codecov-tests:
     runs-on: ubuntu-latest
     
     strategy:
