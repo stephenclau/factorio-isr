@@ -122,7 +122,7 @@ events:
   info_message:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[INFO\] (?P<message>.+)$'
     type: server
-    emoji: '📜'
+    emoji: 'ℹ️'
     message: '**Info:** {message}'
     enabled: true
     priority: 27
