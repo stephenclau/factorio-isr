@@ -8,6 +8,7 @@ venv/
 env/
 ENV/
 *.egg-info
+.deprecated/*
 
 # IDE
 .vscode/
@@ -16,8 +17,7 @@ ENV/
 *.swo
 
 # Secrets
-.secrets/
-.env
+
 
 # Logs
 *.log
