@@ -15,7 +15,6 @@ FROM python:3.14-slim
 
 LABEL org.opencontainers.image.title="Factorio ISR"
 LABEL org.opencontainers.image.description="Real-time Factorio server event monitoring with Discord integration"
-LABEL org.opencontainers.image.version="1.0.0"
 LABEL org.opencontainers.image.authors="https://github.com/stephenclau/factorio-isr"
 LABEL org.opencontainers.image.source="https://github.com/stephenclau/factorio-isr"
 
