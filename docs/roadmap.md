@@ -13,12 +13,12 @@
 - [x] Server statistics (players, uptime)
 - [x] Scheduled status updates (set intervals)
 
-### Phase 3 - Enhanced Parsing 
+### Phase 3 - Enhanced Parsing ✅
 - [x] YAML-based pattern configuration
 - [x] Custom event filters
-- [ ] Multiple Discord channels
-- [ ] Event statistics and aggregation
-- [?] Milestone/Todo Mod event support
+- [x] Multiple Discord channels
+- [x] Event statistics and aggregation
+- [?] Milestone/Todo Mod event support 
 
 ### Phase 4 - Discord Bot
 - [ ] Replace webhook with Discord bot

@@ -256,11 +256,16 @@ pytest
 
 - **[Installation Guide](docs/installation.md)** - Detailed setup instructions
 - **[Configuration](docs/configuration.md)** - Environment variables and settings
-- **[Docker Deployment](docs/docker-deployment.md)** - Production deployment guide
 - **[Development](docs/development.md)** - Contributing and local development
-- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 - **[Architecture](docs/architecture.md)** - System design and components
 - **[Roadmap](docs/roadmap.md)** - Future features and timeline
+- **[RCON Setup Guide](docs/RCON_SETUP.md)** - Configure server statistics
+- **[Usage Examples](docs/EXAMPLES.md)** - Common configuration scenarios
+- **[Multi-Channel Guide](docs/MULTI_CHANNEL.md)** - Route events to different channels
+- **[Pattern Syntax](docs/PATTERNS.md)** - Complete pattern reference
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+
 
 ## 🙏 Acknowledgments
 
@@ -272,12 +277,7 @@ pytest
 
 - 🐛 **Issues**: [GitHub Issues](https://github.com/stephenclau/factorio-isr/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/stephenclau/factorio-isr/discussions)
-- 📧 **Email**: stephen.c.lau@gmail.com
-
-
-
 ---
 
 **Made with ❤️ for the Factorio community**
 
-*The factory telemetry must grow!* 🏭
