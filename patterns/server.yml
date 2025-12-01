@@ -1,0 +1,138 @@
+# Server and Admin Event Patterns
+# System status and administrative actions
+
+events:
+  server_started:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Server started\.$'
+    type: server
+    emoji: '✅'
+    message: 'Server started successfully'
+    enabled: true
+    priority: 1
+    description: 'Server startup'
+
+  server_stopping:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Server shutting down\.$'
+    type: server
+    emoji: '⚠️'
+    message: 'Server is shutting down'
+    enabled: true
+    priority: 5
+    description: 'Server shutdown initiated'
+
+  server_saving:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Saving game\.$'
+    type: server
+    emoji: '💾'
+    message: 'Game saved'
+    enabled: false
+    priority: 25
+    description: 'Autosave (disabled by default, very frequent)'
+
+  server_restart_warning:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Server restart in (\d+) minutes?$'
+    type: server
+    emoji: '⏰'
+    message: 'Server restart in {message}'
+    enabled: true
+    priority: 5
+    description: 'Restart warning'
+
+  server_message:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] (?P<message>.+)$'
+    type: server
+    emoji: '📢'
+    message: 'Server: {message}'
+    enabled: true
+    priority: 15
+    description: 'Generic server message'
+
+  admin_command:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[ADMIN\] (?P<player>\w+) executed command: (?P<message>.+)$'
+    type: server
+    emoji: '🔧'
+    message: '{player} ran admin command: {message}'
+    enabled: true
+    priority: 10
+    description: 'Admin command execution'
+
+  player_promoted:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) promoted (?P<message>\w+) to admin$'
+    type: server
+    emoji: '👑'
+    message: '{player} promoted {message} to admin'
+    enabled: true
+    priority: 10
+    description: 'Player promotion'
+
+  player_demoted:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) demoted (?P<message>\w+) from admin$'
+    type: server
+    emoji: '📉'
+    message: '{player} demoted {message} from admin'
+    enabled: true
+    priority: 10
+    description: 'Player demotion'
+
+  player_kicked:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) was kicked by (?P<message>\w+)\. Reason: (?P<reason>.+)$'
+    type: server
+    emoji: '🚪'
+    message: '{player} was kicked by {message}'
+    enabled: true
+    priority: 10
+    description: 'Player kicked from server'
+
+  player_banned:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) was banned by (?P<message>\w+)\. Reason: (?P<reason>.+)$'
+    type: server
+    emoji: '🔨'
+    message: '{player} was banned by {message}'
+    enabled: true
+    priority: 10
+    description: 'Player banned from server'
+
+  mod_loaded:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[MOD\] Loaded mod: (.+) \((.+)\)$'
+    type: server
+    emoji: '🧩'
+    message: 'Loaded mod: {message}'
+    enabled: false
+    priority: 25
+    description: 'Mod loading (disabled, startup spam)'
+
+  error_occurred:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[ERROR\] (?P<message>.+)$'
+    type: server
+    emoji: '❌'
+    message: 'Error: {message}'
+    enabled: true
+    priority: 5
+    description: 'Server error message'
+
+  warning_occurred:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[WARNING\] (?P<message>.+)$'
+    type: server
+    emoji: '⚠️'
+    message: 'Warning: {message}'
+    enabled: true
+    priority: 8
+    description: 'Server warning message'
+
+  info_message:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[INFO\] (?P<message>.+)$'
+    type: server
+    emoji: '📜'
+    message: 'Info: {message}'
+    enabled: true
+    priority: 27
+    description: 'Server Informational log'
+
+  catchall_debug:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<message>.+)$'
+    type: server
+    emoji: '✏️🐞'
+    message: 'Debug: {message}'
+    enabled: false
+    priority: 99
+    description: 'anything after the timestamp'

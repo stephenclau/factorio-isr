@@ -33,3 +33,4 @@ priority: 10
 
 ⏳ **Placeholder** - Awaiting Phase 2 implementation
 
+These patterns cover the most common Factorio events. You can enable/disable individual patterns in the YAML files and add custom patterns for modded servers!

@@ -1,48 +1,78 @@
-# Factorio vanilla event patterns
-# Regex patterns for parsing console.log
 # Vanilla Factorio Event Patterns
-#
-# Phase 2 Feature: YAML-based event pattern configuration
-# 
-# This file will contain regex patterns for parsing vanilla Factorio events.
-# Currently unused - patterns are hard-coded in src/event_parser.py
-#
-# Future structure:
-# events:
-#   join:
-#     pattern: "(?:\\[JOIN\\]\\s*)?(\\w+)\\s+joined(?:\\s+the\\s+game)?"
-#     emoji: "✅"
-#     message: "{player} joined the game"
-#     enabled: true
-#   
-#   leave:
-#     pattern: "(?:\\[LEAVE\\]\\s*)?(\\w+)\\s+(?:left|leaving)(?:\\s+the\\s+game)?"
-#     emoji: "❌"
-#     message: "{player} left the game"
-#     enabled: true
-#   
-#   chat:
-#     pattern: "(?:\\[CHAT\\]\\s*)?(\\w+):\\s+(.+)"
-#     emoji: "💬"
-#     message: "{player}: {message}"
-#     enabled: true
-#   
-#   server:
-#     pattern: "(?:\\[CHAT\\]\\s*)?<server>:\\s*(.+)"
-#     emoji: "🖥️"
-#     message: "Server: {message}"
-#     enabled: true
+# Core player and game events
 
-  # server_start:
-  #   pattern: 'Loading map .+ finished'
-  #   type: system
-  #   color: 0x00FFFF  # Cyan
-  #   icon: 🚀
+events:
+  player_join:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[JOIN\] (?P<player>\w+) joined the game'
+    type: join
+    emoji: '👋'
+    message: '{player} joined the server'
+    enabled: true
+    priority: 10
+    description: 'Player joins the server'
+    channel: general  # Route to 'general' channel
+
+  player_leave:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[LEAVE\] (?P<player>\w+) left the game'
+    type: leave
+    emoji: '👋'
+    message: '{player} left the server'
+    enabled: true
+    priority: 10
+    description: 'Player leaves the server'
+    channel: general  # Route to 'general' channel
+  chat_message:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[CHAT\] (?P<player>\w+): (?P<message>.+)'
+    type: chat
+    emoji: '💬'
+    message: '{player}: {message}'
+    enabled: true
+    priority: 20
+    description: 'Player chat message'
+    channel: general  # Route to 'general' channel
+
+  player_death_biters:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) was killed by (?P<message>.+)\.$'
+    type: death
+    emoji: '💀'
+    message: '{player} was killed by {message}'
+    enabled: true
+    priority: 12
+    channel: general  # Route to 'general' channel
+
+  player_death_train:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) was killed by a locomotive\.$'
+    type: death
+    emoji: '🚂💀'
+    message: '{player} was killed by a train'
+    enabled: true
+    priority: 15
+    channel: general  # Route to 'general' channel
+
+  player_death_fall:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) fell to their death\.$'
+    type: death
+    emoji: '🌄💀'
+    message: '{player} fell to their death'
+    enabled: false
+    priority: 15
+    channel: general  # Route to 'general' channel
     
-  # server_save:
-  #   pattern: 'Saving finished'
-  #   type: system
-  #   color: 0xFFFF00  # Yellow
-  #   icon: 💾
-#
-# TODO: Implement pattern loader in Phase 2
+  player_suicide:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) committed suicide\.$'
+    type: death
+    emoji: '💥🔫'
+    message: '{player} committed suicide'
+    enabled: true
+    priority: 16
+    channel: general  # Route to 'general' channel
+    description: 'Player suicide (grenade/rocket/etc)'
+
+  player_death:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) (?:was killed by|died)(?: (?P<message>.+))?\.$'
+    type: death
+    emoji: '💀'
+    message: '{player} {message}'
+    enabled: true
+    priority: 90  # ensure specific patterns have smaller numbers (higher priority)
+    channel: general  # Route to 'general' channel

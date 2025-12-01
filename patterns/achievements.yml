@@ -1,0 +1,73 @@
+# Achievement and Milestone Event Patterns
+# Track player and factory progression
+
+events:
+  achievement_earned:
+    pattern: '^\[ACHIEVEMENT\] (\w+) earned (.+)\.$'
+    type: milestone
+    emoji: '🏆'
+    message: '{player} earned achievement: {message}'
+    enabled: true
+    priority: 11
+    description: 'Player earned an achievement'
+    channel: general  # Route to 'general' channel
+
+  rocket_launched:
+    pattern: '^(\w+) launched a rocket!$'
+    type: milestone
+    emoji: '🚀'
+    message: '{player} launched a rocket!'
+    enabled: true
+    priority: 5
+    description: 'Rocket launch - highest priority'
+    channel: general  # Route to 'general' channel
+
+  production_milestone:
+    pattern: '^\[MILESTONE\] Produced ([0-9,]+) (.+)\.$'
+    type: milestone
+    emoji: '📊'
+    message: 'Production milestone: {message}'
+    enabled: true
+    priority: 11
+    description: 'Factory production milestone'
+    channel: general  # Route to 'general' channel
+
+  time_played_milestone:
+    pattern: '^\[MILESTONE\] Server has been running for (.+)\.$'
+    type: milestone
+    emoji: '⏰'
+    message: 'Server uptime: {message}'
+    enabled: true
+    priority: 11
+    description: 'Server uptime milestone'
+    channel: general  # Route to 'general' channel
+
+  first_blood:
+    pattern: '^(\w+) killed their first biter!$'
+    type: milestone
+    emoji: '🎯'
+    message: '{player} killed their first biter!'
+    enabled: true
+    priority: 11
+    description: 'First enemy kill'
+    channel: general  # Route to 'general' channel
+
+  blueprint_created:
+    pattern: '^(\w+) created a blueprint: (.+)$'
+    type: task
+    emoji: '📐'
+    message: '{player} created blueprint: {message}'
+    enabled: false
+    priority: 20
+    description: 'Blueprint creation (disabled by default, spammy)'
+    channel: general  # Route to 'general' channel
+
+  blueprint_imported:
+    pattern: '^(\w+) imported a blueprint$'
+    type: task
+    emoji: '📥'
+    message: '{player} imported a blueprint'
+    enabled: false
+    priority: 20
+    description: 'Blueprint import (disabled by default)'
+    channel: general  # Route to 'general' channel

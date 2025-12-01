@@ -1,0 +1,39 @@
+# Research and Technology Event Patterns
+# Science and progression tracking
+
+events:
+  research_started:
+    pattern: '^\[RESEARCH\] Started researching ()(.+)\.$'
+    type: research
+    emoji: '🔬'
+    message: 'Research started: {message}'
+    enabled: true
+    priority: 12
+    description: 'New research started'
+
+  research_completed:
+    pattern: '^\[RESEARCH\] Finished researching ()(.+)\.$'
+    type: research
+    emoji: '✅🔬'
+    message: 'Research completed: {message}'
+    enabled: true
+    priority: 12
+    description: 'Research finished'
+
+  research_cancelled:
+    pattern: '^\[RESEARCH\] Cancelled research of (.+)\.$'
+    type: research
+    emoji: '❌'
+    message: 'Research cancelled: {message}'
+    enabled: true
+    priority: 12
+    description: 'Research cancelled by player'
+
+  technology_unlocked:
+    pattern: '^\[TECH\] (\w+) unlocked ()(.+)\.$'
+    type: research
+    emoji: '🎓'
+    message: '{player} unlocked {message}'
+    enabled: true
+    priority: 12
+    description: 'Player unlocked new technology'

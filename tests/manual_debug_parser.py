@@ -20,7 +20,7 @@ def debug_leave_events():
     
     for line in test_cases:
         print(f"\nTesting: {line}")
-        event = parser.parse(line)
+        event = parser.parse_line(line)
         
         if event is None:
             print(f"  ❌ Failed to parse (returned None)")

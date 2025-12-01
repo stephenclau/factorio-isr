@@ -14,11 +14,11 @@
 - [x] Scheduled status updates (set intervals)
 
 ### Phase 3 - Enhanced Parsing 
-- [ ] YAML-based pattern configuration
-- [ ] Custom event filters
+- [x] YAML-based pattern configuration
+- [x] Custom event filters
 - [ ] Multiple Discord channels
 - [ ] Event statistics and aggregation
-- [ ] Milestone/Todo Mod event support
+- [?] Milestone/Todo Mod event support
 
 ### Phase 4 - Discord Bot
 - [ ] Replace webhook with Discord bot
