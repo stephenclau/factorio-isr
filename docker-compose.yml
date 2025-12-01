@@ -9,8 +9,10 @@ services:
     volumes: 
       - /home/factorio/log:/logs:ro
       - /home/factorio/script-output:/mod-logs:ro
+      - /home/factorio/patterns:/app/patterns:ro
     secrets:
       - DISCORD_WEBHOOK_URL
+      - RCON_PASSWORD
     environment:
       - LOG_LEVEL=info
       - LOG_FORMAT=json
@@ -37,4 +39,5 @@ networks:
 secrets:
   DISCORD_WEBHOOK_URL:
     file: ./.secrets/DISCORD_WEBHOOK_URL.txt
-
+  RCON_PASSWORD:
+    file: ./.secrets/RCON_PASSWORD.txt

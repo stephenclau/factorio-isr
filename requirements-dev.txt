@@ -4,3 +4,7 @@ pytest-cov>=6.0.0,
 black==24.10.0,# Code formatting
 ruff>=0.8.4,# Fast linting
 mypy>=1.13.0   # Type checking
+watchdog==6.0.0     
+discord-webhook>=1.4.1
+aiohttp-cors==0.7.0     # CORS support
+python-json-logger==3.2.1

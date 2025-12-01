@@ -1,23 +1,5 @@
-# Core dependencies - Latest stable as of Nov 2025
-aiohttp==3.13.2         # Async HTTP client (latest stable) [web:67]
-watchdog==6.0.0         # File system monitoring
-pyyaml==6.0.2           # YAML config parsing
-python-dotenv==1.0.1    # .env file support
-
-# Add RCON support
-# DO NOT USE AIORCON or MCRCON
-rcon>=2.4.9  # Async RCON client
-
-# Logging and observability
-structlog==24.4.0       # Structured logging (latest)
-python-json-logger==3.2.1
-
-# Health checks
-aiohttp-cors==0.7.0     # CORS support
-
-# Discord integration
-discord-webhook>=1.4.1
-
-
-
-
+aiohttp>=3.13.2
+python-dotenv>=1.2.1
+PyYAML>=6.0.3
+rcon>=2.4.9
+structlog>=25.5.0
