@@ -46,7 +46,7 @@ class FactorioEvent:
     emoji: str = ""
     formatted_message: str = ""
     metadata: Dict[str, Any] = field(default_factory=dict)  # ✅ Channel routing info
-
+    
 
 # Type alias for compiled pattern storage
 CompiledPatternMap = Dict[str, Tuple[re.Pattern[str], EventPattern]]
@@ -284,10 +284,10 @@ class FactorioEventFormatter:
         
         # Fallback formatting based on event type.
         if event.event_type == EventType.JOIN:
-            return f"👋 {event.player_name} joined the server"
+            return f"👋 **{event.player_name}** joined the server"
         
         if event.event_type == EventType.LEAVE:
-            return f"👋 {event.player_name} left the server"
+            return f"👋 **{event.player_name}** left the server"
         
         if event.event_type == EventType.CHAT:
             safe_message = (
@@ -295,21 +295,21 @@ class FactorioEventFormatter:
                 if event.message
                 else ""
             )
-            return f"💬 {event.player_name}: {safe_message}"
+            return f"💬 **{event.player_name}**: {safe_message}"
         
         if event.event_type == EventType.SERVER:
-            return f"🔧 Server: {event.message}"
+            return f"🖥️ **Server:** {event.message}"
         
         if event.event_type == EventType.MILESTONE:
-            return f"🏆 {event.player_name} completed: {event.message}"
+            return f"🏆 **{event.player_name}** completed: *{event.message}*"
         
         if event.event_type == EventType.TASK:
-            return f"✅ {event.player_name} finished: {event.message}"
+            return f"✔️ **{event.player_name}**  finished: *{event.message}*"
         
         if event.event_type == EventType.RESEARCH:
-            return f"🔬 Research completed: {event.message}"
+            return f"🔬 Research completed: **{event.message}**"
         
         if event.event_type == EventType.DEATH:
-            return f"💀 {event.player_name} {event.message}"
+            return f"**{event.player_name}** {event.message}"
         
         return event.raw_line

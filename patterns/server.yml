@@ -6,7 +6,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Server started\.$'
     type: server
     emoji: '✅'
-    message: 'Server started successfully'
+    message: '***Server started successfully***'
     enabled: true
     priority: 1
     description: 'Server startup'
@@ -14,8 +14,8 @@ events:
   server_stopping:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Server shutting down\.$'
     type: server
-    emoji: '⚠️'
-    message: 'Server is shutting down'
+    emoji: '🚨'
+    message: '***Server is shutting down***'
     enabled: true
     priority: 5
     description: 'Server shutdown initiated'
@@ -24,7 +24,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Saving game\.$'
     type: server
     emoji: '💾'
-    message: 'Game saved'
+    message: '***Game saved***'
     enabled: false
     priority: 25
     description: 'Autosave (disabled by default, very frequent)'
@@ -33,7 +33,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] Server restart in (\d+) minutes?$'
     type: server
     emoji: '⏰'
-    message: 'Server restart in {message}'
+    message: '***Server restart in {message}***'
     enabled: true
     priority: 5
     description: 'Restart warning'
@@ -42,7 +42,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[SERVER\] (?P<message>.+)$'
     type: server
     emoji: '📢'
-    message: 'Server: {message}'
+    message: '**Server:** {message}'
     enabled: true
     priority: 15
     description: 'Generic server message'
@@ -51,7 +51,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[ADMIN\] (?P<player>\w+) executed command: (?P<message>.+)$'
     type: server
     emoji: '🔧'
-    message: '{player} ran admin command: {message}'
+    message: '**{player}** ran admin command: {message}'
     enabled: true
     priority: 10
     description: 'Admin command execution'
@@ -60,7 +60,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) promoted (?P<message>\w+) to admin$'
     type: server
     emoji: '👑'
-    message: '{player} promoted {message} to admin'
+    message: '**{player}** promoted {message} to admin'
     enabled: true
     priority: 10
     description: 'Player promotion'
@@ -69,7 +69,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) demoted (?P<message>\w+) from admin$'
     type: server
     emoji: '📉'
-    message: '{player} demoted {message} from admin'
+    message: '**{player}** demoted {message} from admin'
     enabled: true
     priority: 10
     description: 'Player demotion'
@@ -78,7 +78,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) was kicked by (?P<message>\w+)\. Reason: (?P<reason>.+)$'
     type: server
     emoji: '🚪'
-    message: '{player} was kicked by {message}'
+    message: '**{player}** was kicked by {message}'
     enabled: true
     priority: 10
     description: 'Player kicked from server'
@@ -87,7 +87,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<player>\w+) was banned by (?P<message>\w+)\. Reason: (?P<reason>.+)$'
     type: server
     emoji: '🔨'
-    message: '{player} was banned by {message}'
+    message: '**{player}** was banned by {message}'
     enabled: true
     priority: 10
     description: 'Player banned from server'
@@ -105,7 +105,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[ERROR\] (?P<message>.+)$'
     type: server
     emoji: '❌'
-    message: 'Error: {message}'
+    message: '**Error:** {message}'
     enabled: true
     priority: 5
     description: 'Server error message'
@@ -114,7 +114,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[WARNING\] (?P<message>.+)$'
     type: server
     emoji: '⚠️'
-    message: 'Warning: {message}'
+    message: '**Warning:** {message}'
     enabled: true
     priority: 8
     description: 'Server warning message'
@@ -123,7 +123,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[INFO\] (?P<message>.+)$'
     type: server
     emoji: '📜'
-    message: 'Info: {message}'
+    message: '**Info:** {message}'
     enabled: true
     priority: 27
     description: 'Server Informational log'
@@ -132,7 +132,7 @@ events:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?(?P<message>.+)$'
     type: server
     emoji: '✏️🐞'
-    message: 'Debug: {message}'
+    message: '**Debug:** {message}'
     enabled: false
     priority: 99
     description: 'anything after the timestamp'
