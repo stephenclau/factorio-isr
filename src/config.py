@@ -5,70 +5,100 @@ from pathlib import Path
 from typing import Optional, List, Dict
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
+import structlog
 
-# Load .env file
-load_dotenv()
-
+logger = structlog.get_logger() 
 
 def _read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
     """
-    Read a secret from multiple sources.
+    Read a secret from multiple sources (local dev + Docker).
     
     Checks in order:
-    1. .secrets/{secret_name}.txt (local development with .txt extension)
-    2. .secrets/{secret_name} (local development without extension)
+    1. .secrets/{secret_name}.txt (local development)
+    2. .secrets/{secret_name} (local development)
     3. /run/secrets/{secret_name} (Docker secrets)
-    4. Environment variable
-    5. Default value
+    
+    Returns:
+        Secret value as string, or None if not found
     """
-    # Try local .secrets folder with .txt extension first
-    local_secret_path_txt = Path(".secrets") / f"{secret_name}.txt"
-    if local_secret_path_txt.exists():
+    # Local dev: .txt extension
+    local_txt = Path(".secrets") / f"{secret_name}.txt"
+    if local_txt.exists():
         try:
-            content = local_secret_path_txt.read_text().strip()
-            if content:
-                return content
-        except Exception:
-            pass
+            value = local_txt.read_text().strip()
+            if value:  # Only return non-empty
+                logger.debug("loaded_secret", secret_name=secret_name, source="local_txt")
+                return value
+        except Exception as e:
+            logger.warning("failed_to_read_secret", secret_name=secret_name, source="local_txt", error=str(e))
     
-    # Try local .secrets folder without extension
-    local_secret_path = Path(".secrets") / secret_name
-    if local_secret_path.exists():
+    # Local dev: no extension
+    local_plain = Path(".secrets") / secret_name
+    if local_plain.exists():
         try:
-            content = local_secret_path.read_text().strip()
-            if content:
-                return content
-        except Exception:
-            pass
+            value = local_plain.read_text().strip()
+            if value:
+                logger.debug("loaded_secret", secret_name=secret_name, source="local_plain")
+                return value
+        except Exception as e:
+            logger.warning("failed_to_read_secret", secret_name=secret_name, source="local_plain", error=str(e))
     
-    # Try Docker secret location
-    docker_secret_path = Path("/run/secrets") / secret_name
-    if docker_secret_path.exists():
+    # Docker secrets
+    docker_secret = Path("/run/secrets") / secret_name
+    if docker_secret.exists():
         try:
-            content = docker_secret_path.read_text().strip()
-            if content:
-                return content
-        except Exception:
-            pass
+            value = docker_secret.read_text().strip()
+            if value:
+                logger.debug("loaded_secret", secret_name=secret_name, source="docker_secrets")
+                return value
+        except Exception as e:
+            logger.warning("failed_to_read_secret", secret_name=secret_name, source="docker_secrets", error=str(e))
     
-    # Fall back to environment variable
-    env_value = os.getenv(secret_name)
-    if env_value is not None:
-        return env_value
+    return None
+
+
+def get_config_value(
+    key: str,
+    default: Optional[str] = None,
+    required: bool = False
+) -> Optional[str]:
+    """
+    Get configuration value with priority: secrets > env vars > default.
+    """
+    # Priority 1: Secrets (file-based)
+    value = _read_secret(key)
     
-    return default
+    # Priority 2: Environment variable
+    if value is None:
+        value = os.getenv(key)
+        if value:
+            logger.debug("loaded_config", key=key, source="environment")
+    
+    # Priority 3: Default
+    if value is None:
+        value = default
+        if value:
+            logger.debug("loaded_config", key=key, source="default")
+    
+    # Validate required
+    if value is None and required:
+        raise ValueError(f"Required configuration '{key}' not found")
+    
+    return value
 
 
 @dataclass
 class Config:
     """Configuration for Factorio ISR."""
     # Required
-    discord_webhook_url: str
-    factorio_log_path: Path
+    discord_webhook_url: Optional[str] = None
+    discord_bot_token: Optional[str] = None
+    discord_event_channel_id: Optional[int] = None  
     
     # Optional with defaults
     bot_name: str = "Factorio ISR"
     bot_avatar_url: Optional[str] = None
+    factorio_log_path: Path = Path("/logs/console.log")
     log_level: str = "info"
     log_format: str = "console"
     health_check_host: str = "0.0.0.0"
@@ -117,80 +147,103 @@ def _parse_pattern_files(files_str: Optional[str]) -> Optional[List[str]]:
 def load_config() -> Config:
     """Load configuration from environment variables and Docker secrets."""
     load_dotenv()
+
+    # Discord configuration - at least one mode required
+    webhook_url = get_config_value("DISCORD_WEBHOOK_URL")
+    bot_token = get_config_value("DISCORD_BOT_TOKEN")
     
-    # Required fields - support secrets
-    webhook_url = _read_secret("DISCORD_WEBHOOK_URL")
-    if not webhook_url:
-        raise ValueError("DISCORD_WEBHOOK_URL is required")
+    # Validate that at least one Discord mode is configured
+    if not webhook_url and not bot_token:
+        raise ValueError(
+            "Either DISCORD_WEBHOOK_URL or DISCORD_BOT_TOKEN must be configured"
+        )
     
-    factorio_log_path = _read_secret("FACTORIO_LOG_PATH")
+    # Required: Factorio log path
+    factorio_log_path = get_config_value("FACTORIO_LOG_PATH")
     if not factorio_log_path:
         raise ValueError("FACTORIO_LOG_PATH is required")
-    
+
     # Optional fields with guaranteed defaults
-    bot_name = _read_secret("BOT_NAME") or "Factorio ISR"
-    log_level = (_read_secret("LOG_LEVEL") or "info").lower()
-    log_format = (_read_secret("LOG_FORMAT") or "console").lower()
-    health_check_host = _read_secret("HEALTH_CHECK_HOST") or "0.0.0.0"
-    health_check_port_str = _read_secret("HEALTH_CHECK_PORT") or "8080"
-    patterns_dir_str = _read_secret("PATTERNS_DIR") or "patterns"
-    rcon_host = _read_secret("RCON_HOST") or "localhost"
-    rcon_port_str = _read_secret("RCON_PORT") or "27015"
-    stats_interval_str = _read_secret("STATS_INTERVAL") or "300"
-    
+    bot_name = get_config_value("BOT_NAME") or "Factorio ISR"
+    log_level = (get_config_value("LOG_LEVEL") or "info").lower()
+    log_format = (get_config_value("LOG_FORMAT") or "console").lower()
+    health_check_host = get_config_value("HEALTH_CHECK_HOST") or "0.0.0.0"
+    health_check_port_str = get_config_value("HEALTH_CHECK_PORT") or "8080"
+    patterns_dir_str = get_config_value("PATTERNS_DIR") or "patterns"
+    rcon_host = get_config_value("RCON_HOST") or "localhost"
+    rcon_port_str = get_config_value("RCON_PORT") or "27015"
+    stats_interval_str = get_config_value("STATS_INTERVAL") or "300"
+
     # Boolean flags
-    send_test_str = _read_secret("SEND_TEST_MESSAGE") or "false"
-    rcon_enabled_str = _read_secret("RCON_ENABLED") or "false"
-    
+    send_test_str = get_config_value("SEND_TEST_MESSAGE") or "false"
+    rcon_enabled_str = get_config_value("RCON_ENABLED") or "false"
     # Parse webhook channels (support secrets)
-    webhook_channels_str = _read_secret("WEBHOOK_CHANNELS") or "{}"
+    webhook_channels_str = get_config_value("WEBHOOK_CHANNELS") or "{}"
+    channel_id_str = get_config_value("DISCORD_EVENT_CHANNEL_ID")
+    event_channel_id = int(channel_id_str) if channel_id_str else None
     
     return Config(
         discord_webhook_url=webhook_url,
+        discord_bot_token=bot_token,
+        discord_event_channel_id=event_channel_id,
         factorio_log_path=Path(factorio_log_path),
         bot_name=bot_name,
-        bot_avatar_url=_read_secret("BOT_AVATAR_URL"),
+        bot_avatar_url=get_config_value("BOT_AVATAR_URL"),
         log_level=log_level,
         log_format=log_format,
         health_check_host=health_check_host,
         health_check_port=int(health_check_port_str),
         patterns_dir=Path(patterns_dir_str),
-        pattern_files=_parse_pattern_files(_read_secret("PATTERN_FILES")),
+        pattern_files=_parse_pattern_files(get_config_value("PATTERN_FILES")),
         webhook_channels=_parse_webhook_channels(webhook_channels_str),
         send_test_message=send_test_str.lower() == "true",
         rcon_enabled=rcon_enabled_str.lower() == "true",
         rcon_host=rcon_host,
         rcon_port=int(rcon_port_str),
-        rcon_password=_read_secret("RCON_PASSWORD"),
+        rcon_password=get_config_value("RCON_PASSWORD"),
         stats_interval=int(stats_interval_str),
     )
 
 
+
 def validate_config(config: Config) -> bool:
-    """Validate configuration."""
+    """
+    Validate configuration values.
+    
+    Args:
+        config: Config object to validate
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    # Validate Discord configuration
+    if config.discord_webhook_url is not None:
+        if not config.discord_webhook_url.startswith("https://discord.com/api/webhooks/"):
+            logger.error("validation_failed", reason="invalid_webhook_url_format")
+            return False
+    
+    if config.discord_bot_token is not None:
+        if len(config.discord_bot_token) < 50:  # Bot tokens are typically 70+ chars
+            logger.warning("validation_warning", reason="bot_token_seems_too_short")
+    
+    # At least one Discord mode must be configured
+    if not config.discord_webhook_url and not config.discord_bot_token:
+        logger.error("validation_failed", reason="no_discord_configuration")
+        return False
+    
     # Validate log level
-    valid_levels = ["debug", "info", "warning", "error", "critical"]
-    if config.log_level not in valid_levels:
-        raise ValueError(f"LOG_LEVEL must be one of {valid_levels}")
+    if config.log_level not in ("debug", "info", "warning", "error", "critical"):
+        logger.warning(
+            "invalid_log_level",
+            level=config.log_level,
+            defaulting_to="info"
+        )
+        config.log_level = "info"
     
-    # Validate log format
-    valid_formats = ["json", "console"]
-    if config.log_format not in valid_formats:
-        raise ValueError(f"LOG_FORMAT must be one of {valid_formats}")
-    
-    # Validate webhook URL
-    if not config.discord_webhook_url.startswith("https://discord.com/api/webhooks/"):
-        raise ValueError("DISCORD_WEBHOOK_URL must be a valid Discord webhook URL")
-    
-    # Validate log path
-    if not isinstance(config.factorio_log_path, Path):
-        raise ValueError("FACTORIO_LOG_PATH must be a valid path")
-    
-    # Validate RCON settings if enabled
-    if config.rcon_enabled:
-        if not config.rcon_password:
-            raise ValueError("RCON_PASSWORD is required when RCON_ENABLED is true")
-        if config.rcon_port < 1 or config.rcon_port > 65535:
-            raise ValueError("RCON_PORT must be between 1 and 65535")
+    # Validate RCON configuration
+    if config.rcon_enabled and not config.rcon_password:
+        logger.error("validation_failed", reason="rcon_enabled_but_no_password")
+        return False
     
     return True
+

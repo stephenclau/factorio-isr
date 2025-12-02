@@ -22,7 +22,7 @@ class DiscordClient:
     def __init__(
         self,
         webhook_url: str,
-        bot_name: str = "Factorio Bridge",
+        bot_name: str = "FactorioISR",
         bot_avatar_url: Optional[str] = None,
         rate_limit_delay: float = 0.5,
         max_retries: int = 3,
