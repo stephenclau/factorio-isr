@@ -9,6 +9,7 @@ env/
 ENV/
 *.egg-info
 .deprecated/*
+.env
 
 # IDE
 .vscode/
