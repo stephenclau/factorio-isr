@@ -17,7 +17,8 @@ ENV/
 *.swo
 
 # Secrets
-
+.secrets/
+*.secrets
 
 # Logs
 *.log
