@@ -210,7 +210,7 @@ class TestDiscordBotConnection:
             await asyncio.sleep(100)  # Never completes
         
         with patch.object(bot, 'start', new=mock_start):
-            with pytest.raises(ConnectionError, match="connection timed out"):
+            with pytest.raises(ConnectionError, match="Discord login failed"):
                 await bot.connect_bot()
     
     @pytest.mark.asyncio

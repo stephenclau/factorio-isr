@@ -140,23 +140,7 @@ class DiscordBot(discord.Client):
             except Exception as e:
                 logger.error("players_command_failed", error=str(e))
                 await interaction.followup.send("❌ Failed to get player list")
-
-        @factorio_group.command(name="help", description="Show available Factorio commands")
-        async def help_command(interaction: discord.Interaction) -> None:
-            help_text = (
-                "**🏭 Factorio ISR Bot – Commands**\n\n"
-                "`/factorio status` – Show server status and uptime\n"
-                "`/factorio players` – List players currently online\n"
-                "`/factorio help` – Show this help message\n\n"
-                "**RCON-backed commands (require RCON enabled):**\n"
-                "`/factorio ban <player>` – Ban a player\n"
-                "`/factorio kick <player> [reason]` – Kick a player\n"
-                "`/factorio unban <player>` – Unban a player\n"
-                "`/factorio save [name]` – Save the game\n"
-                "`/factorio rcon <raw>` – Run a raw RCON command\n"
-            )
-            await interaction.response.send_message(help_text)
-
+        
         @factorio_group.command(name="ban", description="Ban a player from the server")
         @app_commands.describe(player="Player name to ban")
         async def ban_command(interaction: discord.Interaction, player: str) -> None:
@@ -226,7 +210,7 @@ class DiscordBot(discord.Client):
             except Exception as e:
                 logger.error("unban_command_failed", error=str(e), player=player)
                 await interaction.followup.send(f"❌ Failed to unban player: {str(e)}")
-
+                
         @factorio_group.command(name="save", description="Save the Factorio game")
         @app_commands.describe(name="Optional save name")
         async def save_command(interaction: discord.Interaction, name: str | None = None) -> None:
@@ -237,17 +221,62 @@ class DiscordBot(discord.Client):
             try:
                 cmd = f"/save {name}" if name else "/save"
                 resp = await self.rcon_client.execute(cmd)
-                label = name or "(default)"
+                
+                # Determine the display label
+                if name:
+                    # Custom save name provided
+                    label = name
+                else:
+                    # No custom name - parse response or query server
+                    # Try to extract save name from response like "Saving to _autosave1 (non-blocking)."
+                    import re
+                    
+                    # First try to get from server directly
+                    try:
+                        save_name_resp = await self.rcon_client.execute(
+                            '/c rcon.print(game.server_save or "unknown")'
+                        )
+                        label = save_name_resp.strip()
+                        if label == "unknown" or not label:
+                            # Fallback: try to parse from save response
+                            match = re.search(r"Saving to ([\\w-_]+)", resp)
+                            label = match.group(1) if match else "current save"
+                    except Exception:
+                        # Last resort: parse response
+                        match = re.search(r"Saving to ([\\w-_]+)", resp)
+                        label = match.group(1) if match else "current save"
+                
                 msg = (
-                    f"💾 **Game Saved**\n\n"
-                    f"Save name: **{label}**\n\n"
-                    f"Server response:\n{resp}"
+                    f"💾 **Game Saved**\\n\\n"
+                    f"Save name: **{label}**\\n\\n"
+                    f"Server response:\\n{resp}"
                 )
                 await interaction.followup.send(msg)
-                logger.info("game_saved", name=name, moderator=interaction.user.name)
+                logger.info("game_saved", name=label, moderator=interaction.user.name)
             except Exception as e:
                 logger.error("save_command_failed", error=str(e), name=name)
                 await interaction.followup.send(f"❌ Failed to save game: {str(e)}")
+        # @factorio_group.command(name="save", description="Save the Factorio game")
+        # @app_commands.describe(name="Optional save name")
+        # async def save_command(interaction: discord.Interaction, name: str | None = None) -> None:
+        #     await interaction.response.defer()
+        #     if self.rcon_client is None:
+        #         await interaction.followup.send("⚠️ RCON not available. Cannot save game.")
+        #         return
+        #     try:
+        #         cmd = f"/save {name}" if name else "/save"
+        #         resp = await self.rcon_client.execute(cmd)
+        #         label = name or "(default)"
+        #         msg = (
+        #             f"💾 **Game Saved**\n\n"
+        #             f"Save name: **{label}**\n\n"
+        #             f"Server response:\n{resp}"
+        #         )
+        #         await interaction.followup.send(msg)
+        #         logger.info("game_saved", name=name, moderator=interaction.user.name)
+        #     except Exception as e:
+        #         logger.error("save_command_failed", error=str(e), name=name)
+        #         await interaction.followup.send(f"❌ Failed to save game: {str(e)}")
 
         @factorio_group.command(name="rcon", description="Run a raw RCON command")
         @app_commands.describe(command="Raw RCON command, e.g. /time or /ban Alice")
@@ -273,6 +302,397 @@ class DiscordBot(discord.Client):
                 logger.error("rcon_command_failed", error=str(e), command=command)
                 await interaction.followup.send(f"❌ Failed to run RCON: {str(e)}")
 
+        # ========================================================================
+        # PHASE 5: Additional Admin Commands
+        # ========================================================================
+
+        @factorio_group.command(name="broadcast", description="Send a message to all players")
+        @app_commands.describe(message="Message to broadcast to all players")
+        async def broadcast_command(interaction: discord.Interaction, message: str) -> None:
+            """Broadcast a message to all players on the server."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot broadcast messages.")
+                return
+
+            try:
+                # Factorio RCON command format: /c game.print("message")
+                # or simply send the message directly
+                escaped_msg = message.replace('"', '\\"')
+                resp = await self.rcon_client.execute(f'/c game.print("{escaped_msg}")')
+
+                msg = (
+                    f"📢 **Broadcast Sent**\n\n"
+                    f"Message: _{message}_\n\n"
+                    f"All online players have been notified.\n\n"
+                    f"Server response:\n{resp}"
+                )
+                await interaction.followup.send(msg)
+                logger.info("message_broadcast", message=message, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("broadcast_command_failed", error=str(e), message=message)
+                await interaction.followup.send(f"❌ Failed to broadcast message: {str(e)}")
+
+        @factorio_group.command(name="whitelist", description="Manage server whitelist")
+        @app_commands.describe(
+            action="Action to perform (add/remove/list/enable/disable)",
+            player="Player name (required for add/remove)"
+        )
+        async def whitelist_command(
+            interaction: discord.Interaction,
+            action: str,
+            player: str | None = None
+        ) -> None:
+            """Manage the server whitelist."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot manage whitelist.")
+                return
+
+            action = action.lower()
+
+            try:
+                if action == "list":
+                    resp = await self.rcon_client.execute("/whitelist get")
+                    msg = f"📋 **Whitelist**\n\n{resp}"
+                elif action == "enable":
+                    resp = await self.rcon_client.execute("/whitelist enable")
+                    msg = f"✅ **Whitelist Enabled**\n\n{resp}"
+                elif action == "disable":
+                    resp = await self.rcon_client.execute("/whitelist disable")
+                    msg = f"⚠️ **Whitelist Disabled**\n\n{resp}"
+                elif action == "add":
+                    if not player:
+                        await interaction.followup.send("❌ Player name required for 'add' action")
+                        return
+                    resp = await self.rcon_client.execute(f"/whitelist add {player}")
+                    msg = f"✅ **Player Added to Whitelist**\n\nPlayer: **{player}**\n\n{resp}"
+                    logger.info("whitelist_add", player=player, moderator=interaction.user.name)
+                elif action == "remove":
+                    if not player:
+                        await interaction.followup.send("❌ Player name required for 'remove' action")
+                        return
+                    resp = await self.rcon_client.execute(f"/whitelist remove {player}")
+                    msg = f"🚫 **Player Removed from Whitelist**\n\nPlayer: **{player}**\n\n{resp}"
+                    logger.info("whitelist_remove", player=player, moderator=interaction.user.name)
+                else:
+                    await interaction.followup.send(
+                        f"❌ Invalid action: {action}\n"
+                        "Valid actions: add, remove, list, enable, disable"
+                    )
+                    return
+
+                await interaction.followup.send(msg)
+            except Exception as e:
+                logger.error("whitelist_command_failed", error=str(e), action=action, player=player)
+                await interaction.followup.send(f"❌ Whitelist command failed: {str(e)}")
+
+        @factorio_group.command(name="promote", description="Promote a player to admin")
+        @app_commands.describe(player="Player name to promote")
+        async def promote_command(interaction: discord.Interaction, player: str) -> None:
+            """Promote a player to admin status."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot promote players.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute(f"/promote {player}")
+                msg = (
+                    f"⬆️ **Player Promoted**\n\n"
+                    f"Player **{player}** is now an admin.\n\n"
+                    f"Server response:\n{resp}"
+                )
+                await interaction.followup.send(msg)
+                logger.info("player_promoted", player=player, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("promote_command_failed", error=str(e), player=player)
+                await interaction.followup.send(f"❌ Failed to promote player: {str(e)}")
+
+        @factorio_group.command(name="demote", description="Demote a player from admin")
+        @app_commands.describe(player="Player name to demote")
+        async def demote_command(interaction: discord.Interaction, player: str) -> None:
+            """Demote a player from admin status."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot demote players.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute(f"/demote {player}")
+                msg = (
+                    f"⬇️ **Player Demoted**\n\n"
+                    f"Player **{player}** is no longer an admin.\n\n"
+                    f"Server response:\n{resp}"
+                )
+                await interaction.followup.send(msg)
+                logger.info("player_demoted", player=player, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("demote_command_failed", error=str(e), player=player)
+                await interaction.followup.send(f"❌ Failed to demote player: {str(e)}")
+
+        @factorio_group.command(name="mute", description="Mute a player (prevent chat)")
+        @app_commands.describe(player="Player name to mute")
+        async def mute_command(interaction: discord.Interaction, player: str) -> None:
+            """Mute a player to prevent them from chatting."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot mute players.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute(f"/mute {player}")
+                msg = (
+                    f"🔇 **Player Muted**\n\n"
+                    f"Player **{player}** has been muted.\n\n"
+                    f"Server response:\n{resp}"
+                )
+                await interaction.followup.send(msg)
+                logger.info("player_muted", player=player, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("mute_command_failed", error=str(e), player=player)
+                await interaction.followup.send(f"❌ Failed to mute player: {str(e)}")
+
+        @factorio_group.command(name="unmute", description="Unmute a player")
+        @app_commands.describe(player="Player name to unmute")
+        async def unmute_command(interaction: discord.Interaction, player: str) -> None:
+            """Unmute a player to allow them to chat again."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot unmute players.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute(f"/unmute {player}")
+                msg = (
+                    f"🔊 **Player Unmuted**\n\n"
+                    f"Player **{player}** can chat again.\n\n"
+                    f"Server response:\n{resp}"
+                )
+                await interaction.followup.send(msg)
+                logger.info("player_unmuted", player=player, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("unmute_command_failed", error=str(e), player=player)
+                await interaction.followup.send(f"❌ Failed to unmute player: {str(e)}")
+
+        @factorio_group.command(name="seed", description="Show the map seed")
+        async def seed_command(interaction: discord.Interaction) -> None:
+            """Display the current map seed."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot get map seed.")
+                return
+
+            try:
+                # Use Lua to get the seed
+                resp = await self.rcon_client.execute('/c rcon.print(game.surfaces["nauvis"].map_gen_settings.seed)')
+                msg = (
+                    f"🌱 **Map Seed**\n\n"
+                    f"Seed: `{resp.strip()}`\n\n"
+                    f"Use this seed to generate an identical map."
+                )
+                await interaction.followup.send(msg)
+                logger.info("seed_requested", moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("seed_command_failed", error=str(e))
+                await interaction.followup.send(f"❌ Failed to get map seed: {str(e)}")
+
+        @factorio_group.command(name="version", description="Show Factorio server version")
+        async def version_command(interaction: discord.Interaction) -> None:
+            """Display the Factorio server version."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot get version.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute("/version")
+                msg = f"🎮 **Factorio Version**\n\n{resp}"
+                await interaction.followup.send(msg)
+                logger.info("version_requested", moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("version_command_failed", error=str(e))
+                await interaction.followup.send(f"❌ Failed to get version: {str(e)}")
+
+        @factorio_group.command(name="evolution", description="Show evolution factor")
+        async def evolution_command(interaction: discord.Interaction) -> None:
+            """Display the current evolution factor."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot get evolution.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute('/c rcon.print(string.format("%.2f%%", game.forces["enemy"].evolution_factor * 100))')
+                msg = (
+                    f"🐛 **Evolution Factor**\n\n"
+                    f"Current evolution: **{resp.strip()}**\n\n"
+                    f"Higher evolution means stronger biters!"
+                )
+                await interaction.followup.send(msg)
+                logger.info("evolution_requested", moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("evolution_command_failed", error=str(e))
+                await interaction.followup.send(f"❌ Failed to get evolution: {str(e)}")
+
+        @factorio_group.command(name="time", description="Set or display game time")
+        @app_commands.describe(value="Time value (e.g., 0.5 for noon, 0 for midnight) or leave empty to view")
+        async def time_command(interaction: discord.Interaction, value: float | None = None) -> None:
+            """Set or display the game time."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot manage time.")
+                return
+
+            try:
+                if value is None:
+                    # Display current time
+                    resp = await self.rcon_client.execute("/time")
+                    msg = f"🕐 **Current Game Time**\n\n{resp}"
+                else:
+                    # Set time
+                    resp = await self.rcon_client.execute(f'/c game.surfaces["nauvis"].daytime = {value}')
+                    time_desc = "noon" if abs(value - 0.5) < 0.1 else "midnight" if value < 0.1 else f"{value}"
+                    msg = (
+                        f"🕐 **Time Changed**\n\n"
+                        f"Game time set to: **{time_desc}**\n\n"
+                        f"Server response:\n{resp}"
+                    )
+                    logger.info("time_changed", value=value, moderator=interaction.user.name)
+
+                await interaction.followup.send(msg)
+            except Exception as e:
+                logger.error("time_command_failed", error=str(e), value=value)
+                await interaction.followup.send(f"❌ Failed to manage time: {str(e)}")
+
+        @factorio_group.command(name="speed", description="Set game speed (admin only)")
+        @app_commands.describe(speed="Game speed multiplier (0.1 to 10.0, default 1.0)")
+        async def speed_command(interaction: discord.Interaction, speed: float) -> None:
+            """Set the game speed multiplier."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot change speed.")
+                return
+
+            # Validate speed range
+            if speed < 0.1 or speed > 10.0:
+                await interaction.followup.send("❌ Speed must be between 0.1 and 10.0")
+                return
+
+            try:
+                resp = await self.rcon_client.execute(f"/c game.speed = {speed}")
+                msg = (
+                    f"⚡ **Game Speed Changed**\n\n"
+                    f"Speed multiplier: **{speed}x**\n\n"
+                    f"Server response:\n{resp}\n\n"
+                    f"⚠️ This affects all players!"
+                )
+                await interaction.followup.send(msg)
+                logger.info("speed_changed", speed=speed, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("speed_command_failed", error=str(e), speed=speed)
+                await interaction.followup.send(f"❌ Failed to change speed: {str(e)}")
+
+        @factorio_group.command(name="research", description="Force research a technology")
+        @app_commands.describe(technology="Technology name to research")
+        async def research_command(interaction: discord.Interaction, technology: str) -> None:
+            """Force research a technology."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot force research.")
+                return
+
+            try:
+                # Factorio Lua command to force research
+                cmd = f'/c game.forces["player"].technologies["{technology}"].researched = true'
+                resp = await self.rcon_client.execute(cmd)
+                msg = (
+                    f"🔬 **Technology Researched**\n\n"
+                    f"Technology: **{technology}**\n\n"
+                    f"The technology has been forcefully researched.\n\n"
+                    f"Server response:\n{resp}"
+                )
+                await interaction.followup.send(msg)
+                logger.info("tech_researched", technology=technology, moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("research_command_failed", error=str(e), technology=technology)
+                await interaction.followup.send(
+                    f"❌ Failed to research technology: {str(e)}\n\n"
+                    f"Make sure the technology name is correct (e.g., 'automation', 'logistics')"
+                )
+
+        @factorio_group.command(name="admins", description="List server admins")
+        async def admins_command(interaction: discord.Interaction) -> None:
+            """List all server administrators."""
+            await interaction.response.defer()
+
+            if self.rcon_client is None:
+                await interaction.followup.send("⚠️ RCON not available. Cannot list admins.")
+                return
+
+            try:
+                resp = await self.rcon_client.execute("/admins")
+                msg = f"👑 **Server Administrators**\n\n{resp}"
+                await interaction.followup.send(msg)
+                logger.info("admins_listed", moderator=interaction.user.name)
+            except Exception as e:
+                logger.error("admins_command_failed", error=str(e))
+                await interaction.followup.send(f"❌ Failed to list admins: {str(e)}")
+
+
+        # UPDATED HELP COMMAND
+        # Replace your existing help_command with this:
+
+
+        @factorio_group.command(name="help", description="Show available Factorio commands")
+        async def help_command(interaction: discord.Interaction) -> None:
+            help_text = (
+                "**🏭 Factorio ISR Bot – Commands**\n\n"
+                "**📊 Server Information**\n"
+                "`/factorio status` – Show server status and uptime\n"
+                "`/factorio players` – List players currently online\n"
+                "`/factorio ping` – Ping the Factorio server via RCON\n"
+                "`/factorio version` – Show Factorio server version\n"
+                "`/factorio seed` – Show map seed\n"
+                "`/factorio evolution` – Show biter evolution factor\n"
+                "`/factorio admins` – List server administrators\n\n"
+                "**👥 Player Management**\n"
+                "`/factorio kick <player> [reason]` – Kick a player\n"
+                "`/factorio ban <player>` – Ban a player\n"
+                "`/factorio unban <player>` – Unban a player\n"
+                "`/factorio mute <player>` – Mute a player from chat\n"
+                "`/factorio unmute <player>` – Unmute a player\n"
+                "`/factorio promote <player>` – Promote player to admin\n"
+                "`/factorio demote <player>` – Demote player from admin\n\n"
+                "**🔧 Server Management**\n"
+                "`/factorio broadcast <message>` – Send message to all players\n"
+                "`/factorio save [name]` – Save the game\n"
+                "`/factorio whitelist <action> [player]` – Manage whitelist\n"
+                "  └ Actions: add, remove, list, enable, disable\n\n"
+                "**🎮 Game Control**\n"
+                "`/factorio time [value]` – Set/display game time\n"
+                "`/factorio speed <multiplier>` – Set game speed (0.1-10.0)\n"
+                "`/factorio research <technology>` – Force research tech\n\n"
+                "**🛠️ Advanced**\n"
+                "`/factorio rcon <command>` – Run raw RCON command\n"
+                "`/factorio help` – Show this help message\n\n"
+                "_Most commands require RCON to be enabled._"
+            )
+            await interaction.response.send_message(help_text)
+
+        
         # Register the group as the single root command
         self.tree.add_command(factorio_group)
         logger.info(
@@ -318,85 +738,6 @@ class DiscordBot(discord.Client):
         self._connected = True
         self._ready.set()
 
-        # Fast guild-specific sync (commands appear quickly
-        # try:
-        #     # 1) Global sync
-        #     synced_global = await self.tree.sync()
-
-        #     # Build summaries for global commands
-        #     global_summaries: list[dict[str, Any]] = []
-        #     global_leaf_subcommands = 0
-
-        #     for cmd in synced_global:
-        #         if isinstance(cmd, app_commands.Group):
-        #             sub_names = [sub.name for sub in cmd.commands]
-        #             global_leaf_subcommands += len(sub_names)
-        #             global_summaries.append(
-        #                 {
-        #                     "name": cmd.name,
-        #                     "type": "group",
-        #                     "subcommands": sub_names,
-        #                 }
-        #             )
-        #         else:
-        #             global_leaf_subcommands += 1
-        #             global_summaries.append(
-        #                 {
-        #                     "name": cmd.name,
-        #                     "type": "command",
-        #                     "subcommands": [],
-        #                 }
-        #             )
-
-        #     logger.info(
-        #         "commands_synced_globally",
-        #         top_level_count=len(synced_global),
-        #         leaf_subcommand_count=global_leaf_subcommands,
-        #         commands=global_summaries,
-        #     )
-
-        #     # 2) Fast guild sync: copy globals into each guild, then sync
-        #     for guild in self.guilds:
-        #         # Copy global commands into this guild's command set
-        #         self.tree.copy_global_to(guild=guild)
-
-        #         synced = await self.tree.sync(guild=guild)
-
-        #         command_summaries: list[dict[str, Any]] = []
-        #         total_leaf_subcommands = 0
-
-        #         for cmd in synced:
-        #             if isinstance(cmd, app_commands.Group):
-        #                 sub_names = [sub.name for sub in cmd.commands]
-        #                 total_leaf_subcommands += len(sub_names)
-        #                 command_summaries.append(
-        #                     {
-        #                         "name": cmd.name,
-        #                         "type": "group",
-        #                         "subcommands": sub_names,
-        #                     }
-        #                 )
-        #             else:
-        #                 total_leaf_subcommands += 1
-        #                 command_summaries.append(
-        #                     {
-        #                         "name": cmd.name,
-        #                         "type": "command",
-        #                         "subcommands": [],
-        #                     }
-        #                 )
-
-        #         logger.info(
-        #             "commands_synced_to_guild",
-        #             guild_name=guild.name,
-        #             guild_id=guild.id,
-        #             top_level_count=len(synced),
-        #             leaf_subcommand_count=total_leaf_subcommands,
-        #             commands=command_summaries,
-        #         )
-
-        # except Exception as e:
-        #     logger.error("command_sync_failed", error=str(e), exc_info=True)
         try:
             # 1) Global sync
             synced_global = await self.tree.sync()
