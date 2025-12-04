@@ -1,4 +1,4 @@
-name: 01.Check Build Push To Docker
+name: 01.Build Push To Docker For Latest
 on:
   workflow_dispatch:  
   push:
@@ -6,11 +6,10 @@ on:
       - 'Dockerfile'
       - 'src/*.py'
       - 'tests/*.py'
-      - 'requirements.txt'
    
 
 jobs:
-  build-validation:
+  latest-dev-build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -34,9 +33,9 @@ jobs:
           context: .
           call: check
 
-      # - name: Build and push
-      #   uses: docker/build-push-action@v6
-      #   with:
-      #     context: .
-      #     push: true
-      #     tags: ${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPO }}:latest
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPO }}:latest

@@ -6,7 +6,7 @@ Phase 5.1 features (embeds, cooldowns), and Phase 5.2 RCON monitoring.
 """
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Any
 import discord
 from discord import app_commands
@@ -73,6 +73,37 @@ class DiscordBot(discord.Client):
         logger.info("discord_bot_initialized", bot_name=bot_name, phase="5.2")
 
     # ========================================================================
+    # PHASE 6: RCON Uptime Format Helper
+    # ========================================================================
+    
+    def _format_uptime(self, uptime_delta) -> str:
+        """
+        Format a timedelta as a human-readable uptime string.
+        
+        Args:
+            uptime_delta: timedelta object representing uptime
+            
+        Returns:
+            Formatted uptime string (e.g., "2h 15m", "45m", "3d 12h")
+        """
+        total_seconds = int(uptime_delta.total_seconds())
+        
+        # Calculate components
+        days = total_seconds // 86400
+        hours = (total_seconds % 86400) // 3600
+        minutes = (total_seconds % 3600) // 60
+        
+        # Build readable string
+        parts = []
+        if days > 0:
+            parts.append(f"{days}d")
+        if hours > 0:
+            parts.append(f"{hours}h")
+        if minutes > 0 or (days == 0 and hours == 0):  # Always show minutes if < 1hr
+            parts.append(f"{minutes}m")
+        
+        return " ".join(parts) if parts else "< 1m"
+    # ========================================================================
     # PHASE 5.2: RCON Status Monitoring
     # ========================================================================
 
@@ -84,12 +115,12 @@ class DiscordBot(discord.Client):
         try:
             if self.rcon_client and self.rcon_client.is_connected:
                 # RCON connected - blue status
-                status_text = "🔹RCON On"
+                status_text = "🔹RCON Connected"
                 status = discord.Status.online
                 activity_type = discord.ActivityType.watching
             else:
                 # RCON disconnected - warning status
-                status_text = "🔺RCON Off"
+                status_text = "🔺RCON Disconnected"
                 status = discord.Status.idle  # Yellow dot
                 activity_type = discord.ActivityType.watching
 
@@ -108,35 +139,36 @@ class DiscordBot(discord.Client):
         """Monitor RCON connection status and send notifications on changes."""
         logger.info("rcon_status_monitor_started")
         previous_status = None
-
+        
         while self._connected:
             try:
                 await asyncio.sleep(10)  # Check every 10 seconds
-
+                
                 if not self.rcon_client:
                     continue
-
+                
                 current_status = self.rcon_client.is_connected
-
+                
                 # Detect status change
                 if previous_status is not None and current_status != previous_status:
                     if current_status:
-                        # RCON just reconnected
+                        # RCON just reconnected - set timestamp ONLY here
                         await self._notify_rcon_reconnected()
-                        self.rcon_last_connected = datetime.utcnow()
+                        self.rcon_last_connected = datetime.now(timezone.utc)
                     else:
                         # RCON just disconnected
                         await self._notify_rcon_disconnected()
-
+                
+                # Initialize timestamp on first check if RCON is already connected
+                elif previous_status is None and current_status:
+                    # First check and RCON is connected
+                    self.rcon_last_connected = datetime.now(timezone.utc)
+                
                 # Update presence to reflect current status
                 await self.update_presence()
-
-                # Track last connected time
-                if current_status:
-                    self.rcon_last_connected = datetime.utcnow()
-
+                
                 previous_status = current_status
-
+            
             except asyncio.CancelledError:
                 logger.info("rcon_status_monitor_cancelled")
                 break
@@ -165,6 +197,9 @@ class DiscordBot(discord.Client):
                 await channel.send(embed=embed)
                 self.rcon_status_notified = True
                 logger.info("rcon_disconnection_notified", channel_id=self.event_channel_id)
+                
+                # Update presence to reflect disconnected state
+                await self.update_presence()
 
         except Exception as e:
             logger.warning("rcon_disconnection_notification_failed", error=str(e))
@@ -180,7 +215,7 @@ class DiscordBot(discord.Client):
                 # Calculate downtime if we know when we lost connection
                 downtime_msg = ""
                 if self.rcon_last_connected:
-                    downtime = datetime.utcnow() - self.rcon_last_connected
+                    downtime = datetime.now(timezone.utc) - self.rcon_last_connected
                     minutes = int(downtime.total_seconds() / 60)
                     if minutes > 0:
                         downtime_msg = f"\nDowntime: ~{minutes} minute{'s' if minutes != 1 else ''}"
@@ -197,6 +232,9 @@ class DiscordBot(discord.Client):
                 await channel.send(embed=embed)
                 self.rcon_status_notified = False
                 logger.info("rcon_reconnection_notified", channel_id=self.event_channel_id)
+                
+                # Update presence to reflect reconnected state
+                await self.update_presence()
 
         except Exception as e:
             logger.warning("rcon_reconnection_notification_failed", error=str(e))
@@ -275,11 +313,20 @@ class DiscordBot(discord.Client):
             await interaction.response.defer()
 
             try:
+                uptime_result: str = "N/A"
+                
                 if self.rcon_client and self.rcon_client.is_connected:
                     players = await self.rcon_client.get_players()
                     player_count = len(players)
                     rcon_status = True
                     server_status = "Online"
+                    
+                    # Calculate uptime from when RCON last connected
+                    if self.rcon_last_connected:
+                        uptime_delta = datetime.now(timezone.utc) - self.rcon_last_connected
+                        uptime_result = self._format_uptime(uptime_delta)
+                    else:
+                        uptime_result = "Just connected"
                 else:
                     player_count = 0
                     rcon_status = False
@@ -289,7 +336,7 @@ class DiscordBot(discord.Client):
                     status=server_status,
                     players_online=player_count,
                     rcon_enabled=rcon_status,
-                    uptime="Unknown"
+                    uptime=uptime_result
                 )
 
                 await interaction.followup.send(embed=embed)
@@ -436,7 +483,7 @@ class DiscordBot(discord.Client):
 
             # Calculate uptime
             if self.rcon_last_connected and rcon_online:
-                uptime = datetime.utcnow() - self.rcon_last_connected
+                uptime = datetime.now(timezone.utc) - self.rcon_last_connected
                 uptime_str = f"{int(uptime.total_seconds() / 60)} minutes"
             else:
                 uptime_str = "N/A"

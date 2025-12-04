@@ -360,6 +360,13 @@ class RconStatsCollector:
         self.interval = interval
         self.running = False
         self.task: Optional[asyncio.Task[None]] = None
+        
+        logger.info(
+            "stats_collector_initialized",
+            interval=interval,
+            rcon_connected=rcon_client.is_connected,
+            discord_connected=getattr(discord_client, 'is_connected', None)
+        )
 
     async def start(self) -> None:
         """Start periodic stats collection."""
@@ -369,11 +376,17 @@ class RconStatsCollector:
 
         self.running = True
         self.task = asyncio.create_task(self._collection_loop())
-        logger.info("stats_collector_started", interval=self.interval)
+        logger.info(
+            "stats_collector_started", 
+            interval=self.interval,
+            rcon_connected=self.rcon_client.is_connected,
+            discord_connected=getattr(self.discord_client, 'is_connected', None)
+        )
 
     async def stop(self) -> None:
         """Stop stats collection."""
         if not self.running:
+            logger.debug("stats_collector_stop_called_but_not_running")
             return
 
         self.running = False
@@ -383,20 +396,52 @@ class RconStatsCollector:
             try:
                 await self.task
             except asyncio.CancelledError:
+                logger.debug("stats_collector_task_cancelled")
                 pass
 
         logger.info("stats_collector_stopped")
 
     async def _collection_loop(self) -> None:
         """Main collection loop."""
+        logger.info("stats_collection_loop_started")
+        iteration = 0
+        
         while self.running:
+            iteration += 1
             try:
+                logger.debug(
+                    "stats_collection_iteration_starting",
+                    iteration=iteration,
+                    interval=self.interval
+                )
+                
                 await self._collect_and_post()
+                
+                logger.debug(
+                    "stats_collection_iteration_complete",
+                    iteration=iteration,
+                    next_collection_in=self.interval
+                )
+                
             except Exception as e:
-                logger.error("stats_collection_error", error=str(e), exc_info=True)
-
+                logger.error(
+                    "stats_collection_error",
+                    iteration=iteration,
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    exc_info=True
+                )
+            
             # Wait for next interval
-            await asyncio.sleep(self.interval)
+            if self.running:  # Check if still running before sleeping
+                logger.debug(
+                    "stats_collector_sleeping",
+                    duration=self.interval,
+                    next_iteration=iteration + 1
+                )
+                await asyncio.sleep(self.interval)
+        
+        logger.info("stats_collection_loop_exited", total_iterations=iteration)
 
     async def _collect_and_post(self) -> None:
         """Collect stats and post to Discord."""
