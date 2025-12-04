@@ -1,6 +1,6 @@
 [project]
 name = "factorio-isr"
-version = "1.0.0"
+version = "1.0.0f"
 requires-python = "==3.14"
 # No dependencies here - using requirements.txt for prod
 
@@ -9,12 +9,12 @@ dev = [
     "pytest>=8.3.4",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
-    "black==24.10.0",# Code formatting
-    "ruff==0.8.4",# Fast linting
-    "mypy==1.13.0"   # Type checking
-    "watchdog>=6.0.0"
-    "python-json-logger>=3.2.1"
-    "aiohttp-cors>=0.7.0  # CORS support"
+    "black==24.10.0",  # Code formatting
+    "ruff==0.8.4",     # Fast linting
+    "mypy==1.13.0",    # Type checking
+    "watchdog>=6.0.0",
+    "python-json-logger>=3.2.1",
+    "aiohttp-cors>=0.7.0",  # CORS support
 ]
 
 [tool.pytest.ini_options]
@@ -36,7 +36,7 @@ addopts = [
     "--cov-report=xml",
     "--cov-report=html",
     "--cov-branch",
-    "-v"
+    "-v",
 ]
 
 [tool.coverage.run]
@@ -66,9 +66,5 @@ build-backend = "setuptools.build_meta"
 typeCheckingMode = "basic"
 extraPaths = ["src"]
 filterwarnings = [
-    "ignore::DeprecationWarning:pytest_asyncio.*"
+    "ignore::DeprecationWarning:pytest_asyncio.*",
 ]
-
-
-
-
