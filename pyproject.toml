@@ -1,7 +1,7 @@
 [project]
 name = "factorio-isr"
-version = "1.0.0"
-requires-python = ">=3.14"
+version = "0.4.0"
+requires-python = "==3.14"
 # No dependencies here - using requirements.txt for prod
 
 [project.optional-dependencies]

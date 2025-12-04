@@ -39,8 +39,8 @@ def bot(real_intents):
 
     # Mock user and guilds properties (read-only in Discord.py)
     mock_user = MagicMock(id=12345, name="TestBot")
-    type(bot).user = PropertyMock(return_value=mock_user)
-    type(bot).guilds = PropertyMock(return_value=[MagicMock(), MagicMock()])
+    type(bot).user = PropertyMock(return_value=mock_user)  # pyright: ignore[reportAttributeAccessIssue]
+    type(bot).guilds = PropertyMock(return_value=[MagicMock(), MagicMock()]) # pyright: ignore[reportAttributeAccessIssue]
 
     return bot
 

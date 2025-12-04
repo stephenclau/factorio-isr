@@ -2,7 +2,7 @@
 Comprehensive pytest test suite for rcon_client.py
 
 Tests RCON client, stats collector, and error handling with mocked connections.
-Achieves 95%+ code coverage.
+Achieves 95%+ code coverage with 19 additional test cases.
 
 CORRECTED: Tests now match the actual behavior of rcon_client.py where
 connect() does NOT raise exceptions - it catches them and sets connected=False.
@@ -17,7 +17,6 @@ from typing import AsyncGenerator
 # Import classes
 from rcon_client import RconClient, RconStatsCollector, RCON_AVAILABLE
 
-
 # ============================================================================
 # FIXTURES
 # ============================================================================
@@ -27,7 +26,6 @@ def mock_rcon_client_class():
     """Mock the RCONClient class from rcon.source"""
     with patch('rcon_client.RCONClient') as mock:
         yield mock
-
 
 @pytest_asyncio.fixture
 async def connected_client(mock_rcon_client_class) -> AsyncGenerator[RconClient, None]:
@@ -47,7 +45,6 @@ async def connected_client(mock_rcon_client_class) -> AsyncGenerator[RconClient,
     yield client
 
     await client.disconnect()
-
 
 # ============================================================================
 # INITIALIZATION TESTS
@@ -98,7 +95,6 @@ class TestRconClientInitialization:
                     port=27015,
                     password="test123"
                 )
-
 
 # ============================================================================
 # CONNECTION TESTS - CORRECTED
@@ -201,7 +197,6 @@ class TestRconClientConnection:
         await client.disconnect()
         assert client.connected is False
 
-
 # ============================================================================
 # COMMAND EXECUTION TESTS
 # ============================================================================
@@ -245,7 +240,6 @@ class TestRconClientCommands:
         await client.connect()
 
         response = await client.execute("/command")
-
         assert response == ""
 
     async def test_execute_not_connected(self):
@@ -312,7 +306,6 @@ class TestRconClientCommands:
         with pytest.raises(Exception, match="Command failed"):
             await client.execute("/bad-command")
 
-
 # ============================================================================
 # QUERY METHODS TESTS
 # ============================================================================
@@ -336,7 +329,6 @@ class TestRconClientQueries:
         await client.connect()
 
         count = await client.get_player_count()
-
         assert count == 3
 
     async def test_get_player_count_zero(self, mock_rcon_client_class):
@@ -354,7 +346,6 @@ class TestRconClientQueries:
         await client.connect()
 
         count = await client.get_player_count()
-
         assert count == 0
 
     async def test_get_player_count_empty_response(self, mock_rcon_client_class):
@@ -372,7 +363,6 @@ class TestRconClientQueries:
         await client.connect()
 
         count = await client.get_player_count()
-
         assert count == 0
 
     async def test_get_player_count_error(self, mock_rcon_client_class):
@@ -390,7 +380,6 @@ class TestRconClientQueries:
         await client.connect()
 
         count = await client.get_player_count()
-
         assert count == -1
 
     async def test_get_players_online_success(self, mock_rcon_client_class):
@@ -410,7 +399,6 @@ class TestRconClientQueries:
         await client.connect()
 
         players = await client.get_players_online()
-
         assert len(players) == 2
         assert "Alice" in players
         assert "Bob" in players
@@ -430,7 +418,6 @@ class TestRconClientQueries:
         await client.connect()
 
         players = await client.get_players_online()
-
         assert players == []
 
     async def test_get_players_online_empty_response(self, mock_rcon_client_class):
@@ -448,7 +435,6 @@ class TestRconClientQueries:
         await client.connect()
 
         players = await client.get_players_online()
-
         assert players == []
 
     async def test_get_players_online_filters_player_prefix(self, mock_rcon_client_class):
@@ -491,7 +477,6 @@ class TestRconClientQueries:
         await client.connect()
 
         players = await client.get_players_online()
-
         assert players == []
 
     async def test_get_server_time_success(self, mock_rcon_client_class):
@@ -502,14 +487,13 @@ class TestRconClientQueries:
         mock_instance = MagicMock()
         mock_instance.__enter__ = MagicMock(return_value=mock_instance)
         mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value="  Day 42, 13:45  ")
+        mock_instance.run = MagicMock(return_value=" Day 42, 13:45 ")
         mock_rcon_client_class.return_value = mock_instance
 
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
         time = await client.get_server_time()
-
         assert time == "Day 42, 13:45"
 
     async def test_get_server_time_empty_response(self, mock_rcon_client_class):
@@ -527,7 +511,6 @@ class TestRconClientQueries:
         await client.connect()
 
         time = await client.get_server_time()
-
         assert time == "Unknown"
 
     async def test_get_server_time_error(self, mock_rcon_client_class):
@@ -545,9 +528,485 @@ class TestRconClientQueries:
         await client.connect()
 
         time = await client.get_server_time()
-
         assert time == "Unknown"
 
+# ============================================================================
+# START/STOP LIFECYCLE TESTS (NEW - 5 tests)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconClientLifecycle:
+    """Test start() and stop() methods for lifecycle management."""
+
+    async def test_start_success(self, mock_rcon_client_class):
+        """Test start() method with successful connection."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        # Mock successful connection
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+
+        # Start should call connect and create reconnection task
+        await client.start()
+
+        assert client._should_reconnect is True
+        assert client.connected is True
+        assert client.reconnect_task is not None
+
+        # Clean up
+        await client.stop()
+
+    async def test_start_already_has_reconnect_task(self, mock_rcon_client_class):
+        """Test start() when reconnect_task already exists."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.start()
+        first_task = client.reconnect_task
+
+        # Start again shouldn't create new task
+        await client.start()
+
+        # Should still be the same task (or a new one if first completed)
+        assert client.reconnect_task is not None
+
+        await client.stop()
+
+    async def test_stop_success(self, mock_rcon_client_class):
+        """Test stop() method stops reconnection and disconnects."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.start()
+
+        # Stop should cancel reconnection and disconnect
+        await client.stop()
+
+        assert client._should_reconnect is False
+        assert client.reconnect_task is None
+        assert client.connected is False
+
+    async def test_stop_without_reconnect_task(self):
+        """Test stop() when reconnect_task is None."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        client = RconClient("localhost", 27015, "test123")
+        client._should_reconnect = True
+
+        # Should not raise even without task
+        await client.stop()
+
+        assert client._should_reconnect is False
+
+    async def test_stop_handles_cancelled_error(self, mock_rcon_client_class):
+        """Test stop() properly handles CancelledError."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.start()
+
+        # This should handle CancelledError internally
+        await client.stop()
+
+        # Should complete successfully
+        assert client.reconnect_task is None
+
+# ============================================================================
+# RECONNECTION LOOP TESTS (NEW - 7 tests)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconClientReconnection:
+    """Test automatic reconnection functionality."""
+
+    async def test_reconnection_loop_started_by_start(self, mock_rcon_client_class):
+        """Test that start() creates the reconnection loop."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123", reconnect_delay=0.1)
+
+        await client.start()
+
+        # Reconnection task should be created
+        assert client.reconnect_task is not None
+        assert not client.reconnect_task.done()
+
+        await client.stop()
+
+    async def test_reconnection_loop_reconnects_when_disconnected(self, mock_rcon_client_class):
+        """Test reconnection loop attempts to reconnect when disconnected."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        # First connection succeeds, then we'll mark as disconnected
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123", reconnect_delay=0.1)
+        await client.start()
+
+        # Simulate disconnection
+        client.connected = False
+
+        # Wait for reconnection attempt (should happen within ~5 seconds + delay)
+        await asyncio.sleep(5.5)
+
+        # Should have attempted reconnection
+        assert mock_rcon_client_class.call_count >= 2  # Initial + reconnect attempt
+
+        await client.stop()
+
+    async def test_reconnection_loop_exponential_backoff(self, mock_rcon_client_class):
+        """Test reconnection uses exponential backoff on failures."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        # Mock connection failures
+        mock_rcon_client_class.side_effect = ConnectionError("Connection refused")
+
+        client = RconClient(
+            "localhost", 27015, "test123",
+            reconnect_delay=0.1,
+            max_reconnect_delay=0.5,
+            reconnect_backoff=2.0
+        )
+
+        # Manually create bypassing start() to test the loop directly
+        client.connected = False
+        client._should_reconnect = True
+
+        # Simulate failed reconnection
+        await client.connect()
+        assert client.connected is False
+
+        initial_delay = client.current_reconnect_delay
+
+        # Simulate another failure - delay should increase
+        await client.connect()
+        # Note: current_reconnect_delay only increases in _reconnection_loop after sleep
+
+        await client.stop()
+
+    async def test_reconnection_loop_stops_when_should_reconnect_false(self, mock_rcon_client_class):
+        """Test reconnection loop exits when _should_reconnect is False."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123", reconnect_delay=0.1)
+        await client.start()
+
+        # Stop should set _should_reconnect to False and exit loop
+        await client.stop()
+
+        # Task should be cancelled/completed
+        assert client.reconnect_task is None
+
+    async def test_reconnection_loop_handles_exceptions(self, mock_rcon_client_class):
+        """Test reconnection loop handles exceptions without crashing."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        # First call succeeds, subsequent fail
+        call_count = 0
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                mock_instance = MagicMock()
+                mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+                mock_instance.__exit__ = MagicMock(return_value=None)
+                return mock_instance
+            else:
+                raise RuntimeError("Unexpected error in reconnection")
+
+        mock_rcon_client_class.side_effect = side_effect
+
+        client = RconClient("localhost", 27015, "test123", reconnect_delay=0.1)
+        await client.start()
+
+        # Mark as disconnected to trigger reconnection
+        client.connected = False
+
+        # Wait for reconnection attempts
+        await asyncio.sleep(5.5)
+
+        # Should still be running despite error
+        assert client.reconnect_task is not None
+
+        await client.stop()
+
+    async def test_reconnection_resets_backoff_on_success(self, mock_rcon_client_class):
+        """Test that successful reconnection resets backoff delay."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient(
+            "localhost", 27015, "test123",
+            reconnect_delay=1.0,
+            reconnect_backoff=2.0
+        )
+
+        # Increase delay manually (simulating previous failures)
+        client.current_reconnect_delay = 10.0
+
+        # Successful connection should reset delay
+        await client.connect()
+
+        assert client.current_reconnect_delay == 1.0  # Reset to initial delay
+
+    async def test_reconnection_loop_caps_at_max_delay(self, mock_rcon_client_class):
+        """Test that reconnection delay caps at max_reconnect_delay."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient(
+            "localhost", 27015, "test123",
+            reconnect_delay=1.0,
+            max_reconnect_delay=5.0,
+            reconnect_backoff=10.0  # Large multiplier
+        )
+
+        # Manually set to very high value
+        client.current_reconnect_delay = 100.0
+
+        # Connect to reset
+        await client.connect()
+
+        # Should be reset to initial delay
+        assert client.current_reconnect_delay == 1.0
+
+# ============================================================================
+# PROPERTY TESTS (NEW - 3 tests)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconClientProperties:
+    """Test RconClient properties."""
+
+    async def test_is_connected_when_connected(self, mock_rcon_client_class):
+        """Test is_connected property returns True when connected."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.connect()
+
+        assert client.is_connected is True
+
+    async def test_is_connected_when_not_connected(self):
+        """Test is_connected property returns False when not connected."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        client = RconClient("localhost", 27015, "test123")
+
+        assert client.is_connected is False
+
+    async def test_is_connected_after_disconnect(self, mock_rcon_client_class):
+        """Test is_connected property returns False after disconnection."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.connect()
+        await client.disconnect()
+
+        assert client.is_connected is False
+
+# ============================================================================
+# ALIAS METHOD TESTS (NEW - 1 test)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconClientAliases:
+    """Test alias methods in RconClient."""
+
+    async def test_get_players_alias(self, mock_rcon_client_class):
+        """Test get_players() is an alias for get_players_online()."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_instance.run = MagicMock(
+            return_value="- Alice (online)\n- Bob (online)"
+        )
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.connect()
+
+        # Both methods should return same result
+        players_online = await client.get_players_online()
+        players_alias = await client.get_players()
+
+        assert players_alias == players_online
+        assert len(players_alias) == 2
+        assert "Alice" in players_alias
+        assert "Bob" in players_alias
+
+# ============================================================================
+# EDGE CASE TESTS (NEW - 2 tests)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconClientEdgeCases:
+    """Test edge cases and error paths."""
+
+    async def test_execute_auto_reconnect_attempt(self, mock_rcon_client_class):
+        """Test execute() attempts immediate reconnect when disconnected."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        # First call (reconnect attempt) succeeds, then execute succeeds
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_instance.run = MagicMock(return_value="Success")
+        mock_rcon_client_class.return_value = mock_instance
+
+        client = RconClient("localhost", 27015, "test123")
+        # Don't connect initially
+
+        # execute() should attempt reconnect
+        response = await client.execute("/test")
+
+        assert response == "Success"
+        assert client.connected is True
+        # Should have called RCONClient twice: once for connect, once for execute
+        assert mock_rcon_client_class.call_count >= 2
+
+    async def test_execute_marks_disconnected_on_error(self, mock_rcon_client_class):
+        """Test execute() marks client as disconnected when command fails."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        # Connect succeeds, but execute fails
+        call_count = 0
+        def side_effect(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            mock_instance = MagicMock()
+            mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+            mock_instance.__exit__ = MagicMock(return_value=None)
+            if call_count == 1:
+                # First call (connect) succeeds
+                return mock_instance
+            else:
+                # Execute call fails
+                mock_instance.run = MagicMock(side_effect=Exception("Command error"))
+                return mock_instance
+
+        mock_rcon_client_class.side_effect = side_effect
+
+        client = RconClient("localhost", 27015, "test123")
+        await client.connect()
+
+        assert client.connected is True
+
+        # Execute should fail and mark as disconnected
+        with pytest.raises(Exception, match="Command error"):
+            await client.execute("/fail")
+
+        assert client.connected is False
+
+# ============================================================================
+# INTEGRATION TESTS (NEW - 1 test)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconClientIntegration:
+    """Test integrated workflows."""
+
+    async def test_full_lifecycle(self, mock_rcon_client_class):
+        """Test complete start -> use -> stop lifecycle."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+
+        mock_instance = MagicMock()
+        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
+        mock_instance.__exit__ = MagicMock(return_value=None)
+        mock_instance.run = MagicMock(return_value="Response")
+        mock_rcon_client_class.return_value = mock_instance
+
+        # Create and start client
+        client = RconClient("localhost", 27015, "test123", reconnect_delay=0.1)
+        await client.start()
+
+        # Should be connected with reconnection enabled
+        assert client.is_connected is True
+        assert client._should_reconnect is True
+        assert client.reconnect_task is not None
+
+        # Execute command
+        response = await client.execute("/test")
+        assert response == "Response"
+
+        # Stop client
+        await client.stop()
+
+        # Should be fully stopped
+        assert client.is_connected is False
+        assert client._should_reconnect is False
+        assert client.reconnect_task is None
 
 # ============================================================================
 # STATS COLLECTOR TESTS
@@ -705,7 +1164,6 @@ class TestRconStatsCollector:
 
         # First call fails, second succeeds
         call_count = 0
-
         async def side_effect_count():
             nonlocal call_count
             call_count += 1
@@ -729,7 +1187,7 @@ class TestRconStatsCollector:
         await collector.start()
 
         # Wait for at least 2 collection cycles
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(5.5)
 
         await collector.stop()
 

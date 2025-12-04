@@ -442,8 +442,240 @@ class BotDiscordInterface(DiscordInterface):
 # FACTORY - FIXED IMPORTS WITH PROPER sys.path
 # ============================================================================
 
+# class DiscordInterfaceFactory:
+#     """Factory for creating Discord interface instances."""
+
+#     @staticmethod
+#     def create_interface(config: Any) -> DiscordInterface:
+#         """
+#         Create appropriate Discord interface based on configuration.
+
+#         Args:
+#             config: Application configuration
+
+#         Returns:
+#             DiscordInterface instance (webhook or bot mode)
+
+#         Raises:
+#             ValueError: If neither webhook nor bot is configured
+#         """
+#         if config.discord_bot_token:
+#             logger.info("creating_bot_interface", phase="5.1")
+
+#             # Import DiscordBot when needed
+#             try:
+#                 import sys
+#                 import os
+
+#                 # Get the current module's path
+#                 current_module = sys.modules[__name__]
+#                 current_path = getattr(current_module, '__file__', None)
+
+#                 if current_path:
+#                     # Get the directory containing discord_interface.py (should be src/)
+#                     src_dir = os.path.dirname(os.path.abspath(current_path))
+
+#                     # Add src directory to sys.path if not already there
+#                     if src_dir not in sys.path:
+#                         sys.path.insert(0, src_dir)
+#                         logger.debug("added_to_sys_path", path=src_dir)
+
+#                     # Now try normal import (utils should be importable now)
+#                     try:
+#                         from discord_bot import DiscordBot
+#                     except ImportError:
+#                         # Fallback to importlib
+#                         import importlib.util
+#                         bot_path = os.path.join(src_dir, 'discord_bot.py')
+
+#                         spec = importlib.util.spec_from_file_location("discord_bot", bot_path)
+#                         if spec and spec.loader:
+#                             discord_bot_module = importlib.util.module_from_spec(spec)
+#                             sys.modules['discord_bot'] = discord_bot_module
+#                             spec.loader.exec_module(discord_bot_module)
+#                             DiscordBot = discord_bot_module.DiscordBot
+#                         else:
+#                             raise ImportError("Could not load discord_bot module")
+#                 else:
+#                     raise ImportError("Could not determine module path")
+
+#             except Exception as e:
+#                 logger.error("failed_to_import_discord_bot", error=str(e), exc_info=True)
+#                 raise ImportError(
+#                     f"Could not import DiscordBot. Make sure discord_bot.py is in the same directory. Error: {e}"
+#                 )
+
+#             bot = DiscordBot(
+#                 token=config.discord_bot_token,
+#                 bot_name=config.bot_name,
+#             )
+
+#             if config.discord_event_channel_id:
+#                 bot.set_event_channel(config.discord_event_channel_id)
+#             else:
+#                 logger.warning(
+#                     "bot_mode_no_channel",
+#                     message="DISCORD_EVENT_CHANNEL_ID not set. Events won't be sent.",
+#                 )
+
+#             return BotDiscordInterface(bot)
+
+#         elif config.discord_webhook_url:
+#             logger.info("creating_webhook_interface")
+
+#             try:
+#                 import sys
+#                 import os
+
+#                 current_module = sys.modules[__name__]
+#                 current_path = getattr(current_module, '__file__', None)
+
+#                 if current_path:
+#                     src_dir = os.path.dirname(os.path.abspath(current_path))
+
+#                     if src_dir not in sys.path:
+#                         sys.path.insert(0, src_dir)
+
+#                     try:
+#                         from discord_client import DiscordClient
+#                     except ImportError:
+#                         import importlib.util
+#                         client_path = os.path.join(src_dir, 'discord_client.py')
+
+#                         spec = importlib.util.spec_from_file_location("discord_client", client_path)
+#                         if spec and spec.loader:
+#                             discord_client_module = importlib.util.module_from_spec(spec)
+#                             sys.modules['discord_client'] = discord_client_module
+#                             spec.loader.exec_module(discord_client_module)
+#                             DiscordClient = discord_client_module.DiscordClient
+#                         else:
+#                             raise ImportError("Could not load discord_client module")
+#                 else:
+#                     raise ImportError("Could not determine module path")
+
+#             except Exception as e:
+#                 logger.error("failed_to_import_discord_client", error=str(e), exc_info=True)
+#                 raise ImportError(
+#                     f"Could not import DiscordClient. Error: {e}"
+#                 )
+
+#             client = DiscordClient(
+#                 webhook_url=config.discord_webhook_url,
+#                 bot_name=config.bot_name,
+#                 bot_avatar_url=getattr(config, 'bot_avatar_url', None),
+#             )
+
+#             return WebhookDiscordInterface(client)
+
+#         else:
+#             raise ValueError(
+#                 "Either DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL must be configured"
+#             )
+"""
+RECOMMENDED SOLUTION: Refactor create_interface() for Testability
+
+The 49% missing coverage is in unreachable error-handling paths.
+This refactoring extracts import logic into testable helper methods.
+"""
+
+# ============================================================================
+# REFACTORED discord_interface.py (Factory section)
+# ============================================================================
+
 class DiscordInterfaceFactory:
     """Factory for creating Discord interface instances."""
+
+    @staticmethod
+    def _import_discord_bot() -> Any:
+        """
+        Import DiscordBot with fallback to importlib.util.
+
+        This method is extracted for testability.
+
+        Returns:
+            DiscordBot class
+
+        Raises:
+            ImportError: If DiscordBot cannot be imported
+        """
+        try:
+            # Try normal import first
+            from discord_bot import DiscordBot
+            return DiscordBot
+        except ImportError:
+            # Fallback to importlib
+            return DiscordInterfaceFactory._import_with_importlib('discord_bot', 'DiscordBot')
+
+    @staticmethod
+    def _import_discord_client() -> Any:
+        """
+        Import DiscordClient with fallback to importlib.util.
+
+        This method is extracted for testability.
+
+        Returns:
+            DiscordClient class
+
+        Raises:
+            ImportError: If DiscordClient cannot be imported
+        """
+        try:
+            # Try normal import first
+            from discord_client import DiscordClient
+            return DiscordClient
+        except ImportError:
+            # Fallback to importlib
+            return DiscordInterfaceFactory._import_with_importlib('discord_client', 'DiscordClient')
+
+    @staticmethod
+    def _import_with_importlib(module_name: str, class_name: str) -> Any:
+        """
+        Import a class using importlib.util as fallback.
+
+        Args:
+            module_name: Name of the module (e.g., 'discord_bot')
+            class_name: Name of the class (e.g., 'DiscordBot')
+
+        Returns:
+            The imported class
+
+        Raises:
+            ImportError: If import fails
+        """
+        import importlib.util
+        import sys
+        import os
+
+        # Get the current module's path
+        current_module = sys.modules[__name__]
+        current_path = getattr(current_module, '__file__', None)
+
+        if not current_path:
+            raise ImportError(f"Could not determine module path for {module_name}")
+
+        # Get the directory containing discord_interface.py
+        src_dir = os.path.dirname(os.path.abspath(current_path))
+
+        # Add src directory to sys.path if not already there
+        if src_dir not in sys.path:
+            sys.path.insert(0, src_dir)
+            logger.debug("added_to_sys_path", path=src_dir)
+
+        # Build path to the module file
+        module_path = os.path.join(src_dir, f'{module_name}.py')
+
+        # Create spec from file location
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if not spec or not spec.loader:
+            raise ImportError(f"Could not load {module_name} module")
+
+        # Load the module
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+        spec.loader.exec_module(module)
+
+        # Get the class from the module
+        return getattr(module, class_name)
 
     @staticmethod
     def create_interface(config: Any) -> DiscordInterface:
@@ -462,43 +694,9 @@ class DiscordInterfaceFactory:
         if config.discord_bot_token:
             logger.info("creating_bot_interface", phase="5.1")
 
-            # Import DiscordBot when needed
             try:
-                import sys
-                import os
-
-                # Get the current module's path
-                current_module = sys.modules[__name__]
-                current_path = getattr(current_module, '__file__', None)
-
-                if current_path:
-                    # Get the directory containing discord_interface.py (should be src/)
-                    src_dir = os.path.dirname(os.path.abspath(current_path))
-
-                    # Add src directory to sys.path if not already there
-                    if src_dir not in sys.path:
-                        sys.path.insert(0, src_dir)
-                        logger.debug("added_to_sys_path", path=src_dir)
-
-                    # Now try normal import (utils should be importable now)
-                    try:
-                        from discord_bot import DiscordBot
-                    except ImportError:
-                        # Fallback to importlib
-                        import importlib.util
-                        bot_path = os.path.join(src_dir, 'discord_bot.py')
-
-                        spec = importlib.util.spec_from_file_location("discord_bot", bot_path)
-                        if spec and spec.loader:
-                            discord_bot_module = importlib.util.module_from_spec(spec)
-                            sys.modules['discord_bot'] = discord_bot_module
-                            spec.loader.exec_module(discord_bot_module)
-                            DiscordBot = discord_bot_module.DiscordBot
-                        else:
-                            raise ImportError("Could not load discord_bot module")
-                else:
-                    raise ImportError("Could not determine module path")
-
+                # Import using extracted method (now testable!)
+                DiscordBot = DiscordInterfaceFactory._import_discord_bot()
             except Exception as e:
                 logger.error("failed_to_import_discord_bot", error=str(e), exc_info=True)
                 raise ImportError(
@@ -524,35 +722,8 @@ class DiscordInterfaceFactory:
             logger.info("creating_webhook_interface")
 
             try:
-                import sys
-                import os
-
-                current_module = sys.modules[__name__]
-                current_path = getattr(current_module, '__file__', None)
-
-                if current_path:
-                    src_dir = os.path.dirname(os.path.abspath(current_path))
-
-                    if src_dir not in sys.path:
-                        sys.path.insert(0, src_dir)
-
-                    try:
-                        from discord_client import DiscordClient
-                    except ImportError:
-                        import importlib.util
-                        client_path = os.path.join(src_dir, 'discord_client.py')
-
-                        spec = importlib.util.spec_from_file_location("discord_client", client_path)
-                        if spec and spec.loader:
-                            discord_client_module = importlib.util.module_from_spec(spec)
-                            sys.modules['discord_client'] = discord_client_module
-                            spec.loader.exec_module(discord_client_module)
-                            DiscordClient = discord_client_module.DiscordClient
-                        else:
-                            raise ImportError("Could not load discord_client module")
-                else:
-                    raise ImportError("Could not determine module path")
-
+                # Import using extracted method (now testable!)
+                DiscordClient = DiscordInterfaceFactory._import_discord_client()
             except Exception as e:
                 logger.error("failed_to_import_discord_client", error=str(e), exc_info=True)
                 raise ImportError(

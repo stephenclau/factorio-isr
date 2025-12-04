@@ -73,6 +73,23 @@ class TestCommandCooldown:
         is_limited, _ = cooldown.is_rate_limited(identifier=12345)
         assert is_limited is False
 
+    def test_cooldown_reset_user_alias(self):
+        """Test reset_user() alias for backward compatibility."""
+        cooldown = CommandCooldown(rate=1, per=60.0)
+
+        cooldown.is_rate_limited(identifier=12345)
+
+        # Should be rate limited
+        is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+        assert is_limited is True
+
+        # Reset using reset_user alias
+        cooldown.reset_user(identifier=12345)
+
+        # Should not be rate limited anymore
+        is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+        assert is_limited is False
+
     def test_cooldown_reset_all(self):
         """Test resetting all cooldowns."""
         cooldown = CommandCooldown(rate=1, per=60.0)
@@ -105,6 +122,22 @@ class TestCommandCooldown:
         current, max_rate = cooldown.get_usage(identifier=12345)
         assert current == 2
         assert max_rate == 5
+
+    def test_get_usage_count(self):
+        """Test getting usage count directly."""
+        cooldown = CommandCooldown(rate=5, per=60.0)
+
+        # No usage yet
+        count = cooldown.get_usage_count(identifier=12345)
+        assert count == 0
+
+        # Use three times
+        cooldown.is_rate_limited(identifier=12345)
+        cooldown.is_rate_limited(identifier=12345)
+        cooldown.is_rate_limited(identifier=12345)
+
+        count = cooldown.get_usage_count(identifier=12345)
+        assert count == 3
 
     def test_global_cooldown_instances(self):
         """Test pre-configured global instances."""
@@ -288,6 +321,36 @@ class TestMultiServerManager:
         assert "Production" in names
         assert "Testing" in names
 
+    def test_get_server_by_name(self):
+        """Test getting server by name (case-insensitive)."""
+        manager = MultiServerManager()
+
+        config = ServerConfig(
+            server_id="prod",
+            name="Production",
+            host="localhost",
+            port=27015
+        )
+        manager.add_server(config)
+
+        # Test exact match
+        server = manager.get_server_by_name("Production")
+        assert server is not None
+        assert server.server_id == "prod"
+
+        # Test case-insensitive
+        server = manager.get_server_by_name("PRODUCTION")
+        assert server is not None
+        assert server.server_id == "prod"
+
+        server = manager.get_server_by_name("production")
+        assert server is not None
+        assert server.server_id == "prod"
+
+        # Test not found
+        server = manager.get_server_by_name("Nonexistent")
+        assert server is None
+
     def test_remove_server(self):
         """Test removing a server."""
         manager = MultiServerManager()
@@ -303,6 +366,41 @@ class TestMultiServerManager:
 
         assert manager.count() == 0
         assert manager.get_server("test1") is None
+
+    def test_remove_default_server_updates_default(self):
+        """Test removing default server updates default to next server."""
+        manager = MultiServerManager()
+
+        config1 = ServerConfig(
+            server_id="test1",
+            name="Server 1",
+            host="localhost",
+            port=27015
+        )
+        config2 = ServerConfig(
+            server_id="test2",
+            name="Server 2",
+            host="localhost",
+            port=27016
+        )
+
+        manager.add_server(config1)
+        manager.add_server(config2)
+
+        # test1 should be default
+        assert manager.default_server == "test1"
+
+        # Remove default server
+        manager.remove_server("test1")
+
+        # Default should update to test2
+        assert manager.default_server == "test2"
+
+        # Remove last server
+        manager.remove_server("test2")
+
+        # Default should be None
+        assert manager.default_server is None
 
     def test_remove_nonexistent_server(self):
         """Test removing nonexistent server fails."""
@@ -334,6 +432,89 @@ class TestMultiServerManager:
 
         with pytest.raises(ValueError, match="not found"):
             manager.set_default("nonexistent")
+
+    def test_has_default(self):
+        """Test checking if default server is set."""
+        manager = MultiServerManager()
+
+        # Initially no default
+        assert manager.has_default() is False
+
+        # Add server - should set default
+        config = ServerConfig(
+            server_id="test1",
+            name="Server 1",
+            host="localhost",
+            port=27015
+        )
+        manager.add_server(config)
+
+        assert manager.has_default() is True
+
+        # Remove server - should clear default
+        manager.remove_server("test1")
+
+        assert manager.has_default() is False
+
+    def test_len_operator(self):
+        """Test __len__ operator returns server count."""
+        manager = MultiServerManager()
+
+        assert len(manager) == 0
+
+        config1 = ServerConfig(server_id="test1", name="Server 1", host="localhost", port=27015)
+        config2 = ServerConfig(server_id="test2", name="Server 2", host="localhost", port=27016)
+
+        manager.add_server(config1)
+        assert len(manager) == 1
+
+        manager.add_server(config2)
+        assert len(manager) == 2
+
+        manager.remove_server("test1")
+        assert len(manager) == 1
+
+    def test_contains_operator(self):
+        """Test __contains__ operator for 'in' checks."""
+        manager = MultiServerManager()
+
+        config = ServerConfig(
+            server_id="test1",
+            name="Server 1",
+            host="localhost",
+            port=27015
+        )
+        manager.add_server(config)
+
+        assert "test1" in manager
+        assert "test2" not in manager
+        assert "nonexistent" not in manager
+
+    def test_bool_operator(self):
+        """Test __bool__ operator for truthiness."""
+        manager = MultiServerManager()
+
+        # Empty manager is falsy
+        assert not manager
+        assert bool(manager) is False
+
+        # Add server - now truthy
+        config = ServerConfig(
+            server_id="test1",
+            name="Server 1",
+            host="localhost",
+            port=27015
+        )
+        manager.add_server(config)
+
+        assert manager
+        assert bool(manager) is True
+
+        # Remove server - back to falsy
+        manager.remove_server("test1")
+
+        assert not manager
+        assert bool(manager) is False
 
 
 # Run tests
