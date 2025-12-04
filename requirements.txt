@@ -1,7 +1,6 @@
-aiohttp>=3.13.2,
-python-dotenv>=1.2.1,
-PyYAML>=6.0.3,
-rcon>=2.4.9,
-structlog>=25.5.0,
-zstandard>=0.22.0,
-discord.py>=2.6.4
+aiohttp==3.13.2
+discord.py==2.6.4
+python-dotenv==1.2.1
+PyYAML==6.0.3
+rcon==2.4.9
+structlog==25.5.0
