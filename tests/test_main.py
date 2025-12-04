@@ -65,8 +65,8 @@ def mock_health_server():
 
 
 @pytest.fixture
-def mock_discord_client():
-    """Create a mock DiscordClient."""
+def mock_discord():
+    """Create a mock Discord interface."""
     client = AsyncMock()
     client.connect = AsyncMock()
     client.disconnect = AsyncMock()
@@ -156,7 +156,7 @@ class TestApplicationInit:
         assert app.config is None
         assert app.health_server is None
         assert app.log_tailer is None
-        assert app.discord_client is None
+        assert app.discord is None
         assert app.event_parser is None
         assert app.rcon_client is None
         assert app.stats_collector is None
@@ -277,7 +277,7 @@ class TestApplicationStart:
         app.config = mock_config
         app.health_server = mock_health_server
         
-        with patch('main.DiscordClient', return_value=AsyncMock()):
+        with patch('main.DiscordInterfaceFactory.create_interface', return_value=AsyncMock()):
             with patch('main.LogTailer', return_value=AsyncMock()):
                 app.event_parser = Mock()
                 app.event_parser.compiled_patterns = {}
@@ -287,21 +287,21 @@ class TestApplicationStart:
         mock_health_server.start.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_start_creates_discord_client(self, app, mock_config, mock_health_server):
-        """Test that start() creates Discord client."""
+    async def test_start_creates_discord_interface(self, app, mock_config, mock_health_server):
+        """Test that start() creates Discord interface."""
         app.config = mock_config
         app.health_server = mock_health_server
         app.event_parser = Mock()
         app.event_parser.compiled_patterns = {}
-        
-        with patch('main.DiscordClient') as MockDiscord:
+
+        with patch('main.DiscordInterfaceFactory.create_interface') as MockFactory:
             mock_discord = AsyncMock()
-            MockDiscord.return_value = mock_discord
-            
+            MockFactory.return_value = mock_discord
             with patch('main.LogTailer', return_value=AsyncMock()):
                 await app.start()
-        
-        MockDiscord.assert_called_once()
+
+                MockFactory.assert_called_once_with(mock_config)
+                mock_discord.connect.assert_called_once()
         mock_discord.connect.assert_called_once()
     
     @pytest.mark.asyncio
@@ -312,7 +312,7 @@ class TestApplicationStart:
         app.event_parser = Mock()
         app.event_parser.compiled_patterns = {}
         
-        with patch('main.DiscordClient', return_value=AsyncMock()):
+        with patch('main.DiscordInterfaceFactory.create_interface', return_value=AsyncMock()):
             with patch('main.LogTailer') as MockTailer:
                 mock_tailer = AsyncMock()
                 MockTailer.return_value = mock_tailer
@@ -329,21 +329,20 @@ class TestApplicationStart:
             "chat": "https://discord.com/api/webhooks/chat",
             "admin": "https://discord.com/api/webhooks/admin"
         }
+
         app.config = mock_config
         app.health_server = mock_health_server
         app.event_parser = Mock()
         app.event_parser.compiled_patterns = {}
-        
-        with patch('main.DiscordClient') as MockDiscord:
+
+        with patch('main.DiscordInterfaceFactory.create_interface') as MockFactory:
             mock_discord = AsyncMock()
-            MockDiscord.return_value = mock_discord
-            
+            MockFactory.return_value = mock_discord
             with patch('main.LogTailer', return_value=AsyncMock()):
                 await app.start()
-        
-        # Should pass webhook_channels to Discord client
-        call_kwargs = MockDiscord.call_args.kwargs
-        assert call_kwargs['webhook_channels'] == mock_config.webhook_channels
+
+                # Should pass config to factory
+                MockFactory.assert_called_once_with(mock_config)
     
     @pytest.mark.asyncio
     async def test_start_with_test_message(self, app, mock_config, mock_health_server):
@@ -357,7 +356,7 @@ class TestApplicationStart:
         mock_discord = AsyncMock()
         mock_discord.test_connection = AsyncMock(return_value=True)
         
-        with patch('main.DiscordClient', return_value=mock_discord):
+        with patch('main.DiscordInterfaceFactory.create_interface', return_value=mock_discord):
             with patch('main.LogTailer', return_value=AsyncMock()):
                 await app.start()
         
@@ -375,8 +374,8 @@ class TestApplicationStart:
         mock_discord = AsyncMock()
         mock_discord.test_connection = AsyncMock(return_value=False)
         
-        with patch('main.DiscordClient', return_value=mock_discord):
-            with pytest.raises(ConnectionError, match="Failed to connect to Discord webhook"):
+        with patch('main.DiscordInterfaceFactory.create_interface', return_value=mock_discord):
+            with pytest.raises(ConnectionError, match="Failed to connect to Discord"):
                 await app.start()
     
     @pytest.mark.asyncio
@@ -388,7 +387,7 @@ class TestApplicationStart:
         app.event_parser = Mock()
         app.event_parser.compiled_patterns = {}
         
-        with patch('main.DiscordClient', return_value=AsyncMock()):
+        with patch('main.DiscordInterfaceFactory.create_interface', return_value=AsyncMock()):
             with patch('main.LogTailer', return_value=AsyncMock()):
                 await app.start()
         
@@ -420,7 +419,7 @@ class TestApplicationStartRcon:
     async def test_start_rcon_when_unavailable(self, app, mock_config):
         """Test RCON start when module is unavailable."""
         app.config = mock_config
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         with patch('main.RCON_AVAILABLE', False):
             await app._start_rcon()
@@ -433,7 +432,7 @@ class TestApplicationStartRcon:
         """Test RCON start without password."""
         mock_config.rcon_password = None
         app.config = mock_config
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         with patch('main.RCON_AVAILABLE', True):
             await app._start_rcon()
@@ -447,7 +446,7 @@ class TestApplicationStartRcon:
         mock_config.rcon_enabled = True
         mock_config.rcon_password = "test_password"
         app.config = mock_config
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         mock_rcon = AsyncMock()
         mock_stats = AsyncMock()
@@ -457,7 +456,7 @@ class TestApplicationStartRcon:
                 with patch('main.RconStatsCollector', return_value=mock_stats):
                     await app._start_rcon()
         
-        mock_rcon.connect.assert_called_once()
+        mock_rcon.start.assert_called_once()
         mock_stats.start.assert_called_once()
         assert app.rcon_client == mock_rcon
         assert app.stats_collector == mock_stats
@@ -467,10 +466,10 @@ class TestApplicationStartRcon:
         """Test RCON connection failure doesn't crash app."""
         mock_config.rcon_password = "test_password"
         app.config = mock_config
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         mock_rcon = AsyncMock()
-        mock_rcon.connect = AsyncMock(side_effect=ConnectionError("RCON failed"))
+        mock_rcon.start = AsyncMock(side_effect=ConnectionError("RCON failed"))
         
         with patch('main.RCON_AVAILABLE', True):
             with patch('main.RconClient', return_value=mock_rcon):
@@ -502,20 +501,20 @@ class TestApplicationHandleLogLine:
     async def test_handle_log_line_no_match(self, app, mock_event_parser):
         """Test handling log line that doesn't match any pattern."""
         app.event_parser = mock_event_parser
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         mock_event_parser.parse_line.return_value = None
         
         await app.handle_log_line("Unmatched line")
         
         # Should parse but not send
         mock_event_parser.parse_line.assert_called_once_with("Unmatched line")
-        assert not app.discord_client.send_event.called
+        assert not app.discord.send_event.called
     
     @pytest.mark.asyncio
     async def test_handle_log_line_no_discord_client(self, app, mock_event_parser):
         """Test handling log line without Discord client."""
         app.event_parser = mock_event_parser
-        app.discord_client = None
+        app.discord = None
         
         mock_event = FactorioEvent(event_type=EventType.CHAT)
         mock_event_parser.parse_line.return_value = mock_event
@@ -529,7 +528,7 @@ class TestApplicationHandleLogLine:
     async def test_handle_log_line_success(self, app, mock_event_parser):
         """Test successful log line handling."""
         app.event_parser = mock_event_parser
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         mock_event = FactorioEvent(
             event_type=EventType.CHAT,
@@ -537,18 +536,18 @@ class TestApplicationHandleLogLine:
             message="Hello"
         )
         mock_event_parser.parse_line.return_value = mock_event
-        app.discord_client.send_event = AsyncMock(return_value=True)
+        app.discord.send_event = AsyncMock(return_value=True)
         
         await app.handle_log_line("[CHAT] TestPlayer: Hello")
         
         mock_event_parser.parse_line.assert_called_once()
-        app.discord_client.send_event.assert_called_once_with(mock_event)
+        app.discord.send_event.assert_called_once_with(mock_event)
     
     @pytest.mark.asyncio
     async def test_handle_log_line_send_failure(self, app, mock_event_parser):
         """Test handling of send failure."""
         app.event_parser = mock_event_parser
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         mock_event = FactorioEvent(
             event_type=EventType.CHAT,
@@ -556,18 +555,18 @@ class TestApplicationHandleLogLine:
             metadata={"channel": "chat"}
         )
         mock_event_parser.parse_line.return_value = mock_event
-        app.discord_client.send_event = AsyncMock(return_value=False)
+        app.discord.send_event = AsyncMock(return_value=False)
         
         # Should not raise, just log warning
         await app.handle_log_line("Test line")
         
-        assert app.discord_client.send_event.called
+        assert app.discord.send_event.called
     
     @pytest.mark.asyncio
     async def test_handle_log_line_with_channel_routing(self, app, mock_event_parser):
         """Test log line handling with channel routing metadata."""
         app.event_parser = mock_event_parser
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         
         mock_event = FactorioEvent(
             event_type=EventType.CHAT,
@@ -576,12 +575,12 @@ class TestApplicationHandleLogLine:
             metadata={"channel": "admin"}
         )
         mock_event_parser.parse_line.return_value = mock_event
-        app.discord_client.send_event = AsyncMock(return_value=True)
+        app.discord.send_event = AsyncMock(return_value=True)
         
         await app.handle_log_line("[ADMIN] Admin: Admin message")
         
         # Event should be sent with channel metadata
-        call_args = app.discord_client.send_event.call_args
+        call_args = app.discord.send_event.call_args
         sent_event = call_args[0][0]
         assert sent_event.metadata.get("channel") == "admin"
 
@@ -599,15 +598,15 @@ class TestApplicationStop:
         app.stats_collector = AsyncMock()
         app.rcon_client = AsyncMock()
         app.log_tailer = AsyncMock()
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         app.health_server = AsyncMock()
         
         await app.stop()
         
         app.stats_collector.stop.assert_called_once()
-        app.rcon_client.disconnect.assert_called_once()
+        app.rcon_client.stop.assert_called_once()
         app.log_tailer.stop.assert_called_once()
-        app.discord_client.disconnect.assert_called_once()
+        app.discord.disconnect.assert_called_once()
         app.health_server.stop.assert_called_once()
     
     @pytest.mark.asyncio
@@ -616,7 +615,7 @@ class TestApplicationStop:
         app.stats_collector = None
         app.rcon_client = None
         app.log_tailer = None
-        app.discord_client = None
+        app.discord = None
         app.health_server = None
         
         # Should not crash
@@ -632,14 +631,14 @@ class TestApplicationStop:
         
         app.rcon_client = AsyncMock()
         app.log_tailer = AsyncMock()
-        app.discord_client = AsyncMock()
+        app.discord = AsyncMock()
         app.health_server = AsyncMock()
         
         # Should not raise despite error
         await app.stop()
         
         # Other components should still be stopped
-        assert app.rcon_client.disconnect.called
+        assert app.rcon_client.stop.called
         assert app.log_tailer.stop.called
     
     @pytest.mark.asyncio
@@ -651,13 +650,13 @@ class TestApplicationStop:
         app.stats_collector.stop = AsyncMock(side_effect=lambda: call_order.append("stats"))
         
         app.rcon_client = AsyncMock()
-        app.rcon_client.disconnect = AsyncMock(side_effect=lambda: call_order.append("rcon"))
+        app.rcon_client.stop = AsyncMock(side_effect=lambda: call_order.append("rcon"))
         
         app.log_tailer = AsyncMock()
         app.log_tailer.stop = AsyncMock(side_effect=lambda: call_order.append("tailer"))
         
-        app.discord_client = AsyncMock()
-        app.discord_client.disconnect = AsyncMock(side_effect=lambda: call_order.append("discord"))
+        app.discord = AsyncMock()
+        app.discord.disconnect = AsyncMock(side_effect=lambda: call_order.append("discord"))
         
         app.health_server = AsyncMock()
         app.health_server.stop = AsyncMock(side_effect=lambda: call_order.append("health"))
@@ -849,7 +848,7 @@ class TestIntegration:
             with patch('main.validate_config', return_value=True):
                 with patch('main.EventParser'):
                     with patch('main.HealthCheckServer', return_value=AsyncMock()):
-                        with patch('main.DiscordClient', return_value=AsyncMock()):
+                        with patch('main.DiscordInterfaceFactory.create_interface', return_value=AsyncMock()):
                             with patch('main.LogTailer', return_value=AsyncMock()):
                                 await app.setup()
                                 await app.start()
@@ -882,7 +881,7 @@ class TestIntegration:
         # Setup Discord client
         mock_discord = AsyncMock()
         mock_discord.send_event = AsyncMock(return_value=True)
-        app.discord_client = mock_discord
+        app.discord = mock_discord
         
         # Handle log line
         await app.handle_log_line("[CHAT] TestPlayer: Hello world")
@@ -900,7 +899,7 @@ class TestIntegration:
             with patch('main.validate_config', return_value=True):
                 with patch('main.EventParser'):
                     with patch('main.HealthCheckServer', return_value=AsyncMock()):
-                        with patch('main.DiscordClient') as MockDiscord:
+                        with patch('main.DiscordInterfaceFactory.create_interface') as MockDiscord:
                             # Discord connection fails
                             mock_discord = AsyncMock()
                             mock_discord.connect = AsyncMock(
@@ -980,7 +979,7 @@ class TestRconIntegration:
         app.event_parser.compiled_patterns = {}
         
         with patch('main.RCON_AVAILABLE', True):
-            with patch('main.DiscordClient', return_value=AsyncMock()):
+            with patch('main.DiscordInterfaceFactory.create_interface', return_value=AsyncMock()):
                 with patch('main.LogTailer', return_value=AsyncMock()):
                     with patch.object(app, '_start_rcon', new_callable=AsyncMock) as mock_rcon:
                         await app.start()
@@ -998,7 +997,7 @@ class TestRconIntegration:
         app.event_parser.compiled_patterns = {}
         
         with patch('main.RCON_AVAILABLE', False):
-            with patch('main.DiscordClient', return_value=AsyncMock()):
+            with patch('main.DiscordInterfaceFactory.create_interface', return_value=AsyncMock()):
                 with patch('main.LogTailer', return_value=AsyncMock()):
                     # Should not crash, just warn
                     await app.start()

@@ -2,10 +2,10 @@
 set -e  # Exit on any error
 
 # Configuration
-GITHUB_USER="stephenclau"
-DOCKERHUB_USER="slautomaton"
-IMAGE_NAME="factorio-isr"
-VERSION="${1:-latest}"  # Use first argument or default to 'latest'
+read -p "Enter GitHub username: " GITHUB_USER
+read -p "Enter Docker Hub username: " DOCKERHUB_USER
+read -p "Enter desired image name: " IMAGE_NAME
+read -p "Enter image version (default: latest): " VERSION=${VERSION:-latest}
 
 # Read tokens from files (secure approach)
 GHCR_TOKEN=$(cat ~/.secrets/GHCR_TOKEN.txt)

@@ -30,7 +30,7 @@ class TestDiscordClientInit:
         client = DiscordClient(webhook_url="https://discord.com/api/webhooks/test")
 
         assert client.default_webhook_url == "https://discord.com/api/webhooks/test"
-        assert client.bot_name == "Factorio Bridge"
+        assert client.bot_name == "FactorioISR"
         assert client.bot_avatar_url is None
         assert client.rate_limit_delay == 0.5
         assert client.max_retries == 3

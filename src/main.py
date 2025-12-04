@@ -240,7 +240,7 @@ class Application:
             )
 
             assert self.rcon_client is not None
-            await self.rcon_client.connect()
+            await self.rcon_client.start()
 
             # Pass RCON client to bot for slash commands (Phase 4)
             # Use try/except for import to handle both package and flat layouts
@@ -320,7 +320,7 @@ class Application:
         # RCON client
         if self.rcon_client is not None:
             try:
-                await self.rcon_client.disconnect()
+                await self.rcon_client.stop()
             except Exception:
                 pass
             logger.debug("rcon_disconnected")
