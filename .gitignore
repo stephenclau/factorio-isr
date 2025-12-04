@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info
+.deprecated/*
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets
+.secrets/
+*.secrets
+
+# Logs
+*.log
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+coverage.*
+codecov.*
+
+# Docker
+*.dockerignore
+
+# Add to .gitignore
+patterns/*.test.yml
+patterns/.DS_Store
+*.token

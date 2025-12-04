@@ -1,0 +1,29 @@
+# Milestones Mod Event Patterns
+# https://mods.factorio.com/mod/Todo-List
+
+events:
+  milestone_completed:
+    pattern: '\[MILESTONE\]'
+    type: milestone
+    emoji: '🏆'
+    message: '{player} completed: {message}'
+    enabled: true
+    priority: 5
+
+  task_completed:
+    pattern: '\[TASK\]|\[TODO\]'
+    type: task
+    emoji: '✅'
+    message: '{player} finished: {message}'
+    enabled: true
+    priority: 8
+
+  # research_completed:
+  #   pattern: 'has been researched|research complete'
+  #   type: research
+  #   emoji: '🔬'
+  #   message: 'Research completed: {message}'
+  #   enabled: true
+  #   priority: 7
+
+  

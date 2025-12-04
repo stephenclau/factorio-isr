@@ -1,0 +1,43 @@
+####Stand Alone Docker
+
+services:
+  factorio-isr:
+    image: slautomaton/factorio-isr:latest  
+    container_name: factorio-isr
+    restart: unless-stopped
+    user: "1001:1001" # Set to match UID:GID of host non root user i.e. factorio (or different if standalone)
+    volumes: 
+      - /home/factorio/log:/logs:ro
+      - /home/factorio/script-output:/mod-logs:ro
+      - /home/factorio/patterns:/app/patterns:ro
+    secrets:
+      - DISCORD_WEBHOOK_URL
+      - RCON_PASSWORD
+    environment:
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+      - FACTORIO_LOG_PATH=/logs/console.log
+      - HEALTH_CHECK_HOST=0.0.0.0
+      - HEALTH_CHECK_PORT=8080
+      - BOT_NAME=FactorioISR Agent
+    ports:
+      - "8080:8080"
+    networks:
+      - factorio-net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+networks:
+  factorio-net:
+    external: true
+    name: factorio_factorio-net
+
+secrets:
+  DISCORD_WEBHOOK_URL:
+    file: ./.secrets/DISCORD_WEBHOOK_URL.txt
+  RCON_PASSWORD:
+    file: ./.secrets/RCON_PASSWORD.txt
