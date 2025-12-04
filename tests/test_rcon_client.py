@@ -1211,7 +1211,7 @@ class TestRconStatsCollector:
             server_time="Day 10, 12:00"
         )
 
-        assert "📊 **Server Status**" in message
+        assert "📊 **Server Stats**" in message
         assert "👥 Players Online: 2" in message
         assert "📝 Alice, Bob" in message
         assert "⏰ Game Time: Day 10, 12:00" in message
@@ -1233,7 +1233,7 @@ class TestRconStatsCollector:
             server_time="Day 1, 00:00"
         )
 
-        assert "📊 **Server Status**" in message
+        assert "📊 **Server Stats**" in message
         assert "👥 Players Online: 0" in message
         assert "📝" not in message  # No player list
         assert "⏰ Game Time: Day 1, 00:00" in message
@@ -1255,7 +1255,7 @@ class TestRconStatsCollector:
             server_time="Day 5, 08:30"
         )
 
-        assert "📊 **Server Status**" in message
+        assert "📊 **Server Stats**" in message
         assert "👥 Players Online: 1" in message
         assert "📝 Charlie" in message
         assert "⏰ Game Time: Day 5, 08:30" in message

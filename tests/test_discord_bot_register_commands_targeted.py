@@ -458,10 +458,10 @@ class TestSaveCommandMissingPaths:
     """Complete coverage for save_command missing paths including regex logic."""
 
     @pytest.mark.asyncio
-    async def test_save_rate_limited_uses_followup(
+    async def test_save_rate_limited_uses_response(
         self, bot: DiscordBot, mock_interaction: MagicMock
     ) -> None:
-        """Test save command rate limit response uses followup.send."""
+        """Test save command rate limit response uses response.send_message."""
         class RateLimited:
             def is_rate_limited(self, user_id: int) -> tuple[bool, float]:
                 return True, 5.5
@@ -470,9 +470,11 @@ class TestSaveCommandMissingPaths:
             cmd = get_command(bot, "save")
             await cmd.callback(mock_interaction, name=None)
 
-            # Save uses followup.send for rate limit (not response.send_message)
-            mock_interaction.followup.send.assert_awaited_once()
-            call_args = str(mock_interaction.followup.send.call_args)
+            # Save uses response.send_message for rate limit (not followup.send)
+            mock_interaction.response.send_message.assert_awaited_once()
+            call_kwargs = mock_interaction.response.send_message.call_args.kwargs
+            assert call_kwargs.get("ephemeral") is True, "Rate limit message must be ephemeral"
+            call_args = str(mock_interaction.response.send_message.call_args)
             assert "5.5" in call_args or "slow down" in call_args.lower()
 
     @pytest.mark.asyncio
