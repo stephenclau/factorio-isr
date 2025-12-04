@@ -484,7 +484,7 @@ class RconStatsCollector:
             Formatted message string
         """
         lines = [
-            "📊 **Server Status**",
+            "📊 **Server Stats**",
             f"👥 Players Online: {player_count}",
         ]
 

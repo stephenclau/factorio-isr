@@ -73,7 +73,7 @@ class DiscordBot(discord.Client):
         logger.info("discord_bot_initialized", bot_name=bot_name, phase="5.2")
 
     # ========================================================================
-    # PHASE 6: RCON Uptime Format Helper
+    # PHASE 6: RCON Connection Status Format Helper
     # ========================================================================
     
     def _format_uptime(self, uptime_delta) -> str:
@@ -103,6 +103,62 @@ class DiscordBot(discord.Client):
             parts.append(f"{minutes}m")
         
         return " ".join(parts) if parts else "< 1m"
+    
+    # ========================================================================
+    # PHASE 6: RCON Server Uptime Query
+    # ========================================================================
+    
+    async def _get_game_uptime(self) -> str:
+        """
+        Get actual Factorio server uptime via RCON.
+        
+        Returns:
+            Formatted uptime string or "Unknown" on error
+        """
+        if not self.rcon_client or not self.rcon_client.is_connected:
+            return "Unknown"
+        
+        try:
+            # Query server ticks using proper Lua syntax
+            # Note: Use /c for command mode, not /sc
+            response = await self.rcon_client.execute("/c rcon.print(game.tick)")
+            
+            # Log the raw response for debugging
+            logger.debug("game_uptime_response", response=response, length=len(response))
+            
+            # Check if response is empty or invalid
+            if not response or not response.strip():
+                logger.warning("game_uptime_empty_response")
+                return "Unknown"
+            
+            # Try to parse the tick count
+            try:
+                ticks = int(response.strip())
+            except ValueError as e:
+                logger.warning("game_uptime_parse_failed", response=response, error=str(e))
+                return "Unknown"
+            
+            # Validate tick count is reasonable
+            if ticks < 0:
+                logger.warning("game_uptime_negative_ticks", ticks=ticks)
+                return "Unknown"
+            
+            # Convert ticks to seconds (60 ticks = 1 second)
+            total_seconds = ticks // 60
+            
+            # Use existing _format_uptime method
+            from datetime import timedelta
+            uptime_delta = timedelta(seconds=total_seconds)
+            formatted = self._format_uptime(uptime_delta)
+            
+            logger.debug("game_uptime_calculated", ticks=ticks, seconds=total_seconds, formatted=formatted)
+            return formatted
+            
+        except Exception as e:
+            logger.warning("game_uptime_query_failed", error=str(e), exc_info=True)
+            return "Unknown"
+    
+    
     # ========================================================================
     # PHASE 5.2: RCON Status Monitoring
     # ========================================================================
@@ -314,12 +370,15 @@ class DiscordBot(discord.Client):
 
             try:
                 uptime_result: str = "N/A"
+                game_uptime: str = "N/A"
                 
                 if self.rcon_client and self.rcon_client.is_connected:
                     players = await self.rcon_client.get_players()
                     player_count = len(players)
                     rcon_status = True
-                    server_status = "Online"
+                    rcon_conn_status = "Online"
+                    
+                    game_uptime = await self._get_game_uptime()
                     
                     # Calculate uptime from when RCON last connected
                     if self.rcon_last_connected:
@@ -330,17 +389,29 @@ class DiscordBot(discord.Client):
                 else:
                     player_count = 0
                     rcon_status = False
-                    server_status = "RCON Disconnected"
+                    rcon_conn_status = "Offline"
 
-                embed = EmbedBuilder.server_status_embed(
-                    status=server_status,
-                    players_online=player_count,
-                    rcon_enabled=rcon_status,
-                    uptime=uptime_result
+                embed = discord.Embed(
+                    title="🏭 Factorio Server Status",
+                    color=EmbedBuilder.COLOR_SUCCESS if rcon_status else EmbedBuilder.COLOR_WARNING,
+                    timestamp=discord.utils.utcnow()
                 )
-
+                
+                embed.add_field(name="Bot Status", value=f"🟢 {rcon_conn_status}" if rcon_status else f"🔴 {rcon_conn_status}", inline=True)
+                embed.add_field(name="Players Online", value=f"👥 {player_count}", inline=True)
+                embed.add_field(name="RCON", value=f"{'✅ Connected' if rcon_status else '❌ Disconnected'}", inline=True)
+                
+                # Server uptime (from game ticks)
+                embed.add_field(name="Total Game Time", value=f"⏱️ {game_uptime}", inline=True)
+                
+                # RCON connection uptime (optional - shows how long bot has been monitoring)
+                if rcon_status:
+                    embed.add_field(name="Monitoring Since", value=f"📡 {uptime_result}", inline=True)
+                
+                embed.set_footer(text="Factorio ISR")
+                
                 await interaction.followup.send(embed=embed)
-
+                
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to get status: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -802,15 +873,18 @@ class DiscordBot(discord.Client):
         async def save_command(interaction: discord.Interaction, name: str | None = None) -> None:
             is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
             if is_limited:
-                await interaction.followup.send(
-                    f"⏱️ Slow down! Try again in {retry:.1f}s"
+                await interaction.response.send_message(
+                    f"⏱️ Slow down! Try again in {retry:.1f}s",
+                    ephemeral=True
                 )
                 return
             
             await interaction.response.defer()
+            
             if self.rcon_client is None:
                 await interaction.followup.send("⚠️ RCON not available. Cannot save game.")
                 return
+            
             try:
                 cmd = f"/save {name}" if name else "/save"
                 resp = await self.rcon_client.execute(cmd)
@@ -820,32 +894,28 @@ class DiscordBot(discord.Client):
                     # Custom save name provided
                     label = name
                 else:
-                    # No custom name - parse response or query server
-                    # Try to extract save name from response like "Saving to _autosave1 (non-blocking)."
+                    # Parse save name from response
                     import re
                     
-                    # First try to get from server directly
-                    try:
-                        save_name_resp = await self.rcon_client.execute(
-                            '/c rcon.print(game.server_save or "unknown")'
-                        )
-                        label = save_name_resp.strip()
-                        if label == "unknown" or not label:
-                            # Fallback: try to parse from save response
-                            match = re.search(r"Saving to ([\\w-_]+)", resp)
-                            label = match.group(1) if match else "current save"
-                    except Exception:
-                        # Last resort: parse response
-                        match = re.search(r"Saving to ([\\w-_]+)", resp)
+                    # Try full path format first: "Saving map to /path/to/LosHermanos.zip"
+                    match = re.search(r"/([^/]+?)\.zip", resp)
+                    
+                    if match:
+                        label = match.group(1)
+                    else:
+                        # Fallback to simpler format: "Saving to _autosave1 (non-blocking)"
+                        match = re.search(r"Saving (?:map )?to ([\w-]+)", resp)
                         label = match.group(1) if match else "current save"
                 
                 msg = (
-                    f"💾 **Game Saved**\\n\\n"
-                    f"Save name: **{label}**\\n\\n"
-                    f"Server response:\\n{resp}"
+                    f"💾 **Game Saved**\n\n"
+                    f"Save name: **{label}**\n\n"
+                    f"Server response:\n{resp}"
                 )
+                
                 await interaction.followup.send(msg)
                 logger.info("game_saved", name=label, moderator=interaction.user.name)
+                
             except Exception as e:
                 logger.error("save_command_failed", error=str(e), name=name)
                 await interaction.followup.send(f"❌ Failed to save game: {str(e)}")
