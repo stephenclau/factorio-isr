@@ -1,0 +1,74 @@
+# Factorio ISR - Multi-Server Configuration
+# Place this file in your project root directory
+#
+# Server tags must be:
+#   - Lowercase only
+#   - Alphanumeric with hyphens
+#   - 1-16 characters max
+#   - Examples: prod, stg, dev, lh, pvp-arena, co-op
+
+servers:
+  # Production server - main 24/7 gameplay
+  lh-west:
+    name: "Los Hermanos Factorio"
+    description: "Main 24/7 server"
+    rcon_host: 172.20.48.220      # Docker container name or IP
+    rcon_port: 27015                # RCON port
+    rcon_password: 
+    event_channel_id: 1443838551019094048  # Discord channel ID for events
+    stats_interval: 300             # Post stats every 5 minutes
+    # Performance monitoring (NEW)
+    collect_ups: true
+    collect_evolution: true
+    enable_alerts: true
+    alert_check_interval: 60  # Check every 60 seconds
+    alert_samples_required: 3  # 3 consecutive bad samples
+    ups_warning_threshold: 55.0
+    ups_recovery_threshold: 58.0
+    ups_ema_alpha: 0.2
+    alert_cooldown: 300  # 5 min between alerts
+    
+  # Staging server - testing before production deployment
+  # stg:
+  #   name: "Staging"
+  #   description: "Testing environment"
+  #   rcon_host: "factorio-staging"
+  #   rcon_port: 27015
+  #   rcon_password: "your-staging-secret-here"
+  #   event_channel_id: 987654321098765432
+  #   stats_interval: 600             # Post stats every 10 minutes
+
+  # # Los Hermanos - creative/experimental world
+  # lh:
+  #   name: "Los Hermanos"
+  #   description: "Creative testing world"
+  #   rcon_host: "factorio-lh"
+  #   rcon_port: 27015
+  #   rcon_password: "your-lh-secret-here"
+  #   event_channel_id: 555555555555555555
+  #   stats_interval: 300
+
+  # Development server (optional)
+  # dev:
+  #   name: "Development"
+  #   description: "Mod testing and development"
+  #   rcon_host: "localhost"
+  #   rcon_port: 27015
+  #   rcon_password: "dev-password"
+  #   event_channel_id: 111111111111111111
+  #   stats_interval: 900  # 15 minutes
+
+# Configuration Notes:
+# 
+# - `tag`: Used in commands like /factorio connect prod
+# - `name`: Human-readable name shown in Discord
+# - `description`: Optional tooltip shown in server list
+# - `rcon_host`: Hostname or IP of Factorio server
+# - `rcon_port`: RCON port (default: 27015)
+# - `rcon_password`: RCON password from server-settings.json
+# - `event_channel_id`: Discord channel ID for this server's events (optional)
+# - `stats_interval`: How often to post stats in seconds (default: 300)
+#
+# To get Discord channel ID:
+# 1. Enable Developer Mode in Discord (User Settings > Advanced)
+# 2. Right-click channel > Copy ID

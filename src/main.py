@@ -6,6 +6,7 @@ Real-time Factorio server event monitoring with Discord integration.
 Phase 2: Multi-channel routing support.
 Phase 3: Optional RCON support for server statistics.
 Phase 4: Discord bot mode with slash commands.
+Phase 6: Multi-server support with ServerManager (REQUIRED).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ import signal
 import sys
 from pathlib import Path
 from typing import Optional, Any
+
 import structlog
 
 # Import helpers with support for package vs. flat layout
@@ -36,18 +38,22 @@ except ImportError:
     from discord_interface import DiscordInterfaceFactory, DiscordInterface  # type: ignore
     from event_parser import EventParser  # type: ignore
 
-# Optional RCON (Phase 3)
+# Phase 6: ServerManager (REQUIRED for multi-server support)
 try:
-    from .rcon_client import RconClient, RconStatsCollector  # type: ignore
-    RCON_AVAILABLE = True
+    from .server_manager import ServerManager  # type: ignore
+    from .config import ServerConfig  # type: ignore
+
+    SERVER_MANAGER_AVAILABLE = True
 except ImportError:
     try:
-        from rcon_client import RconClient, RconStatsCollector  # type: ignore
-        RCON_AVAILABLE = True
+        from server_manager import ServerManager  # type: ignore
+        from config import ServerConfig  # type: ignore
+
+        SERVER_MANAGER_AVAILABLE = True
     except ImportError:
-        RconClient = None  # type: ignore
-        RconStatsCollector = None  # type: ignore
-        RCON_AVAILABLE = False
+        ServerManager = None  # type: ignore
+        ServerConfig = None  # type: ignore
+        SERVER_MANAGER_AVAILABLE = False
 
 logger = structlog.get_logger()
 
@@ -69,6 +75,7 @@ def setup_logging(log_level: str, log_format: str) -> None:
     }
 
     min_level = level_map.get(log_level.lower(), logging.INFO)
+
     processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
@@ -93,17 +100,16 @@ def setup_logging(log_level: str, log_format: str) -> None:
 
 
 class Application:
-    """Main application orchestrator with Discord bot/webhook support."""
+    """Main application orchestrator with multi-server support via ServerManager."""
 
     def __init__(self) -> None:
         """Initialize application components."""
         self.config: Any = None
         self.health_server: Optional[HealthCheckServer] = None
         self.log_tailer: Optional[LogTailer] = None
-        self.discord: Optional[DiscordInterface] = None  # ✅ Unified interface
+        self.discord: Optional[DiscordInterface] = None  # Unified interface
         self.event_parser: Optional[EventParser] = None
-        self.rcon_client: Optional[Any] = None  # Optional[RconClient]
-        self.stats_collector: Optional[Any] = None  # Optional[RconStatsCollector]
+        self.server_manager: Optional[Any] = None  # ServerManager instance
         self.shutdown_event: asyncio.Event = asyncio.Event()
 
     async def setup(self) -> None:
@@ -114,12 +120,10 @@ class Application:
         try:
             self.config = load_config()
             assert self.config is not None, "Config loading returned None"
-
             if not validate_config(self.config):
                 raise ValueError("Configuration validation failed")
         except Exception as e:
             logger.error("config_load_failed", error=str(e))
-            # Re-raise so tests can assert failure behavior
             raise
 
         assert self.config is not None
@@ -164,7 +168,7 @@ class Application:
     async def start(self) -> None:
         """Start all application components."""
         logger.info("application_starting_components")
-        
+
         assert self.config is not None, "Config not loaded"
         assert self.health_server is not None, "Health server not initialized"
 
@@ -172,10 +176,11 @@ class Application:
         await self.health_server.start()
         logger.info(
             "health_server_started",
-            url=f"http://{self.config.health_check_host}:{self.config.health_check_port}/health",
+            url=f"http://{self.config.health_check_host}:"
+            f"{self.config.health_check_port}/health",
         )
 
-        # ✅ Initialize Discord interface (webhook or bot mode)
+        # Initialize Discord interface (webhook or bot mode)
         self.discord = DiscordInterfaceFactory.create_interface(self.config)
         assert self.discord is not None
 
@@ -192,20 +197,22 @@ class Application:
         # Event parser must exist from setup
         assert self.event_parser is not None
 
-        # RCON (optional Phase 3)
-        if getattr(self.config, "rcon_enabled", False):
-            if RCON_AVAILABLE:
-                await self._start_rcon()
-            else:
-                logger.warning(
-                    "rcon_unavailable",
-                    message=(
-                        "RCON enabled but module not available. "
-                        "Install with: pip install aiorcon"
-                    ),
-                )
-        else:
-            logger.info("rcon_disabled")
+        # Phase 6: Multi-server mode via ServerManager (REQUIRED)
+        if not getattr(self.config, "is_multi_server", False) or not getattr(
+            self.config, "servers", None
+        ):
+            logger.error(
+                "servers_yml_required",
+                message=(
+                    "servers.yml configuration is REQUIRED. "
+                    "Legacy RCON_* environment variables are deprecated. "
+                    "Create a servers.yml file with at least one server."
+                ),
+            )
+            raise ValueError("servers.yml configuration required")
+
+        # Start multi-server mode (wires Discord bot + per-server RCON + stats)
+        await self._start_multi_server_mode()
 
         # Log tailer
         self.log_tailer = LogTailer(
@@ -218,85 +225,122 @@ class Application:
 
         logger.info("application_running")
 
-    async def _start_rcon(self) -> None:
-        """Start RCON client and stats collector (optional Phase 3)."""
+    async def _start_multi_server_mode(self) -> None:
+        """Initialize ServerManager and add all configured servers."""
         assert self.config is not None
         assert self.discord is not None
 
-        if not RCON_AVAILABLE or RconClient is None or RconStatsCollector is None:
-            logger.error("rcon_not_available", message="RCON module not imported")
-            return
+        if not SERVER_MANAGER_AVAILABLE or ServerManager is None:
+            logger.error(
+                "server_manager_unavailable",
+                message="ServerManager module not available. Check imports.",
+            )
+            raise ImportError("ServerManager not available")
 
-        if not getattr(self.config, "rcon_password", None):
-            logger.warning("rcon_enabled_but_no_password")
-            return
+        # Validate bot mode (ServerManager requires bot for commands)
+        if not getattr(self.config, "discord_bot_token", None):
+            logger.error(
+                "bot_mode_required_for_multi_server",
+                message="Multi-server mode requires Discord bot mode (DISCORD_BOT_TOKEN)",
+            )
+            raise ValueError("Bot mode required for multi-server support")
 
+        # Get the bot instance from the interface
         try:
-            # Client
-            self.rcon_client = RconClient(
-                host=self.config.rcon_host,
-                port=self.config.rcon_port,
-                password=self.config.rcon_password,
+            from .discord_interface import BotDiscordInterface
+        except ImportError:
+            from discord_interface import BotDiscordInterface  # type: ignore
+
+        if not isinstance(self.discord, BotDiscordInterface):
+            logger.error(
+                "bot_interface_required",
+                message="Multi-server mode requires BotDiscordInterface",
             )
+            raise TypeError("Bot interface required")
 
-            assert self.rcon_client is not None
-            await self.rcon_client.start()
+        bot = self.discord.bot
 
-            # Pass RCON client to bot for slash commands (Phase 4)
-            # Use try/except for import to handle both package and flat layouts
+        # Create ServerManager
+        # NOTE: ServerManager is responsible for:
+        #   - Creating per-server RconClient instances with context from servers.yml
+        #   - Passing the unified DiscordInterface to each RconStatsCollector
+        self.server_manager = ServerManager(discord_interface=self.discord) 
+        logger.info("server_manager_created")
+
+        # Add all servers from config
+        if not self.config.servers:
+            logger.error(
+                "no_servers_configured",
+                message="servers.yml has no servers defined",
+            )
+            raise ValueError("No servers configured in servers.yml")
+
+        added_servers: list[str] = []
+        failed_servers: list[str] = []
+
+        for tag, server_config in self.config.servers.items():
             try:
-                from .discord_interface import BotDiscordInterface
-            except ImportError:
-                from discord_interface import BotDiscordInterface  # type: ignore
-            
-            if isinstance(self.discord, BotDiscordInterface):
-                self.discord.bot.set_rcon_client(self.rcon_client)
-                logger.info("rcon_client_passed_to_bot")
+                # Let ServerManager construct RconClient with proper context:
+                # server_name / server_tag come from server_config and are
+                # consumed by RconStatsCollector via rcon_client.use_context().
+                await self.server_manager.add_server(server_config)
+                added_servers.append(f"{tag} ({server_config.name})")
 
-            # Stats - pass the unified discord interface
-            self.stats_collector = RconStatsCollector(
-                rcon_client=self.rcon_client,
-                discord_client=self.discord,
-                interval=self.config.stats_interval,
-            )
+                logger.info(
+                    "server_added_to_manager",
+                    tag=tag,
+                    name=server_config.name,
+                    host=server_config.rcon_host,
+                    port=server_config.rcon_port,
+                )
+            except Exception as e:
+                failed_servers.append(f"{tag}: {str(e)}")
+                logger.error(
+                    "failed_to_add_server_to_manager",
+                    tag=tag,
+                    name=server_config.name,
+                    error=str(e),
+                    exc_info=True,
+                )
 
-            assert self.stats_collector is not None
-            await self.stats_collector.start()
+        # Wire ServerManager to bot so commands and presence can reach it
+        bot.set_server_manager(self.server_manager)
+        logger.info("server_manager_wired_to_bot")
 
-            logger.info(
-                "rcon_started",
-                host=self.config.rcon_host,
-                port=self.config.rcon_port,
-                stats_interval=self.config.stats_interval,
-            )
+        # Report summary
+        logger.info(
+            "multi_server_mode_initialized",
+            total_configured=len(self.config.servers),
+            added=len(added_servers),
+            failed=len(failed_servers),
+            added_servers=added_servers,
+            failed_servers=failed_servers if failed_servers else None,
+        )
 
-        except Exception as e:
-            logger.error("rcon_start_failed", error=str(e), exc_info=True)
-            # RCON is optional, do not re-raise
-
-
-
+        if not added_servers:
+            raise ConnectionError("Failed to add any servers to ServerManager")
 
     async def handle_log_line(self, line: str) -> None:
-        """
-        Process a log line from Factorio.
-
-        Args:
-            line: Raw log line from console.log
-        """
-        # Allow tests to call handle_log_line with missing dependencies without crashing
+        """Process a log line from Factorio."""
         if self.event_parser is None:
             logger.warning("handle_log_line_no_parser")
             return
-
         if self.discord is None:
             logger.warning("handle_log_line_no_discord")
             return
-
+        
+        # 🔍 ADD THIS DEBUG LOG
+        logger.debug("processing_log_line", line=line[:100])  # First 100 chars
+        
         event = self.event_parser.parse_line(line)
+        
+        # 🔍 ADD THIS DEBUG LOG
         if event is None:
+            logger.debug("no_event_parsed", line=line[:100])
             return
-
+        else:
+            logger.info("event_parsed", event_type=event.event_type.value)
+        
         success = await self.discord.send_event(event)
         if not success:
             logger.warning(
@@ -309,21 +353,13 @@ class Application:
         """Gracefully stop all components."""
         logger.info("application_stopping")
 
-        # Stats collector
-        if self.stats_collector is not None:
+        # ServerManager (stops all RCON clients and stats collectors)
+        if self.server_manager is not None:
             try:
-                await self.stats_collector.stop()
-            except Exception:
-                pass
-            logger.debug("stats_collector_stopped")
-
-        # RCON client
-        if self.rcon_client is not None:
-            try:
-                await self.rcon_client.stop()
-            except Exception:
-                pass
-            logger.debug("rcon_disconnected")
+                await self.server_manager.stop_all()
+            except Exception as e:
+                logger.error("server_manager_stop_failed", error=str(e))
+            logger.debug("server_manager_stopped")
 
         # Log tailer
         if self.log_tailer is not None:
@@ -333,7 +369,7 @@ class Application:
                 pass
             logger.debug("log_tailer_stopped")
 
-        # ✅ Discord interface (unified for both webhook and bot)
+        # Discord interface (unified for both webhook and bot)
         if self.discord is not None:
             try:
                 await self.discord.disconnect()
@@ -364,6 +400,10 @@ class Application:
             raise
         finally:
             await self.stop()
+
+    async def main(self) -> None:  # type: ignore[override]
+        """Unused; kept for backward compatibility."""
+        await self.run()
 
 
 async def main() -> None:

@@ -1,0 +1,142 @@
+# Factorio ISR - Multi-Server Configuration
+# Copy this to servers.yml and configure for your environment
+
+# Server tags must be:
+# - Lowercase only
+# - Alphanumeric with hyphens
+# - 1-16 characters max
+# - Examples: prod, stg, dev, lh, pvp-arena, co-op
+
+servers:
+  # Production server - main 24/7 gameplay
+  prod:
+    name: "Production"
+    description: "Main 24/7 server"
+    rcon_host: "factorio-server"  # Docker container name, hostname, or IP
+    rcon_port: 27015               # RCON port (default: 27015)
+    rcon_password: "your-password-here"
+    event_channel_id: 123456789012345678  # Discord channel ID for events
+    stats_interval: 300            # Post stats every 5 minutes (in seconds)
+
+  # Staging server - testing before production deployment
+  # stg:
+  #   name: "Staging"
+  #   description: "Testing environment"
+  #   rcon_host: "factorio-staging"
+  #   rcon_port: 27015
+  #   rcon_password: "your-staging-password"
+  #   event_channel_id: 987654321098765432
+  #   stats_interval: 600  # Post stats every 10 minutes
+
+  # Development server - local testing
+  # dev:
+  #   name: "Development"
+  #   description: "Mod testing and development"
+  #   rcon_host: "localhost"
+  #   rcon_port: 27015
+  #   rcon_password: "dev-password"
+  #   event_channel_id: 111111111111111111
+  #   stats_interval: 900  # Post stats every 15 minutes
+
+# ============================================================================
+# Configuration Reference
+# ============================================================================
+
+# tag (key in servers dict):
+#   - Used in Discord commands: /factorio connect <tag>
+#   - Must be unique, lowercase, alphanumeric with hyphens
+#   - Examples: prod, stg, dev, pvp, coop
+
+# name (required):
+#   - Human-readable name shown in Discord embeds
+#   - Examples: "Production", "PvP Arena", "Co-op World"
+
+# description (optional):
+#   - Brief description shown in server list
+#   - Helps users identify the server purpose
+
+# rcon_host (required):
+#   - Hostname, IP address, or Docker container name
+#   - Examples: "localhost", "192.168.1.100", "factorio-server"
+
+# rcon_port (required):
+#   - RCON port configured in server-settings.json
+#   - Default: 27015
+
+# rcon_password (required):
+#   - RCON password from server-settings.json
+#   - Keep this secret! Do not commit to git
+
+# event_channel_id (optional):
+#   - Discord channel ID for this server's events
+#   - Each server can post to a different channel
+#   - Leave blank to disable event posting for this server
+
+# stats_interval (optional):
+#   - How often to post stats in seconds
+#   - Default: 300 (5 minutes)
+#   - Minimum: 60 seconds to avoid rate limits
+
+# ============================================================================
+# Getting Discord Channel IDs
+# ============================================================================
+
+# 1. Enable Developer Mode in Discord:
+#    User Settings > Advanced > Developer Mode (toggle ON)
+
+# 2. Right-click the channel > Copy ID
+
+# 3. Paste the ID (should be ~18 digits)
+
+# ============================================================================
+# Single-Server Configuration
+# ============================================================================
+
+# Even for a single server, you must use servers.yml:
+
+# servers:
+#   prod:
+#     name: "My Server"
+#     rcon_host: "localhost"
+#     rcon_port: 27015
+#     rcon_password: "my-password"
+#     event_channel_id: 123456789012345678
+#     stats_interval: 300
+
+# ============================================================================
+# Security Best Practices
+# ============================================================================
+
+# - Add servers.yml to .gitignore (passwords stored here!)
+# - Use different passwords for each server
+# - Restrict RCON access to trusted networks
+# - Use strong, unique passwords (16+ characters)
+# - Rotate passwords periodically
+
+# ============================================================================
+# Docker Networking
+# ============================================================================
+
+# If using Docker Compose:
+# - Use service names as hostnames (e.g., "factorio-server")
+# - Ensure bot and server are on the same network
+# - RCON port must be exposed in server container
+
+# Example docker-compose.yml snippet:
+#
+# services:
+#   factorio:
+#     image: factoriotools/factorio:stable
+#     ports:
+#       - "27015:27015"  # RCON port
+#     networks:
+#       - factorio-net
+#
+#   factorio-isr:
+#     build: .
+#     networks:
+#       - factorio-net
+#     environment:
+#       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+#     volumes:
+#       - ./servers.yml:/app/servers.yml

@@ -271,10 +271,6 @@ class FactorioEventFormatter:
         """
         Format a FactorioEvent as a Discord message.
         """
-        if not isinstance(event, FactorioEvent):
-            raise AssertionError(
-                f"event must be FactorioEvent, got {type(event)}"
-            )
         
         # Preferred: use preformatted message if provided.
         if event.formatted_message:

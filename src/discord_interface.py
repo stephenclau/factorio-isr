@@ -170,68 +170,6 @@ class EmbedBuilder:
         )
 
 
-class PresenceUpdater:
-    """Updates bot presence with server information (Discord-specific)."""
-
-    def __init__(self, bot: Any, interval: int = 60):  # bot is discord.Client
-        """
-        Initialize presence updater.
-
-        Args:
-            bot: Discord bot instance
-            interval: Update interval in seconds
-        """
-        self.bot = bot
-        self.interval = interval
-        self.task: Optional[asyncio.Task] = None
-
-    async def start(self) -> None:
-        """Start the presence update loop."""
-        if self.task is None:
-            self.task = asyncio.create_task(self._update_loop())
-            logger.info("presence_updater_started", interval=self.interval)
-
-    async def stop(self) -> None:
-        """Stop the presence update loop."""
-        if self.task is not None:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
-            self.task = None
-            logger.info("presence_updater_stopped")
-
-    async def _update_loop(self) -> None:
-        """Main update loop."""
-        await self.bot.wait_until_ready()
-
-        while not self.bot.is_closed():
-            try:
-                await self._update_presence()
-                await asyncio.sleep(self.interval)
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error("presence_update_failed", error=str(e))
-                await asyncio.sleep(self.interval)
-
-    async def _update_presence(self) -> None:
-        """Update bot presence with server info."""
-        if not DISCORD_AVAILABLE or discord is None:
-            return
-
-        activity = discord.Activity(
-            type=discord.ActivityType.watching,
-            name="Factorio Server | /factorio help"
-        )
-
-        await self.bot.change_presence(
-            status=discord.Status.online,
-            activity=activity
-        )
-
-
 # ============================================================================
 # ABSTRACT INTERFACE (Enhanced for Phase 5.1)
 # ============================================================================
@@ -324,10 +262,10 @@ class BotDiscordInterface(DiscordInterface):
         # PHASE 5.1: Discord-specific features
         if DISCORD_AVAILABLE:
             self.embed_builder = EmbedBuilder()
-            self.presence_updater = PresenceUpdater(self.bot, interval=60)
+           
         else:
             self.embed_builder = None  # type: ignore
-            self.presence_updater = None  # type: ignore
+            
 
         # PHASE 5.1: General utilities (from utils package)
         self.query_cooldown = QUERY_COOLDOWN
@@ -337,8 +275,7 @@ class BotDiscordInterface(DiscordInterface):
     async def connect(self) -> None:
         await self.bot.connect_bot()
 
-        if self.presence_updater:
-            await self.presence_updater.start()
+        
 
         logger.info(
             "bot_interface_connected",
@@ -347,8 +284,7 @@ class BotDiscordInterface(DiscordInterface):
         )
 
     async def disconnect(self) -> None:
-        if self.presence_updater:
-            await self.presence_updater.stop()
+        
 
         await self.bot.disconnect_bot()
         logger.info("bot_interface_disconnected")
@@ -437,140 +373,6 @@ class BotDiscordInterface(DiscordInterface):
     def is_connected(self) -> bool:
         return self.bot.is_connected
 
-
-# ============================================================================
-# FACTORY - FIXED IMPORTS WITH PROPER sys.path
-# ============================================================================
-
-# class DiscordInterfaceFactory:
-#     """Factory for creating Discord interface instances."""
-
-#     @staticmethod
-#     def create_interface(config: Any) -> DiscordInterface:
-#         """
-#         Create appropriate Discord interface based on configuration.
-
-#         Args:
-#             config: Application configuration
-
-#         Returns:
-#             DiscordInterface instance (webhook or bot mode)
-
-#         Raises:
-#             ValueError: If neither webhook nor bot is configured
-#         """
-#         if config.discord_bot_token:
-#             logger.info("creating_bot_interface", phase="5.1")
-
-#             # Import DiscordBot when needed
-#             try:
-#                 import sys
-#                 import os
-
-#                 # Get the current module's path
-#                 current_module = sys.modules[__name__]
-#                 current_path = getattr(current_module, '__file__', None)
-
-#                 if current_path:
-#                     # Get the directory containing discord_interface.py (should be src/)
-#                     src_dir = os.path.dirname(os.path.abspath(current_path))
-
-#                     # Add src directory to sys.path if not already there
-#                     if src_dir not in sys.path:
-#                         sys.path.insert(0, src_dir)
-#                         logger.debug("added_to_sys_path", path=src_dir)
-
-#                     # Now try normal import (utils should be importable now)
-#                     try:
-#                         from discord_bot import DiscordBot
-#                     except ImportError:
-#                         # Fallback to importlib
-#                         import importlib.util
-#                         bot_path = os.path.join(src_dir, 'discord_bot.py')
-
-#                         spec = importlib.util.spec_from_file_location("discord_bot", bot_path)
-#                         if spec and spec.loader:
-#                             discord_bot_module = importlib.util.module_from_spec(spec)
-#                             sys.modules['discord_bot'] = discord_bot_module
-#                             spec.loader.exec_module(discord_bot_module)
-#                             DiscordBot = discord_bot_module.DiscordBot
-#                         else:
-#                             raise ImportError("Could not load discord_bot module")
-#                 else:
-#                     raise ImportError("Could not determine module path")
-
-#             except Exception as e:
-#                 logger.error("failed_to_import_discord_bot", error=str(e), exc_info=True)
-#                 raise ImportError(
-#                     f"Could not import DiscordBot. Make sure discord_bot.py is in the same directory. Error: {e}"
-#                 )
-
-#             bot = DiscordBot(
-#                 token=config.discord_bot_token,
-#                 bot_name=config.bot_name,
-#             )
-
-#             if config.discord_event_channel_id:
-#                 bot.set_event_channel(config.discord_event_channel_id)
-#             else:
-#                 logger.warning(
-#                     "bot_mode_no_channel",
-#                     message="DISCORD_EVENT_CHANNEL_ID not set. Events won't be sent.",
-#                 )
-
-#             return BotDiscordInterface(bot)
-
-#         elif config.discord_webhook_url:
-#             logger.info("creating_webhook_interface")
-
-#             try:
-#                 import sys
-#                 import os
-
-#                 current_module = sys.modules[__name__]
-#                 current_path = getattr(current_module, '__file__', None)
-
-#                 if current_path:
-#                     src_dir = os.path.dirname(os.path.abspath(current_path))
-
-#                     if src_dir not in sys.path:
-#                         sys.path.insert(0, src_dir)
-
-#                     try:
-#                         from discord_client import DiscordClient
-#                     except ImportError:
-#                         import importlib.util
-#                         client_path = os.path.join(src_dir, 'discord_client.py')
-
-#                         spec = importlib.util.spec_from_file_location("discord_client", client_path)
-#                         if spec and spec.loader:
-#                             discord_client_module = importlib.util.module_from_spec(spec)
-#                             sys.modules['discord_client'] = discord_client_module
-#                             spec.loader.exec_module(discord_client_module)
-#                             DiscordClient = discord_client_module.DiscordClient
-#                         else:
-#                             raise ImportError("Could not load discord_client module")
-#                 else:
-#                     raise ImportError("Could not determine module path")
-
-#             except Exception as e:
-#                 logger.error("failed_to_import_discord_client", error=str(e), exc_info=True)
-#                 raise ImportError(
-#                     f"Could not import DiscordClient. Error: {e}"
-#                 )
-
-#             client = DiscordClient(
-#                 webhook_url=config.discord_webhook_url,
-#                 bot_name=config.bot_name,
-#                 bot_avatar_url=getattr(config, 'bot_avatar_url', None),
-#             )
-
-#             return WebhookDiscordInterface(client)
-
-#         else:
-#             raise ValueError(
-#                 "Either DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL must be configured"
-#             )
 """
 RECOMMENDED SOLUTION: Refactor create_interface() for Testability
 
@@ -706,6 +508,8 @@ class DiscordInterfaceFactory:
             bot = DiscordBot(
                 token=config.discord_bot_token,
                 bot_name=config.bot_name,
+                breakdown_mode=config.rcon_breakdown_mode,
+                breakdown_interval=config.rcon_breakdown_interval,
             )
 
             if config.discord_event_channel_id:
