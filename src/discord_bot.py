@@ -374,7 +374,7 @@ class DiscordBot(discord.Client):
             transition_detected = True
             if current_status:
                 # Reconnected
-                await self._notify_rcon_reconnected(server_tag)
+                await self._notify_rcon_reconnected(server_tag) 
                 state["last_connected"] = datetime.now(timezone.utc)
             else:
                 # Disconnected
@@ -542,7 +542,7 @@ class DiscordBot(discord.Client):
                 await asyncio.sleep(10)
 
     
-    async def _notify_rcon_disconnected(self) -> None:
+    async def _notify_rcon_disconnected(self, server_tag: str) -> None:
         """Send notification when RCON disconnects."""
         if not self.event_channel_id or self.rcon_status_notified:
             return
@@ -561,15 +561,15 @@ class DiscordBot(discord.Client):
                 embed.color = EmbedBuilder.COLOR_WARNING
                 await channel.send(embed=embed)
                 self.rcon_status_notified = True
-                logger.info("rcon_disconnection_notified", channel_id=self.event_channel_id)
+                logger.info("rcon_disconnection_notified", channel_id=self.event_channel_id, server_tag=server_tag)
 
                 # Update presence to reflect disconnected state
                 await self.update_presence()
 
         except Exception as e:
-            logger.warning("rcon_disconnection_notification_failed", error=str(e))
+            logger.warning("rcon_disconnection_notification_failed", error=str(e), server_tag=server_tag)
 
-    async def _notify_rcon_reconnected(self) -> None:
+    async def _notify_rcon_reconnected(self, server_tag: str) -> None:
         """Send notification when RCON reconnects."""
         if not self.event_channel_id:
             return
@@ -595,13 +595,13 @@ class DiscordBot(discord.Client):
                 embed.color = EmbedBuilder.COLOR_SUCCESS
                 await channel.send(embed=embed)
                 self.rcon_status_notified = False
-                logger.info("rcon_reconnection_notified", channel_id=self.event_channel_id)
+                logger.info("rcon_reconnection_notified", channel_id=self.event_channel_id, server_tag=server_tag)
 
                 # Update presence to reflect reconnected state
                 await self.update_presence()
 
         except Exception as e:
-            logger.warning("rcon_reconnection_notification_failed", error=str(e))
+            logger.warning("rcon_reconnection_notification_failed", error=str(e), server_tag=server_tag)
 
     # ========================================================================
     # Bot Lifecycle
@@ -1701,6 +1701,63 @@ class DiscordBot(discord.Client):
                 embed = EmbedBuilder.error_embed(f"Broadcast failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 logger.error("broadcast_command_failed", error=str(e), message=message)
+                
+        @factorio_group.command(name="whisper", description="Send a private message to a player")
+        @app_commands.describe(
+            player="Player name to whisper to",
+            message="Private message to send"
+        )
+        async def whisper_command(
+            interaction: discord.Interaction,
+            player: str,
+            message: str
+        ) -> None:
+            """Send a private whisper message to a specific player."""
+            is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+            if is_limited:
+                embed = EmbedBuilder.cooldown_embed(retry)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+                return
+
+            await interaction.response.defer()
+
+            # Get user-specific RCON client
+            rcon_client = self.get_rcon_for_user(interaction.user.id)
+            if rcon_client is None or not rcon_client.is_connected:
+                server_name = self.get_server_display_name(interaction.user.id)
+                embed = EmbedBuilder.error_embed(
+                    f"RCON not available for {server_name}.\n\n"
+                    f"Use `/factorio servers` to see available servers."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            try:
+                # Execute whisper command
+                resp = await rcon_client.execute(f"/whisper {player} {message}")
+                
+                embed = EmbedBuilder.info_embed(
+                    title="💬 Whisper Sent",
+                    message=(
+                        f"**To:** {player}\n"
+                        f"**Message:** _{message}_\n\n"
+                        f"Private message delivered to player."
+                    )
+                )
+                embed.color = EmbedBuilder.COLOR_SUCCESS
+                await interaction.followup.send(embed=embed)
+                logger.info(
+                    "whisper_sent",
+                    player=player,
+                    message=message,
+                    moderator=interaction.user.name
+                )
+            except Exception as e:
+                embed = EmbedBuilder.error_embed(f"Whisper failed: {str(e)}")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                logger.error("whisper_command_failed", error=str(e), player=player)        
+                
+                
 
         @factorio_group.command(name="whitelist", description="Manage server whitelist")
         @app_commands.describe(
@@ -1986,6 +2043,7 @@ class DiscordBot(discord.Client):
                 "`/factorio demote <player>` – Demote player from admin\n\n"
                 "**🔧 Server Management**\n"
                 "`/factorio broadcast <message>` – Send message to all players\n"
+                "`/factorio whisper <player> <message>` – Send private message to a player\n"
                 "`/factorio save [name]` – Save the game\n"
                 "`/factorio whitelist <action> [player]` – Manage whitelist\n"
                 " └ Actions: add, remove, list, enable, disable\n\n"
