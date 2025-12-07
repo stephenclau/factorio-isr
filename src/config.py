@@ -494,7 +494,7 @@ def load_config() -> Config:
     servers: Optional[Dict[str, ServerConfig]] = None
 
     # Priority 1: Load from YAML file
-    servers_config_path = get_config_value("SERVERS_CONFIG", default="servers.yml")
+    servers_config_path = get_config_value("SERVERS_CONFIG", default="config/servers.yml")
     if servers_config_path:
         yaml_path = Path(servers_config_path)
         servers = parse_servers_from_yaml(yaml_path)

@@ -41,6 +41,7 @@ COPY --from=builder --chown=factorio-isr:factorio-isr /root/.local /home/factori
 # Copy application
 COPY --chown=factorio-isr:factorio-isr src/ ./src/
 COPY --chown=factorio-isr:factorio-isr patterns/ ./patterns/
+COPY --chown=factorio-isr:factorio-isr config/ ./config/
 
 USER factorio-isr
 

@@ -1055,24 +1055,21 @@ class DiscordBot(discord.Client):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 logger.error("seed_command_failed", error=str(e))
 
-        @factorio_group.command(name="evolution", description="Show evolution factor using Force 2.0 API")
-        @app_commands.describe(
-            action="What to show (global, surface, all)",
-            surface="Surface name when using 'surface' action (e.g. nauvis)",
+        @factorio_group.command(
+            name="evolution",
+            description="Show evolution for a surface or all non-platform surfaces",
         )
-        @app_commands.choices(
-            action=[
-                app_commands.Choice(name="Global (all non-platform surfaces)", value="global"),
-                app_commands.Choice(name="Single surface", value="surface"),
-                app_commands.Choice(name="All surfaces (detailed, non-platform)", value="all"),
-            ]
+        @app_commands.describe(
+            target='Surface/planet name (e.g. "nauvis") or the keyword "all"',
         )
         async def evolution_command(
             interaction: discord.Interaction,
-            action: app_commands.Choice[str],
-            surface: Optional[str] = None,
+            target: str,
         ) -> None:
-            """Display evolution factor using the new Force 2.0 API."""
+            """
+            /factorio evolution all      -> aggregate evolution across all non-platform surfaces
+            /factorio evolution nauvis   -> evolution for surface 'nauvis' only
+            """
             await interaction.response.defer()
 
             # Get user-specific RCON client
@@ -1086,105 +1083,115 @@ class DiscordBot(discord.Client):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
 
+            raw = target.strip()
+            lower = raw.lower()
+
             try:
-                if action.value == "global":
-                    # Aggregate evolution across all non-platform surfaces
+                if lower == "all":
+                    # Aggregate + detailed per-surface evolution, skipping platform surfaces
                     lua = (
                         "/c "
                         "local f = game.forces['enemy']; "
                         "local total = 0; local count = 0; "
+                        "local lines = {}; "
                         "for _, s in pairs(game.surfaces) do "
                         "  if not string.find(string.lower(s.name), 'platform') then "
                         "    local evo = f.get_evolution_factor(s); "
                         "    total = total + evo; count = count + 1; "
+                        "    table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
                         "  end "
                         "end; "
                         "if count > 0 then "
                         "  local avg = total / count; "
-                        "  rcon.print(string.format('%.2f%%', avg * 100)); "
+                        "  rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); "
                         "else "
-                        "  rcon.print('0.00%%'); "
-                        "end"
-                    )
-                    resp = await rcon_client.execute(lua)
-                    title = "🐛 Global Evolution (Non-platform Surfaces)"
-                    message = f"Average enemy evolution across non-platform surfaces: **{resp.strip()}**"
-
-                elif action.value == "surface":
-                    if not surface:
-                        embed = EmbedBuilder.error_embed(
-                            "You must provide a surface name when using the 'Single surface' action.\n\n"
-                            "Example: `/factorio evolution action:surface surface:nauvis`"
-                        )
-                        await interaction.followup.send(embed=embed, ephemeral=True)
-                        return
-
-                    # Reject platform surfaces explicitly
-                    lua = (
-                        "/c "
-                        f"local s = game.get_surface('{surface}'); "
-                        "if not s then "
-                        "  rcon.print('SURFACE_NOT_FOUND'); "
-                        "  return "
+                        "  rcon.print('AGG:0.00%%'); "
                         "end; "
-                        "if string.find(string.lower(s.name), 'platform') then "
-                        "  rcon.print('SURFACE_PLATFORM_IGNORED'); "
-                        "  return "
-                        "end; "
-                        "local evo = game.forces['enemy'].get_evolution_factor(s); "
-                        "rcon.print(string.format('%.2f%%', evo * 100))"
-                    )
-                    resp = await rcon_client.execute(lua)
-                    resp_str = resp.strip()
-
-                    if resp_str == "SURFACE_NOT_FOUND":
-                        embed = EmbedBuilder.error_embed(
-                            f"Surface `{surface}` was not found.\n\n"
-                            "Use the map view or admin tools to confirm the exact surface name."
-                        )
-                        await interaction.followup.send(embed=embed, ephemeral=True)
-                        return
-
-                    if resp_str == "SURFACE_PLATFORM_IGNORED":
-                        embed = EmbedBuilder.error_embed(
-                            f"Surface `{surface}` appears to be a platform surface and is ignored for evolution queries."
-                        )
-                        await interaction.followup.send(embed=embed, ephemeral=True)
-                        return
-
-                    title = f"🐛 Evolution – Surface `{surface}`"
-                    message = f"Enemy evolution on `{surface}`: **{resp_str}**"
-
-                else:  # action.value == "all"
-                    # Detailed per-surface listing, skipping platform surfaces
-                    lua = (
-                        "/c "
-                        "local f = game.forces['enemy']; "
-                        "for _, s in pairs(game.surfaces) do "
-                        "  if not string.find(string.lower(s.name), 'platform') then "
-                        "    local evo = f.get_evolution_factor(s); "
-                        "    rcon.print(s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
-                        "  end "
+                        "for _, line in ipairs(lines) do "
+                        "  rcon.print(line); "
                         "end"
                     )
                     resp = await rcon_client.execute(lua)
                     lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
 
-                    if not lines:
+                    agg_line = next((ln for ln in lines if ln.startswith("AGG:")), None)
+                    per_surface = [ln for ln in lines if not ln.startswith("AGG:")]
+
+                    agg_value = "0.00%"
+                    if agg_line:
+                        agg_value = agg_line.replace("AGG:", "", 1).strip()
+
+                    if not per_surface:
                         title = "🐛 Evolution – All Surfaces"
-                        message = "No non-platform surfaces returned any evolution data."
+                        message = (
+                            f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
+                            "No individual non-platform surfaces returned evolution data."
+                        )
                     else:
-                        formatted = "\n".join(f"• `{ln}`" for ln in lines)
-                        title = "🐛 Evolution – All Surfaces (Non-platform)"
-                        message = f"Enemy evolution per non-platform surface:\n\n{formatted}"
+                        formatted = "\n".join(f"• `{ln}`" for ln in per_surface)
+                        title = "🐛 Evolution – All Non-platform Surfaces"
+                        message = (
+                            f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
+                            "Per-surface evolution:\n\n"
+                            f"{formatted}"
+                        )
+
+                    embed = EmbedBuilder.info_embed(title=title, message=message)
+                    await interaction.followup.send(embed=embed)
+                    logger.info(
+                        "evolution_requested",
+                        moderator=interaction.user.name,
+                        target="all",
+                    )
+                    return
+
+                # Single-surface mode
+                surface = raw
+
+                lua = (
+                    "/c "
+                    f"local s = game.get_surface('{surface}'); "
+                    "if not s then "
+                    "  rcon.print('SURFACE_NOT_FOUND'); "
+                    "  return "
+                    "end; "
+                    "if string.find(string.lower(s.name), 'platform') then "
+                    "  rcon.print('SURFACE_PLATFORM_IGNORED'); "
+                    "  return "
+                    "end; "
+                    "local evo = game.forces['enemy'].get_evolution_factor(s); "
+                    "rcon.print(string.format('%.2f%%', evo * 100))"
+                )
+                resp = await rcon_client.execute(lua)
+                resp_str = resp.strip()
+
+                if resp_str == "SURFACE_NOT_FOUND":
+                    embed = EmbedBuilder.error_embed(
+                        f"Surface `{surface}` was not found.\n\n"
+                        "Use map tools or an admin command to list available surfaces."
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                if resp_str == "SURFACE_PLATFORM_IGNORED":
+                    embed = EmbedBuilder.error_embed(
+                        f"Surface `{surface}` is a platform surface and is ignored for evolution queries."
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                title = f"🐛 Evolution – Surface `{surface}`"
+                message = (
+                    f"Enemy evolution on `{surface}`: **{resp_str}**\n\n"
+                    "Higher evolution means stronger biters!"
+                )
 
                 embed = EmbedBuilder.info_embed(title=title, message=message)
                 await interaction.followup.send(embed=embed)
                 logger.info(
                     "evolution_requested",
                     moderator=interaction.user.name,
-                    action=action.value,
-                    surface=surface,
+                    target=surface,
                 )
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to get evolution: {str(e)}")
@@ -1192,8 +1199,7 @@ class DiscordBot(discord.Client):
                 logger.error(
                     "evolution_command_failed",
                     error=str(e),
-                    action=action.value,
-                    surface=surface,
+                    target=target,
                 )
 
 

@@ -204,12 +204,12 @@ class Application:
             logger.error(
                 "servers_yml_required",
                 message=(
-                    "servers.yml configuration is REQUIRED. "
+                    "config/servers.yml configuration is REQUIRED. "
                     "Legacy RCON_* environment variables are deprecated. "
-                    "Create a servers.yml file with at least one server."
+                    "Create a config/servers.yml file with at least one server."
                 ),
             )
-            raise ValueError("servers.yml configuration required")
+            raise ValueError("config/servers.yml configuration required")
 
         # Start multi-server mode (wires Discord bot + per-server RCON + stats)
         await self._start_multi_server_mode()
@@ -262,7 +262,7 @@ class Application:
 
         # Create ServerManager
         # NOTE: ServerManager is responsible for:
-        #   - Creating per-server RconClient instances with context from servers.yml
+        #   - Creating per-server RconClient instances with context from config/servers.yml
         #   - Passing the unified DiscordInterface to each RconStatsCollector
         self.server_manager = ServerManager(discord_interface=self.discord) 
         logger.info("server_manager_created")
@@ -271,9 +271,9 @@ class Application:
         if not self.config.servers:
             logger.error(
                 "no_servers_configured",
-                message="servers.yml has no servers defined",
+                message="config/servers.yml has no servers defined",
             )
-            raise ValueError("No servers configured in servers.yml")
+            raise ValueError("No servers configured in config/servers.yml")
 
         added_servers: list[str] = []
         failed_servers: list[str] = []

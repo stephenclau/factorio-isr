@@ -61,7 +61,7 @@ class ServerManager:
         )
 
         try:
-            # Create and start RCON client with context from servers.yml
+            # Create and start RCON client with context from config/servers.yml
             client = RconClient(
                 host=config.rcon_host,
                 port=config.rcon_port,
