@@ -1646,7 +1646,7 @@ class DiscordBot(discord.Client):
                     title="💾 Game Saved",
                     message=(
                         f"Save name: **{label}**\n\n"
-                        f"Server response:\n``````"
+                        f"Server response:\n{resp}"
                     ),
                 )
                 embed.color = EmbedBuilder.COLOR_SUCCESS
