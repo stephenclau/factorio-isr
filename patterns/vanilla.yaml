@@ -8,7 +8,7 @@ events:
     emoji: '✅👋'
     message: '**{player}** joined the server'
     enabled: true
-    priority: 10
+    priority: 2
     description: 'Player joins the server'
     channel: general  # Route to 'general' channel
 
@@ -18,9 +18,30 @@ events:
     emoji: '❌👋'
     message: '**{player}** left the server'
     enabled: true
-    priority: 10
+    priority: 2
     description: 'Player leaves the server'
     channel: general  # Route to 'general' channel
+
+  mention_admins:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[CHAT\] (?P<player>\w+): (?P<message>.*@(?:admins?|mods?|moderators?|staff).*)'
+    type: mention
+    emoji: '📢'
+    message: '**{player}** mentioned admins: {message}'
+    enabled: true
+    priority: 5  # Higher priority than regular chat
+    channel: admin  # Route to admin channel
+    description: 'Player mentions admin/mod groups'
+
+  mention_user:
+    pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[CHAT\] (?P<player>\w+): (?P<message>.*@\w+.*)'
+    type: mention
+    emoji: '👤'
+    message: '**{player}**: {message}'
+    enabled: true
+    priority: 6  # Higher priority than regular chat
+    channel: general
+    description: 'Player mentions specific user'
+
   chat_message:
     pattern: '^(?:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} )?\[CHAT\] (?P<player>\w+): (?P<message>.+)'
     type: chat

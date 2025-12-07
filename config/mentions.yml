@@ -1,0 +1,21 @@
+mentions:
+  roles:
+    chairman:
+      - "chairman"
+    board of directors:
+      - "board-of-directors"
+      - "board"
+    chiefs of staff:
+      - "chiefs-of-staff"
+      - "chiefs"
+    marketing:
+      - "marketing"
+    sales:
+      - "sales"
+    ops directors:
+      - "opsdirectors"
+      - "ops-directors"
+    operations:
+      - "operations"
+      - "ops"
+    

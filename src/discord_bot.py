@@ -1,4 +1,5 @@
-"""
+"""  # START OF FILE
+
 Discord bot client for Factorio ISR - Phase 6.0 Multi-Server Support.
 
 Provides interactive bot functionality with slash commands, event handling,
@@ -7,11 +8,14 @@ and Phase 6.0 multi-server support.
 """
 
 import asyncio
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Any, Dict, List
+
 import discord
 from discord import app_commands
 import structlog
+import yaml  # type: ignore[import]
 
 # Phase 5.1: Rate limiting and embeds
 from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
@@ -29,7 +33,7 @@ try:
     from .server_manager import ServerManager
 except ImportError:
     try:
-        from config import ServerConfig  
+        from config import ServerConfig
         from server_manager import ServerManager  # type: ignore
     except ImportError:
         # ServerManager may not be available in single-server mode
@@ -67,6 +71,7 @@ class DiscordBot(discord.Client):
             intents.members = True  # Optional, for advanced features
 
         super().__init__(intents=intents)
+
         self.token = token
         self.bot_name = bot_name
         self.tree = app_commands.CommandTree(self)
@@ -79,8 +84,8 @@ class DiscordBot(discord.Client):
 
         # RCON client for slash commands (set by application - legacy single-server)
         self.rcon_client: Optional[Any] = None
+
         self.server_manager: Optional[Any] = None  # ServerManager instance set by application later
-        
 
         # Phase 5.2: RCON status monitoring
         self.rcon_last_connected: Optional[datetime] = None
@@ -99,13 +104,65 @@ class DiscordBot(discord.Client):
         self.rcon_breakdown_interval = breakdown_interval
         self._last_rcon_breakdown_sent: Optional[datetime] = None
 
+        # Custom mention config from config/mentions.yml
+        self._mention_group_keywords: Dict[str, List[str]] = {}
+        self._load_mention_config()
+
         logger.info(
             "breakdown_config_received",
             breakdown_mode_param=breakdown_mode,
             breakdown_mode_stored=self.rcon_breakdown_mode,
             breakdown_interval=breakdown_interval,
         )
+
         logger.info("discord_bot_initialized", bot_name=bot_name, phase="6.0-multi-server")
+
+    # ========================================================================
+    # Config loading
+    # ========================================================================
+
+    def _load_mention_config(self) -> None:
+        """
+        Load custom mention group keywords from config/mentions.yml.
+
+        Expected format:
+
+        mentions:
+          groups:
+            operations:
+              - "operations"
+              - "ops"
+        """
+        config_path = os.path.join("config", "mentions.yml")
+        if not os.path.exists(config_path):
+            logger.info("mention_config_not_found", path=config_path)
+            self._mention_group_keywords = {}
+            return
+
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning("mention_config_load_failed", path=config_path, error=str(e))
+            self._mention_group_keywords = {}
+            return
+
+        mentions = data.get("mentions") or {}
+        groups = mentions.get("roles") or {}
+
+        result: Dict[str, List[str]] = {}
+        for group_name, tokens in groups.items():
+            if isinstance(tokens, list):
+                cleaned = [str(t).strip() for t in tokens if str(t).strip()]
+                if cleaned:
+                    result[group_name] = cleaned
+
+        self._mention_group_keywords = result
+        logger.info(
+            "mention_config_loaded",
+            path=config_path,
+            groups=len(self._mention_group_keywords),
+        )
 
     # ========================================================================
     # PHASE 6: Multi-Server Context Management
@@ -152,7 +209,7 @@ class DiscordBot(discord.Client):
         logger.info(
             "user_server_context_changed",
             user_id=user_id,
-            server_tag=server_tag
+            server_tag=server_tag,
         )
 
     def get_rcon_for_user(self, user_id: int) -> Optional[Any]:
@@ -279,7 +336,6 @@ class DiscordBot(discord.Client):
             # Use existing _format_uptime method
             uptime_delta = timedelta(seconds=total_seconds)
             formatted = self._format_uptime(uptime_delta)
-
             logger.debug("game_uptime_calculated", ticks=ticks, seconds=total_seconds, formatted=formatted)
             return formatted
 
@@ -292,42 +348,41 @@ class DiscordBot(discord.Client):
     # ========================================================================
 
     async def update_presence(self) -> None:
-                """Update bot presence to reflect RCON connection status."""
-                if not self._connected or not hasattr(self, 'user') or self.user is None:
-                    return
+        """Update bot presence to reflect RCON connection status."""
+        if not self._connected or not hasattr(self, "user") or self.user is None:
+            return
 
-                try:
-                    status_text = "🔺 RCON (0/0)"
-                    status = discord.Status.idle
-                    activity_type = discord.ActivityType.watching
+        try:
+            status_text = "🔺 RCON (0/0)"
+            status = discord.Status.idle
+            activity_type = discord.ActivityType.watching
 
-                    if self.server_manager:
-                        # Multi-server mode: show connected/total count
-                        status_summary = self.server_manager.get_status_summary()
-                        total = len(status_summary)
-                        connected_count = sum(1 for v in status_summary.values() if v)
+            if self.server_manager:
+                # Multi-server mode: show connected/total count
+                status_summary = self.server_manager.get_status_summary()
+                total = len(status_summary)
+                connected_count = sum(1 for v in status_summary.values() if v)
 
-                        if total > 0:
-                            if connected_count == total:
-                                status_text = f"🔹 RCON ({connected_count}/{total})"
-                                status = discord.Status.online
-                            elif connected_count > 0:
-                                status_text = f"🔸 RCON ({connected_count}/{total})"
-                                status = discord.Status.idle
-                            else:
-                                status_text = f"🔺 RCON (0/{total})"
-                                status = discord.Status.idle
+                if total > 0:
+                    if connected_count == total:
+                        status_text = f"🔹 RCON ({connected_count}/{total})"
+                        status = discord.Status.online
+                    elif connected_count > 0:
+                        status_text = f"🔸 RCON ({connected_count}/{total})"
+                        status = discord.Status.idle
+                    else:
+                        status_text = f"🔺 RCON (0/{total})"
+                        status = discord.Status.idle
 
-                    activity = discord.Activity(
-                        type=activity_type,
-                        name=f"{status_text} | /factorio help",
-                    )
-                    await self.change_presence(status=status, activity=activity)
-                    logger.debug("presence_updated", status=status_text)
+            activity = discord.Activity(
+                type=activity_type,
+                name=f"{status_text} | /factorio help",
+            )
 
-                except Exception as e:
-                    logger.warning("presence_update_failed", error=str(e))
-        
+            await self.change_presence(status=status, activity=activity)
+            logger.debug("presence_updated", status=status_text)
+        except Exception as e:
+            logger.warning("presence_update_failed", error=str(e))
 
     def _serialize_rcon_state(self) -> Dict[str, Any]:
         """Serialize RCON server state to a JSON-friendly dict."""
@@ -351,6 +406,7 @@ class DiscordBot(discord.Client):
                     last_connected = datetime.fromisoformat(last_connected_raw)
                 except ValueError:
                     last_connected = None
+
             self.rcon_server_states[tag] = {
                 "previous_status": state.get("previous_status"),
                 "last_connected": last_connected,
@@ -367,6 +423,7 @@ class DiscordBot(discord.Client):
             server_tag,
             {"previous_status": None, "last_connected": None},
         )
+
         previous = state["previous_status"]
         transition_detected = False
 
@@ -374,7 +431,7 @@ class DiscordBot(discord.Client):
             transition_detected = True
             if current_status:
                 # Reconnected
-                await self._notify_rcon_reconnected(server_tag) 
+                await self._notify_rcon_reconnected(server_tag)
                 state["last_connected"] = datetime.now(timezone.utc)
             else:
                 # Disconnected
@@ -407,12 +464,15 @@ class DiscordBot(discord.Client):
         for tag, config in self.server_manager.list_servers().items():
             is_connected = status_summary.get(tag, False)
             status_icon = "🟢" if is_connected else "🔴"
+
             field_lines = [
                 f"{status_icon} {'Online' if is_connected else 'Offline'}",
                 f"Host: `{config.rcon_host}:{config.rcon_port}`",
             ]
+
             if getattr(config, "description", None):
                 field_lines.insert(0, f"*{config.description}*")
+
             embed.add_field(
                 name=f"[{tag}] {config.name}",
                 value="\n".join(field_lines),
@@ -463,6 +523,7 @@ class DiscordBot(discord.Client):
 
                 # RCON breakdown scheduling: check if we should send
                 should_send_breakdown = False
+
                 if self.rcon_breakdown_mode == "transition":
                     # Send on any server transition
                     should_send_breakdown = transitions_detected
@@ -530,10 +591,11 @@ class DiscordBot(discord.Client):
                                         error=str(e),
                                     )
 
-                        self._last_rcon_breakdown_sent = datetime.now(timezone.utc)
+                    self._last_rcon_breakdown_sent = datetime.now(timezone.utc)
 
                 await self.update_presence()
                 previous_any_status = current_any_status
+
             except asyncio.CancelledError:
                 logger.info("rcon_status_monitor_cancelled")
                 break
@@ -541,7 +603,6 @@ class DiscordBot(discord.Client):
                 logger.error("rcon_status_monitor_error", error=str(e), exc_info=True)
                 await asyncio.sleep(10)
 
-    
     async def _notify_rcon_disconnected(self, server_tag: str) -> None:
         """Send notification when RCON disconnects."""
         if not self.event_channel_id or self.rcon_status_notified:
@@ -556,7 +617,7 @@ class DiscordBot(discord.Client):
                         "Connection to Factorio server lost.\n"
                         "Bot will automatically reconnect when server is available.\n\n"
                         "Commands requiring RCON will be unavailable until reconnection."
-                    )
+                    ),
                 )
                 embed.color = EmbedBuilder.COLOR_WARNING
                 await channel.send(embed=embed)
@@ -565,7 +626,6 @@ class DiscordBot(discord.Client):
 
                 # Update presence to reflect disconnected state
                 await self.update_presence()
-
         except Exception as e:
             logger.warning("rcon_disconnection_notification_failed", error=str(e), server_tag=server_tag)
 
@@ -590,7 +650,7 @@ class DiscordBot(discord.Client):
                     message=(
                         f"Successfully reconnected to Factorio server!{downtime_msg}\n\n"
                         "All bot commands are now fully operational."
-                    )
+                    ),
                 )
                 embed.color = EmbedBuilder.COLOR_SUCCESS
                 await channel.send(embed=embed)
@@ -599,7 +659,6 @@ class DiscordBot(discord.Client):
 
                 # Update presence to reflect reconnected state
                 await self.update_presence()
-
         except Exception as e:
             logger.warning("rcon_reconnection_notification_failed", error=str(e), server_tag=server_tag)
 
@@ -628,7 +687,6 @@ class DiscordBot(discord.Client):
             description="Factorio server status, players, and RCON management",
         )
 
-     
         # ====================================================================
         # PHASE 6: Multi-Server Commands
         # ====================================================================
@@ -636,20 +694,20 @@ class DiscordBot(discord.Client):
         @factorio_group.command(name="servers", description="List available Factorio servers")
         async def servers_command(interaction: discord.Interaction) -> None:
             """List all configured servers with status and current context."""
-
             # Check if multi-server is configured
             if not self.server_manager:
                 embed = EmbedBuilder.info_embed(
                     title="📡 Server Information",
-                    message="Single-server mode active.\n\n"
-                            "To enable multi-server support, configure a `servers.yml` file "
-                            "or set the `SERVERS` environment variable."
+                    message=(
+                        "Single-server mode active.\n\n"
+                        "To enable multi-server support, configure a `servers.yml` file "
+                        "or set the `SERVERS` environment variable."
+                    ),
                 )
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
 
             await interaction.response.defer()
-
             try:
                 current_tag = self.get_user_server(interaction.user.id)
                 status_summary = self.server_manager.get_status_summary()
@@ -657,7 +715,7 @@ class DiscordBot(discord.Client):
                 embed = discord.Embed(
                     title="📡 Available Factorio Servers",
                     color=EmbedBuilder.COLOR_INFO,
-                    timestamp=discord.utils.utcnow()
+                    timestamp=discord.utils.utcnow(),
                 )
 
                 if not self.server_manager.list_tags():
@@ -665,35 +723,33 @@ class DiscordBot(discord.Client):
                 else:
                     embed.description = f"**Your Context:** `{current_tag}`\n\n"
 
-                    for tag, config in self.server_manager.list_servers().items():
-                        is_connected = status_summary.get(tag, False)
-                        status_icon = "🟢" if is_connected else "🔴"
-                        context_icon = "👉 " if tag == current_tag else "　 "
+                for tag, config in self.server_manager.list_servers().items():
+                    is_connected = status_summary.get(tag, False)
+                    status_icon = "🟢" if is_connected else "🔴"
+                    context_icon = "👉 " if tag == current_tag else " "
 
-                        # Build field value
-                        field_lines = [
-                            f"{status_icon} {'Online' if is_connected else 'Offline'}",
-                            f"Host: `{config.rcon_host}:{config.rcon_port}`",
-                        ]
+                    # Build field value
+                    field_lines = [
+                        f"{status_icon} {'Online' if is_connected else 'Offline'}",
+                        f"Host: `{config.rcon_host}:{config.rcon_port}`",
+                    ]
 
-                        if config.description:
-                            field_lines.insert(0, f"*{config.description}*")
+                    if config.description:
+                        field_lines.insert(0, f"*{config.description}*")
 
-                        embed.add_field(
-                            name=f"{context_icon}**{config.name}** (`{tag}`)",
-                            value="\n".join(field_lines),
-                            inline=False
-                        )
+                    embed.add_field(
+                        name=f"{context_icon}**{config.name}** (`{tag}`)",
+                        value="\n".join(field_lines),
+                        inline=False,
+                    )
 
-                embed.set_footer(text="Use /factorio connect <tag> to switch servers")
+                embed.set_footer(text="Use /factorio connect to switch servers")
                 await interaction.followup.send(embed=embed)
-
                 logger.info(
                     "servers_listed",
                     user=interaction.user.name,
-                    server_count=len(self.server_manager.list_tags())
+                    server_count=len(self.server_manager.list_tags()),
                 )
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to list servers: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -702,7 +758,7 @@ class DiscordBot(discord.Client):
         # Autocomplete function for server tags
         async def server_autocomplete(
             interaction: discord.Interaction,
-            current: str
+            current: str,
         ) -> List[app_commands.Choice[str]]:
             """
             Autocomplete server tags with display names.
@@ -710,31 +766,30 @@ class DiscordBot(discord.Client):
             Shows: "prod - Production (Main server)"
             Returns: "prod"
             """
-            if not hasattr(interaction.client, 'server_manager'):
+            if not hasattr(interaction.client, "server_manager"):
                 return []
 
-            server_manager = interaction.client.server_manager # type: ignore
+            server_manager = interaction.client.server_manager  # type: ignore
             if not server_manager:
                 return []
 
             current_lower = current.lower()
             choices = []
-
             for tag, config in server_manager.list_servers().items():
                 # Match against tag, name, or description
-                if (current_lower in tag.lower() or
-                    current_lower in config.name.lower() or
-                    (config.description and current_lower in config.description.lower())):
-
+                if (
+                    current_lower in tag.lower()
+                    or current_lower in config.name.lower()
+                    or (config.description and current_lower in config.description.lower())
+                ):
                     # Format: "tag - Name (description)"
                     display = f"{tag} - {config.name}"
                     if config.description:
                         display += f" ({config.description})"
-
                     choices.append(
                         app_commands.Choice(
                             name=display[:100],  # Discord limit
-                            value=tag
+                            value=tag,
                         )
                     )
 
@@ -745,7 +800,6 @@ class DiscordBot(discord.Client):
         @app_commands.autocomplete(server=server_autocomplete)
         async def connect_command(interaction: discord.Interaction, server: str) -> None:
             """Switch user's context to a different server."""
-
             # Check if multi-server is configured
             if not self.server_manager:
                 embed = EmbedBuilder.error_embed(
@@ -756,7 +810,6 @@ class DiscordBot(discord.Client):
                 return
 
             await interaction.response.defer()
-
             try:
                 # Normalize tag (case-insensitive)
                 server = server.lower().strip()
@@ -766,9 +819,7 @@ class DiscordBot(discord.Client):
                     available_list = []
                     for tag, config in self.server_manager.list_servers().items():
                         available_list.append(f"`{tag}` ({config.name})")
-
                     available = ", ".join(available_list) if available_list else "none"
-
                     embed = EmbedBuilder.error_embed(
                         f"❌ Server `{server}` not found.\n\n"
                         f"**Available servers:** {available}\n\n"
@@ -789,7 +840,7 @@ class DiscordBot(discord.Client):
                 embed = discord.Embed(
                     title=f"✅ Connected to {config.name}",
                     color=EmbedBuilder.COLOR_SUCCESS,
-                    timestamp=discord.utils.utcnow()
+                    timestamp=discord.utils.utcnow(),
                 )
 
                 status_icon = "🟢" if is_connected else "🟡"
@@ -800,29 +851,27 @@ class DiscordBot(discord.Client):
                 embed.add_field(
                     name="Host",
                     value=f"`{config.rcon_host}:{config.rcon_port}`",
-                    inline=True
+                    inline=True,
                 )
 
                 if config.description:
                     embed.add_field(
                         name="Description",
                         value=config.description,
-                        inline=False
+                        inline=False,
                     )
 
                 embed.description = "All commands will now target this server."
                 embed.set_footer(text="Use /factorio servers to see all servers")
 
                 await interaction.followup.send(embed=embed)
-
                 logger.info(
                     "user_connected_to_server",
                     user=interaction.user.name,
                     user_id=interaction.user.id,
                     server_tag=server,
-                    server_name=config.name
+                    server_name=config.name,
                 )
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to connect: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -831,45 +880,6 @@ class DiscordBot(discord.Client):
         # ====================================================================
         # Server Information Commands
         # ====================================================================
-
-        @factorio_group.command(name="ping", description="Ping the Factorio server via RCON")
-        async def ping_command(interaction: discord.Interaction) -> None:
-            """Check connectivity to the Factorio server and RCON."""
-            is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
-            if is_limited:
-                embed = EmbedBuilder.cooldown_embed(retry)
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-                return
-
-            await interaction.response.defer()
-
-            # Get user-specific RCON client
-            rcon_client = self.get_rcon_for_user(interaction.user.id)
-            if rcon_client is None or not rcon_client.is_connected:
-                server_name = self.get_server_display_name(interaction.user.id)
-                embed = EmbedBuilder.error_embed(
-                    f"RCON not available for {server_name}.\n\n"
-                    f"Use `/factorio servers` to see available servers."
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-
-            try:
-                response = await rcon_client.execute("/time")
-                server_name = self.get_server_display_name(interaction.user.id)
-                embed = EmbedBuilder.info_embed(
-                    title=f"✅ Ping Successful - {server_name}",
-                    message=f"Bot → RCON → Factorio server is reachable.\n\n**Response:** {response}"
-                )
-                await interaction.followup.send(embed=embed)
-                logger.info("factorio_ping_success", user=interaction.user.name, server=server_name)
-
-            except Exception as e:
-                embed = EmbedBuilder.error_embed(
-                    f"Could not reach Factorio server via RCON.\n**Error:** {str(e)}"
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                logger.error("factorio_ping_failed", error=str(e))
 
         @factorio_group.command(name="status", description="Show Factorio server status")
         async def status_command(interaction: discord.Interaction) -> None:
@@ -956,7 +966,6 @@ class DiscordBot(discord.Client):
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 logger.error("status_command_failed", error=str(e))
 
-
         @factorio_group.command(name="players", description="List players currently online")
         async def players_command(interaction: discord.Interaction) -> None:
             """List online players with rich embed."""
@@ -983,7 +992,6 @@ class DiscordBot(discord.Client):
                 players = await rcon_client.get_players()
                 embed = EmbedBuilder.players_list_embed(players)
                 await interaction.followup.send(embed=embed)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to get players: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1015,11 +1023,10 @@ class DiscordBot(discord.Client):
                 resp = await rcon_client.execute("/version")
                 embed = EmbedBuilder.info_embed(
                     title="🎮 Factorio Version",
-                    message=resp
+                    message=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("version_requested", moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to get version: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1045,11 +1052,10 @@ class DiscordBot(discord.Client):
                 resp = await rcon_client.execute('/sc rcon.print(game.surfaces["nauvis"].map_gen_settings.seed)')
                 embed = EmbedBuilder.info_embed(
                     title="🌱 Map Seed",
-                    message=f"Seed: `{resp.strip()}`\n\nUse this seed to generate an identical map."
+                    message=f"Seed: `{resp.strip()}`\n\nUse this seed to generate an identical map.",
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("seed_requested", moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to get map seed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1067,8 +1073,8 @@ class DiscordBot(discord.Client):
             target: str,
         ) -> None:
             """
-            /factorio evolution all      -> aggregate evolution across all non-platform surfaces
-            /factorio evolution nauvis   -> evolution for surface 'nauvis' only
+            /factorio evolution all -> aggregate evolution across all non-platform surfaces
+            /factorio evolution nauvis -> evolution for surface 'nauvis' only
             """
             await interaction.response.defer()
 
@@ -1095,25 +1101,24 @@ class DiscordBot(discord.Client):
                         "local total = 0; local count = 0; "
                         "local lines = {}; "
                         "for _, s in pairs(game.surfaces) do "
-                        "  if not string.find(string.lower(s.name), 'platform') then "
-                        "    local evo = f.get_evolution_factor(s); "
-                        "    total = total + evo; count = count + 1; "
-                        "    table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
-                        "  end "
+                        " if not string.find(string.lower(s.name), 'platform') then "
+                        " local evo = f.get_evolution_factor(s); "
+                        " total = total + evo; count = count + 1; "
+                        " table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
+                        " end "
                         "end; "
                         "if count > 0 then "
-                        "  local avg = total / count; "
-                        "  rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); "
+                        " local avg = total / count; "
+                        " rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); "
                         "else "
-                        "  rcon.print('AGG:0.00%%'); "
+                        " rcon.print('AGG:0.00%%'); "
                         "end; "
                         "for _, line in ipairs(lines) do "
-                        "  rcon.print(line); "
+                        " rcon.print(line); "
                         "end"
                     )
                     resp = await rcon_client.execute(lua)
                     lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
-
                     agg_line = next((ln for ln in lines if ln.startswith("AGG:")), None)
                     per_surface = [ln for ln in lines if not ln.startswith("AGG:")]
 
@@ -1147,17 +1152,16 @@ class DiscordBot(discord.Client):
 
                 # Single-surface mode
                 surface = raw
-
                 lua = (
                     "/c "
                     f"local s = game.get_surface('{surface}'); "
                     "if not s then "
-                    "  rcon.print('SURFACE_NOT_FOUND'); "
-                    "  return "
+                    " rcon.print('SURFACE_NOT_FOUND'); "
+                    " return "
                     "end; "
                     "if string.find(string.lower(s.name), 'platform') then "
-                    "  rcon.print('SURFACE_PLATFORM_IGNORED'); "
-                    "  return "
+                    " rcon.print('SURFACE_PLATFORM_IGNORED'); "
+                    " return "
                     "end; "
                     "local evo = game.forces['enemy'].get_evolution_factor(s); "
                     "rcon.print(string.format('%.2f%%', evo * 100))"
@@ -1185,7 +1189,6 @@ class DiscordBot(discord.Client):
                     f"Enemy evolution on `{surface}`: **{resp_str}**\n\n"
                     "Higher evolution means stronger biters!"
                 )
-
                 embed = EmbedBuilder.info_embed(title=title, message=message)
                 await interaction.followup.send(embed=embed)
                 logger.info(
@@ -1201,8 +1204,6 @@ class DiscordBot(discord.Client):
                     error=str(e),
                     target=target,
                 )
-
-
 
         @factorio_group.command(name="admins", description="List server admins")
         async def admins_command(interaction: discord.Interaction) -> None:
@@ -1224,11 +1225,10 @@ class DiscordBot(discord.Client):
                 resp = await rcon_client.execute("/admins")
                 embed = EmbedBuilder.info_embed(
                     title="👑 Server Administrators",
-                    message=resp
+                    message=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("admins_listed", moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Failed to list admins: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1297,6 +1297,7 @@ class DiscordBot(discord.Client):
                 value=monitoring_uptime,
                 inline=True,
             )
+
             if multi_summary:
                 embed.add_field(
                     name="🌐 Multi-Server RCON",
@@ -1306,7 +1307,6 @@ class DiscordBot(discord.Client):
 
             embed.set_footer(text="Factorio ISR")
             await interaction.followup.send(embed=embed)
-
 
         # ====================================================================
         # Player Management Commands
@@ -1346,17 +1346,15 @@ class DiscordBot(discord.Client):
                 reason_part = f" {reason}" if reason else ""
                 cmd = f"/kick {player}{reason_part}"
                 resp = await rcon_client.execute(cmd)
-
                 embed = EmbedBuilder.admin_action_embed(
                     action="Player Kicked",
                     player=player,
                     moderator=interaction.user.name,
                     reason=reason,
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_kicked", player=player, reason=reason, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Kick failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1392,11 +1390,10 @@ class DiscordBot(discord.Client):
                     player=player,
                     moderator=interaction.user.name,
                     reason=None,
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_banned", player=player, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Ban failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1432,11 +1429,10 @@ class DiscordBot(discord.Client):
                     player=player,
                     moderator=interaction.user.name,
                     reason=None,
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_unbanned", player=player, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Unban failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1472,11 +1468,10 @@ class DiscordBot(discord.Client):
                     player=player,
                     moderator=interaction.user.name,
                     reason=None,
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_muted", player=player, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Mute failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1512,11 +1507,10 @@ class DiscordBot(discord.Client):
                     player=player,
                     moderator=interaction.user.name,
                     reason=None,
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_unmuted", player=player, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Unmute failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1552,11 +1546,10 @@ class DiscordBot(discord.Client):
                     player=player,
                     moderator=interaction.user.name,
                     reason="Promoted to admin",
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_promoted", player=player, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Promote failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1592,11 +1585,10 @@ class DiscordBot(discord.Client):
                     player=player,
                     moderator=interaction.user.name,
                     reason="Demoted from admin",
-                    response=resp
+                    response=resp,
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("player_demoted", player=player, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Demote failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1609,12 +1601,11 @@ class DiscordBot(discord.Client):
         @factorio_group.command(name="save", description="Save the Factorio game")
         @app_commands.describe(name="Optional save name")
         async def save_command(interaction: discord.Interaction, name: str | None = None) -> None:
+            """Save the game with optional custom save name."""
             is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
             if is_limited:
-                await interaction.response.send_message(
-                    f"⏱️ Slow down! Try again in {retry:.1f}s",
-                    ephemeral=True
-                )
+                embed = EmbedBuilder.cooldown_embed(retry)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
 
             await interaction.response.defer()
@@ -1641,6 +1632,7 @@ class DiscordBot(discord.Client):
                 else:
                     # Parse save name from response
                     import re
+
                     # Try full path format first: "Saving map to /path/to/LosHermanos.zip"
                     match = re.search(r"/([^/]+?)\.zip", resp)
                     if match:
@@ -1650,17 +1642,20 @@ class DiscordBot(discord.Client):
                         match = re.search(r"Saving (?:map )?to ([\w-]+)", resp)
                         label = match.group(1) if match else "current save"
 
-                msg = (
-                    f"💾 **Game Saved**\n\n"
-                    f"Save name: **{label}**\n\n"
-                    f"Server response:\n{resp}"
+                embed = EmbedBuilder.info_embed(
+                    title="💾 Game Saved",
+                    message=(
+                        f"Save name: **{label}**\n\n"
+                        f"Server response:\n``````"
+                    ),
                 )
-                await interaction.followup.send(msg)
+                embed.color = EmbedBuilder.COLOR_SUCCESS
+                await interaction.followup.send(embed=embed)
                 logger.info("game_saved", name=label, moderator=interaction.user.name)
-
             except Exception as e:
+                embed = EmbedBuilder.error_embed(f"Failed to save game: {str(e)}")
+                await interaction.followup.send(embed=embed, ephemeral=True)
                 logger.error("save_command_failed", error=str(e), name=name)
-                await interaction.followup.send(f"❌ Failed to save game: {str(e)}")
 
         @factorio_group.command(name="broadcast", description="Send a message to all players")
         @app_commands.describe(message="Message to broadcast to all players")
@@ -1688,29 +1683,27 @@ class DiscordBot(discord.Client):
             try:
                 escaped_msg = message.replace('"', '\\"')
                 resp = await rcon_client.execute(f'/sc game.print("{escaped_msg}")')
-
                 embed = EmbedBuilder.info_embed(
                     title="📢 Broadcast Sent",
-                    message=f"Message: _{message}_\n\nAll online players have been notified."
+                    message=f"Message: _{message}_\n\nAll online players have been notified.",
                 )
                 embed.color = EmbedBuilder.COLOR_SUCCESS
                 await interaction.followup.send(embed=embed)
                 logger.info("message_broadcast", message=message, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Broadcast failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 logger.error("broadcast_command_failed", error=str(e), message=message)
-                
+
         @factorio_group.command(name="whisper", description="Send a private message to a player")
         @app_commands.describe(
             player="Player name to whisper to",
-            message="Private message to send"
+            message="Private message to send",
         )
         async def whisper_command(
             interaction: discord.Interaction,
             player: str,
-            message: str
+            message: str,
         ) -> None:
             """Send a private whisper message to a specific player."""
             is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
@@ -1735,14 +1728,13 @@ class DiscordBot(discord.Client):
             try:
                 # Execute whisper command
                 resp = await rcon_client.execute(f"/whisper {player} {message}")
-                
                 embed = EmbedBuilder.info_embed(
                     title="💬 Whisper Sent",
                     message=(
                         f"**To:** {player}\n"
                         f"**Message:** _{message}_\n\n"
                         f"Private message delivered to player."
-                    )
+                    ),
                 )
                 embed.color = EmbedBuilder.COLOR_SUCCESS
                 await interaction.followup.send(embed=embed)
@@ -1750,24 +1742,22 @@ class DiscordBot(discord.Client):
                     "whisper_sent",
                     player=player,
                     message=message,
-                    moderator=interaction.user.name
+                    moderator=interaction.user.name,
                 )
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Whisper failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
-                logger.error("whisper_command_failed", error=str(e), player=player)        
-                
-                
+                logger.error("whisper_command_failed", error=str(e), player=player)
 
         @factorio_group.command(name="whitelist", description="Manage server whitelist")
         @app_commands.describe(
             action="Action to perform (add/remove/list/enable/disable)",
-            player="Player name (required for add/remove)"
+            player="Player name (required for add/remove)",
         )
         async def whitelist_command(
             interaction: discord.Interaction,
             action: str,
-            player: str | None = None
+            player: str | None = None,
         ) -> None:
             """Manage the server whitelist."""
             is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
@@ -1826,7 +1816,6 @@ class DiscordBot(discord.Client):
 
                 embed = EmbedBuilder.info_embed(title=title, message=resp)
                 await interaction.followup.send(embed=embed)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Whitelist command failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1865,7 +1854,7 @@ class DiscordBot(discord.Client):
                     resp = await rcon_client.execute("/time")
                     embed = EmbedBuilder.info_embed(
                         title="🕐 Current Game Time",
-                        message=resp
+                        message=resp,
                     )
                 else:
                     # Set time
@@ -1873,12 +1862,11 @@ class DiscordBot(discord.Client):
                     time_desc = "noon" if abs(value - 0.5) < 0.1 else "midnight" if value < 0.1 else f"{value}"
                     embed = EmbedBuilder.info_embed(
                         title="🕐 Time Changed",
-                        message=f"Game time set to: **{time_desc}**\n\nServer response:\n{resp}"
+                        message=f"Game time set to: **{time_desc}**\n\nServer response:\n{resp}",
                     )
                     logger.info("time_changed", value=value, moderator=interaction.user.name)
 
                 await interaction.followup.send(embed=embed)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Time command failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1916,12 +1904,11 @@ class DiscordBot(discord.Client):
                 resp = await rcon_client.execute(f"/sc game.speed = {speed}")
                 embed = EmbedBuilder.info_embed(
                     title="⚡ Game Speed Changed",
-                    message=f"Speed multiplier: **{speed}x**\n\n⚠️ This affects all players!\n\nServer response:\n{resp}"
+                    message=f"Speed multiplier: **{speed}x**\n\n⚠️ This affects all players!\n\nServer response:\n{resp}",
                 )
                 embed.color = EmbedBuilder.COLOR_WARNING
                 await interaction.followup.send(embed=embed)
                 logger.info("speed_changed", speed=speed, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"Speed change failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1953,18 +1940,21 @@ class DiscordBot(discord.Client):
             try:
                 cmd = f'/sc game.forces["player"].technologies["{technology}"].researched = true'
                 resp = await rcon_client.execute(cmd)
-
                 embed = EmbedBuilder.info_embed(
                     title="🔬 Technology Researched",
-                    message=f"Technology: **{technology}**\n\nThe technology has been forcefully researched.\n\nServer response:\n{resp}"
+                    message=(
+                        f"Technology: **{technology}**\n\n"
+                        "The technology has been forcefully researched.\n\n"
+                        f"Server response:\n{resp}"
+                    ),
                 )
                 embed.color = EmbedBuilder.COLOR_SUCCESS
                 await interaction.followup.send(embed=embed)
                 logger.info("tech_researched", technology=technology, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(
-                    f"Research failed: {str(e)}\n\nMake sure the technology name is correct (e.g., 'automation', 'logistics')"
+                    f"Research failed: {str(e)}\n\n"
+                    "Make sure the technology name is correct (e.g., 'automation', 'logistics')"
                 )
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 logger.error("research_command_failed", error=str(e), technology=technology)
@@ -2000,11 +1990,10 @@ class DiscordBot(discord.Client):
                 resp = await rcon_client.execute(command)
                 embed = EmbedBuilder.info_embed(
                     title="🖥️ RCON Executed",
-                    message=f"Command: `{command}`\n\nServer response:\n{resp}"
+                    message=f"Command: `{command}`\n\nServer response:\n{resp}",
                 )
                 await interaction.followup.send(embed=embed)
                 logger.info("raw_rcon_executed", command=command, moderator=interaction.user.name)
-
             except Exception as e:
                 embed = EmbedBuilder.error_embed(f"RCON command failed: {str(e)}")
                 await interaction.followup.send(embed=embed, ephemeral=True)
@@ -2019,40 +2008,40 @@ class DiscordBot(discord.Client):
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
 
+            # discord max subcommands for any command group is 25.
             help_text = (
                 "**🏭 Factorio ISR Bot – Commands**\n\n"
                 "**🌐 Multi-Server**\n"
                 "`/factorio servers` – List available servers\n"
-                "`/factorio connect <tag>` – Switch to a server\n\n"
+                "`/factorio connect ` – Switch to a server\n\n"
                 "**📊 Server Information**\n"
                 "`/factorio status` – Show server status and uptime\n"
                 "`/factorio players` – List players currently online\n"
-                "`/factorio ping` – Ping the Factorio server via RCON\n"
                 "`/factorio version` – Show Factorio server version\n"
                 "`/factorio seed` – Show map seed\n"
                 "`/factorio evolution` – Show biter evolution factor\n"
                 "`/factorio admins` – List server administrators\n"
                 "`/factorio health` – Check bot and server health\n\n"
                 "**👥 Player Management**\n"
-                "`/factorio kick <player> [reason]` – Kick a player\n"
-                "`/factorio ban <player>` – Ban a player\n"
-                "`/factorio unban <player>` – Unban a player\n"
-                "`/factorio mute <player>` – Mute a player from chat\n"
-                "`/factorio unmute <player>` – Unmute a player\n"
-                "`/factorio promote <player>` – Promote player to admin\n"
-                "`/factorio demote <player>` – Demote player from admin\n\n"
+                "`/factorio kick [reason]` – Kick a player\n"
+                "`/factorio ban ` – Ban a player\n"
+                "`/factorio unban ` – Unban a player\n"
+                "`/factorio mute ` – Mute a player from chat\n"
+                "`/factorio unmute ` – Unmute a player\n"
+                "`/factorio promote ` – Promote player to admin\n"
+                "`/factorio demote ` – Demote player from admin\n\n"
                 "**🔧 Server Management**\n"
-                "`/factorio broadcast <message>` – Send message to all players\n"
-                "`/factorio whisper <player> <message>` – Send private message to a player\n"
+                "`/factorio broadcast ` – Send message to all players\n"
+                "`/factorio whisper ` – Send private message to a player\n"
                 "`/factorio save [name]` – Save the game\n"
-                "`/factorio whitelist <action> [player]` – Manage whitelist\n"
+                "`/factorio whitelist [player]` – Manage whitelist\n"
                 " └ Actions: add, remove, list, enable, disable\n\n"
                 "**🎮 Game Control**\n"
                 "`/factorio time [value]` – Set/display game time\n"
-                "`/factorio speed <multiplier>` – Set game speed (0.1-10.0)\n"
-                "`/factorio research <tech>` – Force research tech\n\n"
+                "`/factorio speed ` – Set game speed (0.1-10.0)\n"
+                "`/factorio research ` – Force research tech\n\n"
                 "**🛠️ Advanced**\n"
-                "`/factorio rcon <command>` – Run raw RCON command\n"
+                "`/factorio rcon ` – Run raw RCON command\n"
                 "`/factorio help` – Show this help message\n\n"
                 "_Most commands require RCON to be enabled._"
             )
@@ -2083,7 +2072,7 @@ class DiscordBot(discord.Client):
             bot_name=self.user.name,
             bot_id=self.user.id,
             guilds=len(self.guilds),
-            phase="6.0-multi-server"
+            phase="6.0-multi-server",
         )
 
         # Set connected flag and signal ready
@@ -2103,7 +2092,6 @@ class DiscordBot(discord.Client):
             for guild in self.guilds:
                 self.tree.copy_global_to(guild=guild)
                 await self.tree.sync(guild=guild)
-
                 top_level = self.tree.get_commands(guild=guild)
                 logger.info(
                     "commands_synced_to_guild",
@@ -2111,7 +2099,6 @@ class DiscordBot(discord.Client):
                     guild_id=guild.id,
                     command_count=len(top_level),
                 )
-
         except Exception as e:
             logger.error("command_sync_failed", error=str(e), exc_info=True)
 
@@ -2133,15 +2120,13 @@ class DiscordBot(discord.Client):
         try:
             logger.info("connecting_to_discord", phase="6.0-multi-server")
             await self.login(self.token)
-        
             self._connection_task = asyncio.create_task(self.connect())
-                
-            
+
             try:
                 await asyncio.wait_for(self._ready.wait(), timeout=30.0)
                 logger.info("discord_bot_connected")
-
                 self._connected = True
+
                 # Send connection notification
                 await self._send_connection_notification()
 
@@ -2154,7 +2139,6 @@ class DiscordBot(discord.Client):
 
                 # Initial presence update
                 await self.update_presence()
-
             except asyncio.TimeoutError:
                 logger.error("discord_bot_connection_timeout")
                 if self._connection_task is not None:
@@ -2164,11 +2148,9 @@ class DiscordBot(discord.Client):
                     except asyncio.CancelledError:
                         pass
                 raise ConnectionError("Discord bot connection timed out after 30 seconds")
-
         except discord.errors.LoginFailure as e:
             logger.error("discord_login_failed", error=str(e))
             raise ConnectionError(f"Discord login failed: {e}")
-
         except Exception as e:
             logger.error("discord_bot_connection_failed", error=str(e), exc_info=True)
             raise
@@ -2177,7 +2159,7 @@ class DiscordBot(discord.Client):
         """Disconnect the bot from Discord and stop monitoring."""
         if self._connected or self._connection_task is not None:
             logger.info("disconnecting_from_discord", phase="6.0-multi-server")
-            
+
             # Set flag FIRST - allows loops to exit gracefully
             self._connected = False
 
@@ -2207,9 +2189,7 @@ class DiscordBot(discord.Client):
             # Close the bot if not already closed
             if not self.is_closed():
                 await self.close()
-
             logger.info("discord_bot_disconnected")
-
 
     # ========================================================================
     # Notification Methods
@@ -2233,15 +2213,15 @@ class DiscordBot(discord.Client):
             embed = EmbedBuilder.info_embed(
                 title=f"🤖 {bot_name} Connected",
                 message=(
-                    f"✅ Bot connected with Discord\n"
-                    f"📡 Connected to {guild_count} server{'s' if guild_count != 1 else ''}\n"
-                    f"💬 Type `/factorio help` to see available commands"
-                )
+                    "✅ Bot connected with Discord\n"
+                    f"📡 Connected to {guild_count} server"
+                    f"{'s' if guild_count != 1 else ''}\n"
+                    "💬 Type `/factorio help` to see available commands"
+                ),
             )
             embed.color = EmbedBuilder.COLOR_SUCCESS
             await channel.send(embed=embed)
             logger.info("connection_notification_sent", channel_id=self.event_channel_id)
-
         except discord.errors.Forbidden:
             logger.warning("connection_notification_forbidden")
         except Exception as e:
@@ -2264,19 +2244,17 @@ class DiscordBot(discord.Client):
                 return
 
             bot_name = self.user.name if self.user else "Factorio ISR Bot"
-
             embed = EmbedBuilder.info_embed(
                 title=f"👋 {bot_name} Disconnecting",
                 message=(
                     "⚠️ Bot lost connection with Discord\n"
                     "🔄 Monitoring will resume when bot reconnects"
-                )
+                ),
             )
             embed.color = EmbedBuilder.COLOR_WARNING
             await channel.send(embed=embed)
             logger.info("disconnection_notification_sent", channel_id=self.event_channel_id)
             await asyncio.sleep(0.5)
-
         except discord.errors.Forbidden:
             logger.warning("disconnection_notification_forbidden")
         except Exception as e:
@@ -2288,7 +2266,7 @@ class DiscordBot(discord.Client):
 
     async def send_event(self, event: FactorioEvent) -> bool:
         """
-        Send a Factorio event to Discord.
+        Send a Factorio event to Discord with @mention support.
 
         Args:
             event: Factorio event to send
@@ -2301,28 +2279,191 @@ class DiscordBot(discord.Client):
             return False
 
         if self.event_channel_id is None:
-            logger.warning("send_event_no_channel_configured", event_type=event.event_type.value)
+            logger.warning(
+                "send_event_no_channel_configured",
+                event_type=event.event_type.value,
+            )
             return False
 
         try:
             channel = self.get_channel(self.event_channel_id)
             if channel is None:
-                logger.error("send_event_channel_not_found", channel_id=self.event_channel_id)
+                logger.error(
+                    "send_event_channel_not_found",
+                    channel_id=self.event_channel_id,
+                )
                 return False
 
             if not isinstance(channel, discord.TextChannel):
-                logger.error("send_event_invalid_channel_type", channel_id=self.event_channel_id)
+                logger.error(
+                    "send_event_invalid_channel_type",
+                    channel_id=self.event_channel_id,
+                )
                 return False
 
+            # Base formatted message
             message = FactorioEventFormatter.format_for_discord(event)
+
+            # Mention handling – use metadata from EventParser
+            mentions = event.metadata.get("mentions", [])
+            if mentions:
+                discord_mentions = await self._resolve_mentions(channel.guild, mentions)
+                if discord_mentions:
+                    # If the formatted message already contains @tokens, replace them.
+                    for token, resolved in zip(mentions, discord_mentions):
+                        raw_token = f"@{token}"
+                        if raw_token in message:
+                            message = message.replace(raw_token, resolved)
+                        else:
+                            # Fallback: append if not present in text
+                            message = f"{message}\n{resolved}"
+
+                    logger.info(
+                        "mentions_added_to_message",
+                        event_type=event.event_type.value,
+                        mention_count=len(discord_mentions),
+                    )
+
             await channel.send(message)
             logger.debug("event_sent", event_type=event.event_type.value)
             return True
-
         except Exception as e:
-            
-            logger.error("send_event_unexpected_error", error=str(e), exc_info=True)
+            logger.error(
+                "send_event_unexpected_error",
+                error=str(e),
+                exc_info=True,
+            )
             return False
+
+    async def _resolve_mentions(
+        self,
+        guild: discord.Guild,
+        mentions: List[str],
+    ) -> List[str]:
+        """
+        Resolve Factorio @mentions to actual Discord mentions.
+
+        - User tokens try to map to members.
+        - Group tokens try to map to roles or special @everyone / @here.
+
+        Returns:
+            List of mention strings you can append to a message.
+        """
+        discord_mentions: List[str] = []
+
+        # Built-in groups
+        base_group_keywords: Dict[str, List[str]] = {
+            "admins": ["admin", "admins", "administrator", "administrators"],
+            "mods": ["mod", "mods", "moderator", "moderators"],
+            "everyone": ["everyone"],
+            "here": ["here"],
+            "staff": ["staff"],
+        }
+
+        # Merge in custom groups from config/mentions.yml (may override built-ins)
+        group_keywords: Dict[str, List[str]] = {**base_group_keywords, **self._mention_group_keywords}
+
+        for token in mentions:
+            token_lower = token.lower()
+            is_group = False
+
+            for group_key, variants in group_keywords.items():
+                if token_lower in [v.lower() for v in variants]:
+                    is_group = True
+
+                    if group_key == "everyone":
+                        discord_mentions.append("@everyone")
+                        logger.debug(
+                            "mention_resolved_to_everyone",
+                            original=token,
+                        )
+                        break
+
+                    if group_key == "here":
+                        discord_mentions.append("@here")
+                        logger.debug(
+                            "mention_resolved_to_here",
+                            original=token,
+                        )
+                        break
+
+                    role = self._find_role_by_name(guild, variants)
+                    if role:
+                        discord_mentions.append(role.mention)
+                        logger.debug(
+                            "mention_resolved_to_role",
+                            original=token,
+                            role_name=role.name,
+                            role_id=role.id,
+                        )
+                    else:
+                        logger.warning(
+                            "mention_role_not_found",
+                            original=token,
+                            searched_names=variants,
+                        )
+                    break
+
+            if is_group:
+                continue
+
+            # User resolution
+            member = await self._find_member_by_name(guild, token)
+            if member:
+                discord_mentions.append(member.mention)
+                logger.debug(
+                    "mention_resolved_to_user",
+                    original=token,
+                    user_name=member.name,
+                    user_id=member.id,
+                )
+            else:
+                logger.debug("mention_user_not_found", original=token)
+
+        return discord_mentions
+
+    def _find_role_by_name(
+        self,
+        guild: discord.Guild,
+        role_names: List[str],
+    ) -> Optional[discord.Role]:
+        """
+        Find a role by trying multiple name variants (case-insensitive).
+        """
+        for role in guild.roles:
+            role_name_lower = role.name.lower()
+            for candidate in role_names:
+                if role_name_lower == candidate.lower():
+                    return role
+        return None
+
+    async def _find_member_by_name(
+        self,
+        guild: discord.Guild,
+        name: str,
+    ) -> Optional[discord.Member]:
+        """
+        Find a guild member by username or display name (exact, then partial).
+        """
+        name_lower = name.lower()
+
+        # Exact match
+        for member in guild.members:
+            if (
+                member.name.lower() == name_lower
+                or member.display_name.lower() == name_lower
+            ):
+                return member
+
+        # Partial match
+        for member in guild.members:
+            if (
+                name_lower in member.name.lower()
+                or name_lower in member.display_name.lower()
+            ):
+                return member
+
+        return None
 
     async def send_message(self, message: str) -> None:
         """
@@ -2342,23 +2483,27 @@ class DiscordBot(discord.Client):
         try:
             channel = self.get_channel(self.event_channel_id)
             if channel is None:
-                logger.error("send_message_channel_not_found", channel_id=self.event_channel_id)
+                logger.error(
+                    "send_message_channel_not_found",
+                    channel_id=self.event_channel_id,
+                )
                 return
 
             if not isinstance(channel, discord.TextChannel):
-                logger.error("send_message_invalid_channel_type", channel_id=self.event_channel_id)
+                logger.error(
+                    "send_message_invalid_channel_type",
+                    channel_id=self.event_channel_id,
+                )
                 return
 
             await channel.send(message)
             logger.debug("message_sent", length=len(message))
-
         except discord.errors.Forbidden as e:
             logger.error("send_message_forbidden", error=str(e))
         except discord.errors.HTTPException as e:
             logger.error("send_message_http_error", error=str(e))
         except Exception as e:
             logger.error("send_message_unexpected_error", error=str(e), exc_info=True)
-
 
     # ========================================================================
     # Configuration Methods
