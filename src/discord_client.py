@@ -10,7 +10,7 @@ import structlog
 
 # Use try/except to support both relative and absolute imports
 try:
-    from .event_parser import FactorioEvent, FactorioEventFormatter, EventType
+    from event_parser import FactorioEvent, FactorioEventFormatter, EventType
 except ImportError:
     from event_parser import FactorioEvent, FactorioEventFormatter, EventType
 

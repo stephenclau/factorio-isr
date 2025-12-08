@@ -23,7 +23,7 @@ from discord_interface import EmbedBuilder
 
 # Import event parser and formatter
 try:
-    from .event_parser import FactorioEvent, FactorioEventFormatter
+    from event_parser import FactorioEvent, FactorioEventFormatter
 except ImportError:
     from event_parser import FactorioEvent, FactorioEventFormatter  # type: ignore
 
@@ -280,14 +280,15 @@ class DiscordBot(discord.Client):
 
         # Build readable string
         parts = []
+        if days == 0 and hours == 0 and minutes == 0 and total_seconds < 60:
+            return "< 1m"
         if days > 0:
             parts.append(f"{days}d")
         if hours > 0:
             parts.append(f"{hours}h")
-        if minutes > 0 or (days == 0 and hours == 0):  # Always show minutes if < 1hr
-            parts.append(f"{minutes}m")
-
-        return " ".join(parts) if parts else "< 1m"
+        if minutes > 0 or (days == 0 and hours == 0):
+            parts.append(f"{minutes}m")            
+        return " ".join(parts)
 
     # ========================================================================
     # PHASE 6: RCON Server Uptime Query
@@ -1371,7 +1372,11 @@ class DiscordBot(discord.Client):
                 return
 
             await interaction.response.defer()
-
+            # In ban_command, after defer() and get_rcon_for_user:
+            if not player or not player.strip():
+                embed = EmbedBuilder.error_embed("Player name is required for ban command")
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
             # Get user-specific RCON client
             rcon_client = self.get_rcon_for_user(interaction.user.id)
             if rcon_client is None or not rcon_client.is_connected:

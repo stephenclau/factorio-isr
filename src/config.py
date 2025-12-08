@@ -1,7 +1,6 @@
 """
 Configuration management for Factorio ISR.
 
-Supports both single-server (legacy) and multi-server modes.
 """
 
 import os
@@ -289,7 +288,13 @@ def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]
         )
         return None
 
+    except ValueError as e:
+        # Re-raise validation errors (invalid tags, missing fields, etc.)
+        logger.error("server_validation_failed", path=str(yaml_path), error=str(e))
+        raise
+
     except Exception as e:
+        # Catch other errors (YAML syntax, I/O, etc.) and return None
         logger.error("failed_to_parse_servers_yaml", path=str(yaml_path), error=str(e))
         return None
 

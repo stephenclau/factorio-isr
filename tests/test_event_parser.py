@@ -376,6 +376,135 @@ class TestEventParserMapEventType:
         """Test _map_event_type with unknown type returns UNKNOWN."""
         assert event_parser._map_event_type("invalid_type") == EventType.UNKNOWN
 
+class TestEventParserClassifyMentions:
+    """Direct tests for EventParser._classify_mentions."""
+
+    def test_classify_mentions_empty_returns_user(self, event_parser: EventParser) -> None:
+        """Empty mention list is treated as user-class mentions."""
+        result = event_parser._classify_mentions([])
+        assert result == "user"
+
+    def test_classify_mentions_all_users(self, event_parser: EventParser) -> None:
+        """Pure user-like tokens should classify as user."""
+        mentions = ["Alice", "Bob123", "somebody"]
+        result = event_parser._classify_mentions(mentions)
+        assert result == "user"
+
+    def test_classify_mentions_all_groups(self, event_parser: EventParser) -> None:
+        """All group keywords should classify as group."""
+        # Includes several entries from the group_keywords set
+        mentions = ["admins", "MOD", "Everyone", "staff"]
+        result = event_parser._classify_mentions(mentions)
+        assert result == "group"
+
+    def test_classify_mentions_mixed_users_and_groups(self, event_parser: EventParser) -> None:
+        """Combination of group keywords and user tokens should classify as mixed."""
+        mentions = ["admins", "Alice", "mods"]
+        result = event_parser._classify_mentions(mentions)
+        assert result == "mixed"
+
+    def test_classify_mentions_case_insensitive(self, event_parser: EventParser) -> None:
+        """Group keyword detection should be case-insensitive."""
+        mentions = ["AdMiN", "MoDeRaToR"]
+        result = event_parser._classify_mentions(mentions)
+        assert result == "group"
+
+
+class TestEventParserMentionsIntegration:
+    """Integration tests for mention extraction and classification via _create_event."""
+
+    def test_create_event_with_user_mentions(self, event_parser: EventParser) -> None:
+        """_create_event should populate metadata for user-only mentions."""
+        pattern = EventPattern(
+            name="chat_with_mentions",
+            pattern=r"^\[CHAT\] (\w+): (.+)$",
+            event_type="chat",
+            emoji="💬",
+            message_template="{player}: {message}",
+            channel="chat",
+            enabled=True,
+            priority=10,
+        )
+
+        line = "[CHAT] Alice: hello @Bob @Charlie"
+        # First group: player, second group: message
+        match = re.match(pattern.pattern, line, re.IGNORECASE)
+        assert match is not None
+
+        event = event_parser._create_event(line, match, pattern)
+
+        # Mentions list should be extracted without '@'
+        assert event.metadata.get("mentions") == ["Bob", "Charlie"]
+        assert event.metadata.get("mention_type") == "user"
+
+    def test_create_event_with_group_mentions(self, event_parser: EventParser) -> None:
+        """_create_event should classify pure group mentions as group."""
+        pattern = EventPattern(
+            name="chat_groups",
+            pattern=r"^\[CHAT\] (\w+): (.+)$",
+            event_type="chat",
+            emoji="💬",
+            message_template="{player}: {message}",
+            channel="chat",
+            enabled=True,
+            priority=10,
+        )
+
+        line = "[CHAT] Alice: ping @admins @MODS @Here"
+        match = re.match(pattern.pattern, line, re.IGNORECASE)
+        assert match is not None
+
+        event = event_parser._create_event(line, match, pattern)
+
+        assert event.metadata.get("mentions") == ["admins", "MODS", "Here"]
+        assert event.metadata.get("mention_type") == "group"
+
+    def test_create_event_with_mixed_mentions(self, event_parser: EventParser) -> None:
+        """_create_event should classify mixed user/group mentions as mixed."""
+        pattern = EventPattern(
+            name="chat_mixed",
+            pattern=r"^\[CHAT\] (\w+): (.+)$",
+            event_type="chat",
+            emoji="💬",
+            message_template="{player}: {message}",
+            channel="chat",
+            enabled=True,
+            priority=10,
+        )
+
+        line = "[CHAT] Alice: hey @admins and @Bob"
+        match = re.match(pattern.pattern, line, re.IGNORECASE)
+        assert match is not None
+
+        event = event_parser._create_event(line, match, pattern)
+
+        assert event.metadata.get("mentions") == ["admins", "Bob"]
+        assert event.metadata.get("mention_type") == "mixed"
+
+    def test_create_event_without_mentions_has_no_mention_metadata(
+        self, event_parser: EventParser
+    ) -> None:
+        """Events without @ tokens should not include mention metadata keys."""
+        pattern = EventPattern(
+            name="chat_no_mentions",
+            pattern=r"^\[CHAT\] (\w+): (.+)$",
+            event_type="chat",
+            emoji="💬",
+            message_template="{player}: {message}",
+            channel="chat",
+            enabled=True,
+            priority=10,
+        )
+
+        line = "[CHAT] Alice: hello world"
+        match = re.match(pattern.pattern, line, re.IGNORECASE)
+        assert match is not None
+
+        event = event_parser._create_event(line, match, pattern)
+
+        assert "mentions" not in event.metadata
+        assert "mention_type" not in event.metadata
+
 
 class TestEventParserFormatMessage:
     """Test EventParser._format_message method."""
@@ -558,7 +687,7 @@ class TestFactorioEventFormatter:
             message="was killed by a biter"
         )
         result = FactorioEventFormatter.format_for_discord(event)
-        assert result == "**Player1** was killed by a biter"
+        assert result == "💀 **Player1** was killed by a biter"
 
     def test_format_for_discord_unknown_fallback(self) -> None:
         """Test UNKNOWN fallback uses raw_line."""

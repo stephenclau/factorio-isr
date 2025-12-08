@@ -334,6 +334,9 @@ class FactorioEventFormatter:
     @staticmethod
     def format_for_discord(event: FactorioEvent) -> str:
         """Format a FactorioEvent as a Discord message."""
+        # Validate input
+        assert isinstance(event, FactorioEvent), "event must be FactorioEvent"
+
         # Preferred: use preformatted message if provided.
         if event.formatted_message:
             if event.emoji:

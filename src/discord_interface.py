@@ -8,8 +8,13 @@ Uses utils/ for general features, implements Discord-specific features here.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional, TYPE_CHECKING, Any
+from unittest.mock import MagicMock, Mock, patch
 import asyncio
 import structlog
+import pytest
+import pytest_asyncio
+import sys
+
 
 # Import general utilities (framework-agnostic)
 try:
