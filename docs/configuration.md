@@ -1,3 +1,9 @@
+---
+layout: default
+title: Configuration
+---
+
+
 # 📋 Configuration Guide
 
 Complete configuration reference for Factorio ISR.

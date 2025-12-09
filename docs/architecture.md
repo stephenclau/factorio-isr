@@ -1,3 +1,9 @@
+---
+layout: default
+title: Architecture
+---
+
+
 # 🗼 Architecture Guide
 
 Complete overview of Factorio ISR system design, evolution from single-server to multi-server support, and extensibility patterns.

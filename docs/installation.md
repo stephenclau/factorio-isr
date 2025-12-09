@@ -1,3 +1,9 @@
+---
+layout: default
+title: Installation Guide
+---
+
+
 # 💾 Installation Guide
 
 Quick setup guide for getting Factorio ISR running locally or with Docker.

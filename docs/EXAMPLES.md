@@ -1,3 +1,9 @@
+---
+layout: default
+title: Examples
+---
+
+
 # 📖 Usage Examples
 
 Common configuration scenarios and use cases for Factorio ISR.

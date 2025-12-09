@@ -1,3 +1,8 @@
+---
+layout: default
+title: Security Monitor Guide
+---
+
 # Security Monitor Configuration Reference
 
 Configure security monitoring, alert routing, and rate limits via config/secmon.yml.

@@ -1,3 +1,9 @@
+---
+layout: default
+title: Troubleshooting
+---
+
+
 # 🔧 Troubleshooting Guide
 
 Common issues and solutions for Factorio ISR with bot integration, multi-server support, and advanced features.

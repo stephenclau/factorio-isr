@@ -1,3 +1,8 @@
+---
+layout: default
+title: Development
+---
+
 # 🔧 Development
 
 This guide covers local development, testing, and contributing to Factorio ISR.

@@ -1,3 +1,8 @@
+---
+layout: default
+title: About
+---
+
 # About
 
 The Factorio ISR project is now a pretty sophisticated, multi-phase Factorio–Discord control plane with production-ready monitoring, metrics, and bot UX woven together into one coherent system.

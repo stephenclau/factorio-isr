@@ -1,3 +1,8 @@
+---
+layout: default
+title: Mentions Guide
+---
+
 # Mentions Configuration Reference
 
 Complete guide to mapping in‑game @tokens to Discord mentions using config/mentions.yml.

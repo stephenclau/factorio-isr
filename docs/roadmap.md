@@ -1,3 +1,9 @@
+---
+layout: default
+title: Roadmap
+---
+
+
 ## 🗺️ Roadmap
 
 ### Phase 1 - Minimum Viable Product (MVP) ✅

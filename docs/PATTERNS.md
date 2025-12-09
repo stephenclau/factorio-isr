@@ -1,3 +1,9 @@
+---
+layout: default
+title: Patterns Guide
+---
+
+
 # Pattern Syntax Reference
 
 Complete guide to creating custom event patterns for Factorio ISR.

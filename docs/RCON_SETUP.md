@@ -1,3 +1,8 @@
+---
+layout: default
+title: RCON Setup
+---
+
 # 📡 RCON Configuration Guide
 
 Complete guide to setting up RCON (Remote Console) integration for real-time server statistics via the multi-server architecture.

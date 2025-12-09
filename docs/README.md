@@ -1,3 +1,9 @@
+---
+layout: default
+title: Readme
+---
+
+
 # Factorio ISR (Incident Stream Relay)
 
 [![Docker Hub](https://img.shields.io/docker/v/slautomaton/factorio-isr?style=plastic&label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/slautomaton/factorio-isr)

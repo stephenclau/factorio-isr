@@ -1,3 +1,10 @@
+---
+layout: default
+title: Home
+---
+
+
+
 # Factorio ISR Documentation
 
 [![Release](https://img.shields.io/github/v/release/stephenclau/factorio-isr?style=flat-square&logo=github)](https://github.com/stephenclau/factorio-isr/releases)
