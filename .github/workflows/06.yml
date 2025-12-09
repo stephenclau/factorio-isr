@@ -32,11 +32,13 @@ jobs:
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: '3.3'
-          bundler-cache: true  
+          bundler-cache: true 
+          working-directory: ./docs 
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Build with Jekyll
         #uses: actions/jekyll-build-pages@v1
+        working-directory: ./docs
         run: bundle exec jekyll build
         env:
           JEKYLL_ENV: production
