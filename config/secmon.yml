@@ -1,0 +1,39 @@
+# Security Monitor Configuration
+# Place this file at: ./config/secmon.yml
+
+security:
+  enabled: true
+
+  # Discord channel for security alerts
+  alert_channel: "security-alerts"
+
+  # Malicious patterns (can be extended)
+  patterns:
+    code_injection:
+      enabled: true
+      auto_ban: true
+      severity: critical
+
+    path_traversal:
+      enabled: true
+      auto_ban: false
+      severity: high
+
+    command_injection:
+      enabled: true
+      auto_ban: true
+      severity: critical
+
+  # Rate limits
+  rate_limits:
+    mention_admin:
+      max_events: 5
+      time_window_seconds: 60
+
+    mention_everyone:
+      max_events: 1
+      time_window_seconds: 300
+
+    chat_message:
+      max_events: 20
+      time_window_seconds: 60

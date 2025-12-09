@@ -22,6 +22,8 @@ import signal
 import re as stdlib_re  # For selective mention sanitization
 import structlog
 
+from security_monitor import SecurityMonitor, Infraction
+
 # SECURITY: Try to use google-re2 for ReDoS immunity
 try:
     import google_re2 as re  # type: ignore
@@ -106,6 +108,8 @@ class EventParser:
         self,
         patterns_dir: Path = Path("patterns"),
         pattern_files: Optional[List[str]] = None,
+        security_monitor: Optional[SecurityMonitor] = None, 
+        security_channel: Optional[str] = None,  
     ) -> None:
         """
         Initialize event parser with pattern loader.
@@ -119,6 +123,9 @@ class EventParser:
 
         self.pattern_loader = PatternLoader(patterns_dir)
         self.compiled_patterns: CompiledPatternMap = {}
+        
+        self.security_monitor = security_monitor or SecurityMonitor()
+        self.security_channel = security_channel or "security-alerts"
 
         count = self.pattern_loader.load_patterns(pattern_files)
         logger.info("event_parser_initialized", patterns_loaded=count)
@@ -254,8 +261,107 @@ class EventParser:
             match = self._safe_regex_search(compiled_regex, line, pattern_name)
             if match:
                 return self._create_event(line, match, pattern_config)
+            
+                if event and event.player_name:
+                    # Check if player is banned
+                    if self.security_monitor.is_banned(event.player_name):
+                        logger.warning(
+                            "blocked_event_from_banned_player",
+                            player=event.player_name,
+                            type=event.event_type.value,
+                        )
+                        return None  # Silently drop events from banned players
+
+                    # Check for malicious patterns in message
+                    if event.message:
+                        infraction = self.security_monitor.check_malicious_pattern(
+                            text=event.message,
+                            player_name=event.player_name,
+                        )
+
+                        if infraction:
+                            # Create security alert event
+                            return self._create_security_alert_event(event, infraction)
 
         return None
+
+    def _create_security_alert_event(
+        self,
+        original_event: FactorioEvent,
+        infraction: Infraction,
+    ) -> FactorioEvent:
+        """
+        Create a security alert event for an infraction.
+
+        Args:
+            original_event: The original event that triggered the alert
+            infraction: The infraction record
+
+        Returns:
+            Modified event for security channel with alert formatting
+        """
+        # Format security alert message
+        alert_parts = [
+            f"🚨 **SECURITY ALERT** 🚨",
+            f"**Player:** {infraction.player_name}",
+            f"**Severity:** {infraction.severity.upper()}",
+            f"**Type:** {infraction.metadata.get("description")}",
+            f"**Matched:** `{infraction.metadata.get('match', 'N/A')}`",
+            f"**Action:** {'BANNED' if infraction.auto_banned else 'LOGGED'}",
+            f"**Time:** {infraction.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"**Raw:** `{infraction.raw_text[:100]}...`",
+        ]
+
+        formatted_alert = "\n".join(alert_parts)
+
+        # Create new event for security channel
+        return FactorioEvent(
+            event_type=EventType.SERVER,  # Or create new EventType.SECURITY
+            player_name=infraction.player_name,
+            message=formatted_alert,
+            raw_line=original_event.raw_line,
+            emoji="🚨",
+            formatted_message=formatted_alert,
+            metadata={
+                "channel": self.security_channel,  # Route to security channel
+                "infraction": infraction.to_dict(),
+                "severity": infraction.severity,
+                "auto_banned": infraction.auto_banned,
+            },
+        )
+
+    def check_rate_limit_for_event(
+        self,
+        event: FactorioEvent,
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Check if event should be rate-limited.
+
+        Args:
+            event: Event to check
+
+        Returns:
+            (allowed, reason) - True if allowed, False if rate-limited
+        """
+        if not event.player_name:
+            return True, None
+
+        # Determine action type from event metadata
+        action_type = "chat_message"  # Default
+
+        if event.metadata.get("mentions"):
+            mention_type = event.metadata.get("mention_type", "user")
+            if mention_type == "group":
+                action_type = "mention_admin"
+            elif "everyone" in event.metadata.get("mentions", []):
+                action_type = "mention_everyone"
+
+        return self.security_monitor.check_rate_limit(
+            action_type=action_type,
+            player_name=event.player_name,
+        )
+
+
 
     def _extract_mentions(self, message: Optional[str]) -> List[str]:
         """
