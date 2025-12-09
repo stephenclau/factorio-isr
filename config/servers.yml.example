@@ -17,7 +17,17 @@ servers:
     rcon_password: "your-password-here"
     event_channel_id: 123456789012345678  # Discord channel ID for events
     stats_interval: 300            # Post stats every 5 minutes (in seconds)
-
+  # Performance monitoring (NEW)
+    collect_ups: true
+    collect_evolution: true
+    enable_alerts: true
+    alert_check_interval: 60  # Check every 60 seconds
+    alert_samples_required: 3  # 3 consecutive bad samples
+    ups_warning_threshold: 55.0
+    ups_recovery_threshold: 58.0
+    ups_ema_alpha: 0.2
+    alert_cooldown: 300  # 5 min between alerts
+    
   # Staging server - testing before production deployment
   # stg:
   #   name: "Staging"
