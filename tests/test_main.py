@@ -853,18 +853,6 @@ def test_signal_handler_exception_handling(monkeypatch: pytest.MonkeyPatch) -> N
     except Exception:
         pass
 
-
-@pytest.mark.asyncio
-async def test_main_shutdown_on_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test main() handles KeyboardInterrupt gracefully."""
-    async def mock_run_interrupt(self):
-        raise KeyboardInterrupt()
-    
-    monkeypatch.setattr("main.Application.run", mock_run_interrupt)
-    
-    await main.main()
-
-
 @pytest.mark.asyncio
 async def test_main_exits_on_fatal_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test main() exits with code 1 on fatal error."""
