@@ -189,7 +189,7 @@ See the [Development Guide](development.md)
 
 ## License
 
-Factorio ISR is open source under the [MIT License](https://github.com/stephenclau/factorio-isr/blob/main/LICENSE).
+Factorio ISR is open source under the [AGPL 3.0 License](https://github.com/stephenclau/factorio-isr/blob/main/LICENSE).
 
 ---
 

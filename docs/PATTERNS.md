@@ -898,3 +898,12 @@ patterns:
 ---
 
 **Happy pattern crafting! 🎨**
+
+
+> **📄 Licensing Information**
+> 
+> This project is dual-licensed:
+> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
+>
+> Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)

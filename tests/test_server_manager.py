@@ -1,12 +1,18 @@
-"""
-Comprehensive pytest test suite for server_manager.py
+# Copyright (c) 2025 Stephen Clau
+#
+# This file is part of Factorio ISR.
+#
+# Factorio ISR is dual-licensed:
+#
+# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
+#    See LICENSE file for full terms
+#
+# 2. Commercial License
+#    For proprietary use without AGPL requirements
+#    Contact: licensing@laudiversified.com
+#
+# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
-Tests ServerManager lifecycle, add/remove servers, error handling, and state management.
-
-Follows project patterns from test_rcon_client.py and test_discord_interface_mega.py.
-
-Note: Requires all source files in /src to use absolute imports (not relative imports).
-"""
 
 from __future__ import annotations
 

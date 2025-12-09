@@ -46,3 +46,13 @@ title: Roadmap
 - [X] Milestone/Todo mod event support (only works if/when those mods write to console log)
 - [ ] Open Telemetry/Prometheus 
 - [ ] Hot loadable configs
+
+
+
+> **📄 Licensing Information**
+> 
+> This project is dual-licensed:
+> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
+>
+> Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)

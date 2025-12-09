@@ -32,3 +32,12 @@ Better command visibility & logging: Command sync now logs both global and per�
 ***High‑coverage pytest suites:*** There are large, strongly-typed test modules for the Discord bot, RCON client, log tailer, and new polling/alert code, pushing coverage into the 90%+ territory and exercising async paths, error handling, and lifecycle edges.​
 
 ***Integration-ready, not just unit‑ready:*** The test harness includes a real-bot integration path (token validity checks, connection timeout diagnostics) so production failures look familiar and debuggable rather than mysterious.
+
+
+> **📄 Licensing Information**
+> 
+> This project is dual-licensed:
+> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
+>
+> Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)

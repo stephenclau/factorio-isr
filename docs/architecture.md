@@ -590,3 +590,12 @@ See [Roadmap](roadmap.md) for detailed future plans.
 - **[Pattern Reference](PATTERNS.md)** – Event pattern syntax
 - **[Security Guide](secmon.md)** – Rate limiting and threat model
 - **[Mentions Guide](mentions.md)** – Safe @mention vocabulary
+
+
+> **📄 Licensing Information**
+> 
+> This project is dual-licensed:
+> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
+>
+> Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)

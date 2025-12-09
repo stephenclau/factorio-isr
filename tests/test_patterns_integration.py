@@ -1,22 +1,18 @@
-"""
-Integration tests for event_parser.py with real pattern files.
+# Copyright (c) 2025 Stephen Clau
+#
+# This file is part of Factorio ISR.
+#
+# Factorio ISR is dual-licensed:
+#
+# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
+#    See LICENSE file for full terms
+#
+# 2. Commercial License
+#    For proprietary use without AGPL requirements
+#    Contact: licensing@laudiversified.com
+#
+# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
-UPDATED for pattern_loader.py security hardening:
-- Pattern length limits (500 chars)
-- Template length limits (200 chars)
-- YAML key whitelist validation
-- Template placeholder validation
-- Pattern name validation (alphanumeric + underscore)
-- File size limits (1MB)
-- Pattern count per file limits (100)
-
-Goals:
-- Real YAML patterns load and compile correctly with security validation
-- Realistic log lines (with timestamps and tags) match expected event types
-- FactorioEvent objects preserve core properties (event_type, player_name, raw_line)
-- FactorioEventFormatter produces non-empty Discord-safe strings
-- Security controls prevent malicious patterns from loading
-"""
 
 from __future__ import annotations
 from pathlib import Path

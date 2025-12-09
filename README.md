@@ -160,12 +160,6 @@ pytest-watch
 - [ ] Set up log rotation if needed
 - [ ] Monitor container resource usage
 
-
-## 📄 License
-
-MIT
-
-
 ## 📚 Documentation
 
 - **[Installation Guide](docs/installation.md)** - Detailed setup instructions
@@ -180,12 +174,9 @@ MIT
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
-
 ## 🙏 Acknowledgments
 
 - [Factorio](https://www.factorio.com/) - The amazing game this tool supports
-- [factoriotools/factorio-docker](https://github.com/factoriotools/factorio-docker) - Inspiration for Docker patterns
-- [Discord Webhooks](https://discord.com/developers/docs/resources/webhook) - Simple integration API
 
 ## 📞 Support
 
@@ -195,3 +186,37 @@ MIT
 
 **Made with ❤️ for the Factorio community**
 
+## 📄 License
+
+Factorio ISR is **dual-licensed**:
+
+### Option 1: AGPL-3.0 (Open Source)
+
+Free for use, modification, and distribution under the terms of the 
+[GNU Affero General Public License v3.0](LICENSE).
+
+**Requirements:**
+- Must open-source any modifications
+- Must share source code with network users
+- Must use AGPL-3.0 for derivative works
+
+✅ **Great for:** Self-hosting, learning, contributing, open-source projects
+
+### Option 2: Commercial License
+
+For organizations that need to use Factorio ISR without AGPL 
+obligations.
+
+**Use cases:**
+- Integration into proprietary software
+- Offering as a managed service without open-sourcing
+- Keeping modifications private
+- Enterprise compliance requirements
+
+📧 **Contact:** licensing@laudiversified.com
+📄 **Details:** See [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md)
+
+---
+
+**Can't decide?** Most self-hosters choose AGPL-3.0. Commercial 
+licenses are for companies with specific compliance needs.

@@ -2,3 +2,26 @@ remote_theme: just-the-docs/just-the-docs
 color_scheme: dark
 title: Factorio-ISR
 description: Real-time Factorio server event relay that tails console logs, parses rich gameplay and mod events, and streams join, leave, chat, milestones, research, and performance metrics directly to Discord, with Docker-ready deployment, RCON integration, health checks, and high test coverage for reliable automation.
+baseurl: "/factorio-isr"
+url: "https://stephenclau.github.io"
+
+plugins:
+  - jekyll-remote-theme
+
+# Enable search functionality
+search_enabled: true
+
+# Show "Edit this page on GitHub" links
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: "https://github.com/stephenclau/factorio-isr"
+gh_edit_branch: "main"
+gh_edit_view_mode: "edit"
+
+# Footer content
+footer_content: "Copyright &copy; 2025. Distributed under the <a href=\"https://github.com/stephenclau/factorio-isr/blob/main/LICENSE\">AGPL 3.0 License</a>."
+
+# Aux links (top-right navigation)
+aux_links:
+  "View on GitHub":
+    - "https://github.com/stephenclau/factorio-isr"
