@@ -256,6 +256,37 @@ class EventParser:
             )
             return None
 
+        event: Optional[FactorioEvent] = None
+
+        for pattern_name, (compiled_regex, pattern_config) in self.compiled_patterns.items():
+            match = self._safe_regex_search(compiled_regex, line, pattern_name)
+            if match:
+                event = self._create_event(line, match, pattern_config)
+                break
+
+        if not event:
+            return None
+
+        # Security monitor integration
+        if event.player_name:
+            if self.security_monitor.is_banned(event.player_name):
+                logger.warning(
+                    "blocked_event_from_banned_player",
+                    player=event.player_name,
+                    type=event.event_type.value,
+                )
+                return None
+
+            if event.message:
+                infraction = self.security_monitor.check_malicious_pattern(
+                    text=event.message,
+                    player_name=event.player_name,
+                )
+                if infraction:
+                    return self._create_security_alert_event(event, infraction)
+
+        return event    
+            
         # Try each pattern in (priority) order as supplied by PatternLoader.
         for pattern_name, (compiled_regex, pattern_config) in self.compiled_patterns.items():
             match = self._safe_regex_search(compiled_regex, line, pattern_name)
