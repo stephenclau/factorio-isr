@@ -1,30 +1,20 @@
 """
 Integration tests for event_parser.py with real pattern files.
 
-UPDATED for pattern_loader.py security hardening:
-- Pattern length limits (500 chars)
-- Template length limits (200 chars)
-- YAML key whitelist validation
-- Template placeholder validation
-- Pattern name validation (alphanumeric + underscore)
-- File size limits (1MB)
-- Pattern count per file limits (100)
-
 Goals:
-- Real YAML patterns load and compile correctly with security validation
-- Realistic log lines (with timestamps and tags) match expected event types
-- FactorioEvent objects preserve core properties (event_type, player_name, raw_line)
-- FactorioEventFormatter produces non-empty Discord-safe strings
-- Security controls prevent malicious patterns from loading
+- Real YAML patterns load and compile correctly.
+- Realistic log lines (with timestamps and tags) match expected event types.
+- FactorioEvent objects preserve core properties (event_type, player_name, raw_line).
+- FactorioEventFormatter produces non-empty Discord-safe strings.
 """
 
 from __future__ import annotations
+
 from pathlib import Path
 from typing import List
+
 import sys
 import pytest
-import tempfile
-import yaml
 
 # Add src to path for imports
 project_root = Path(__file__).parent.parent
@@ -36,20 +26,12 @@ from event_parser import (  # type: ignore[import]
     FactorioEvent,
     FactorioEventFormatter,
 )
-from pattern_loader import (  # type: ignore[import]
-    PatternLoader,
-    EventPattern,
-    MAX_PATTERN_LENGTH,
-    MAX_TEMPLATE_LENGTH,
-    MAX_PATTERNS_PER_FILE,
-    MAX_FILE_SIZE_BYTES,
-    ALLOWED_YAML_KEYS,
-    ALLOWED_TEMPLATE_PLACEHOLDERS,
-)
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="session")
 def patterns_dir() -> Path:
@@ -58,234 +40,17 @@ def patterns_dir() -> Path:
     assert path.exists(), f"patterns/ directory not found at {path}"
     return path
 
+
 @pytest.fixture(scope="session")
 def parser(patterns_dir: Path) -> EventParser:
     """Parser loaded with real pattern files."""
     return EventParser(patterns_dir=patterns_dir)
 
-@pytest.fixture
-def temp_patterns_dir(tmp_path: Path) -> Path:
-    """Temporary patterns directory for security tests."""
-    patterns_dir = tmp_path / "patterns"
-    patterns_dir.mkdir()
-    return patterns_dir
-
-@pytest.fixture
-def create_test_yaml(temp_patterns_dir: Path):
-    """Factory to create test YAML files."""
-    def _create(filename: str, content: dict) -> Path:
-        filepath = temp_patterns_dir / filename
-        with open(filepath, 'w', encoding='utf-8') as f:
-            yaml.dump(content, f)
-        return filepath
-    return _create
-
-# ---------------------------------------------------------------------------
-# Security validation tests (NEW)
-# ---------------------------------------------------------------------------
-
-class TestPatternLoaderSecurity:
-    """Test security validations in pattern loading."""
-
-    def test_pattern_length_limit_enforced(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Patterns exceeding MAX_PATTERN_LENGTH should be rejected."""
-        long_pattern = "x" * (MAX_PATTERN_LENGTH + 1)
-        yaml_data = {
-            "events": {
-                "too_long": {
-                    "pattern": long_pattern,
-                    "type": "chat"
-                }
-            }
-        }
-        create_test_yaml("long_pattern.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be rejected
-        assert count == 0
-
-    def test_template_length_limit_enforced(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Templates exceeding MAX_TEMPLATE_LENGTH should be rejected."""
-        long_template = "x" * (MAX_TEMPLATE_LENGTH + 1)
-        yaml_data = {
-            "events": {
-                "long_template": {
-                    "pattern": "test",
-                    "type": "chat",
-                    "message": long_template
-                }
-            }
-        }
-        create_test_yaml("long_template.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be rejected
-        assert count == 0
-
-    def test_yaml_key_whitelist_enforced(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """YAML files with non-whitelisted keys should be rejected."""
-        yaml_data = {
-            "events": {
-                "malicious": {
-                    "pattern": "test",
-                    "type": "chat",
-                    "handler": "evil.py",  # Not in ALLOWED_YAML_KEYS
-                    "execute": "rm -rf /"  # Not in ALLOWED_YAML_KEYS
-                }
-            }
-        }
-        create_test_yaml("malicious.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be rejected
-        assert count == 0
-
-    def test_template_placeholder_validation(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Templates with non-whitelisted placeholders should be rejected."""
-        yaml_data = {
-            "events": {
-                "bad_placeholder": {
-                    "pattern": "test",
-                    "type": "chat",
-                    "message": "{player} {__import__}"  # __import__ not allowed
-                }
-            }
-        }
-        create_test_yaml("bad_placeholder.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be rejected
-        assert count == 0
-
-    def test_valid_placeholders_accepted(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Templates with only {player} and {message} should be accepted."""
-        yaml_data = {
-            "events": {
-                "valid": {
-                    "pattern": "test",
-                    "type": "chat",
-                    "message": "{player} said {message}"
-                }
-            }
-        }
-        create_test_yaml("valid.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be accepted
-        assert count == 1
-        assert loader.patterns[0].message_template == "{player} said {message}"
-
-    def test_pattern_name_validation(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Pattern names must be alphanumeric with underscores only."""
-        yaml_data = {
-            "events": {
-                "invalid-name": {  # Hyphen not allowed
-                    "pattern": "test",
-                    "type": "chat"
-                }
-            }
-        }
-        create_test_yaml("invalid_name.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be rejected
-        assert count == 0
-
-    def test_valid_pattern_name_accepted(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Pattern names with alphanumeric and underscores should be accepted."""
-        yaml_data = {
-            "events": {
-                "valid_name_123": {
-                    "pattern": "test",
-                    "type": "chat"
-                }
-            }
-        }
-        create_test_yaml("valid_name.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Pattern should be accepted
-        assert count == 1
-        assert loader.patterns[0].name == "valid_name_123"
-
-    def test_file_size_limit_enforced(self, temp_patterns_dir: Path) -> None:
-        """Files exceeding MAX_FILE_SIZE_BYTES should be rejected."""
-        huge_file = temp_patterns_dir / "huge.yml"
-
-        # Create file larger than 1MB
-        with open(huge_file, 'w') as f:
-            f.write("events:\n")
-            for i in range(50000):
-                f.write(f"  pattern_{i}:\n    pattern: 'x' * 100\n    type: chat\n")
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # File should be rejected
-        assert count == 0
-
-    def test_pattern_count_per_file_limit(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Files with >MAX_PATTERNS_PER_FILE patterns should be rejected."""
-        events = {}
-        for i in range(MAX_PATTERNS_PER_FILE + 1):
-            events[f"pattern_{i}"] = {
-                "pattern": f"test{i}",
-                "type": "chat"
-            }
-        yaml_data = {"events": events}
-        create_test_yaml("too_many.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # File should be rejected
-        assert count == 0
-
-    def test_mixed_valid_and_invalid_patterns(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Valid patterns should load even if some are invalid."""
-        yaml_data = {
-            "events": {
-                "valid1": {
-                    "pattern": "test1",
-                    "type": "chat"
-                },
-                "too_long": {
-                    "pattern": "x" * (MAX_PATTERN_LENGTH + 1),
-                    "type": "chat"
-                },
-                "valid2": {
-                    "pattern": "test2",
-                    "type": "join"
-                }
-            }
-        }
-        create_test_yaml("mixed.yml", yaml_data)
-
-        loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-
-        # Only valid patterns should load
-        assert count == 2
-        valid_names = {p.name for p in loader.patterns}
-        assert valid_names == {"valid1", "valid2"}
 
 # ---------------------------------------------------------------------------
 # EventParser initialization
 # ---------------------------------------------------------------------------
+
 
 class TestEventParserInitialization:
     """Test EventParser initialization and pattern loading."""
@@ -307,32 +72,11 @@ class TestEventParserInitialization:
         assert reloaded_count > 0
         assert len(parser.compiled_patterns) > 0
 
-    def test_parser_loads_secured_patterns_only(self, temp_patterns_dir: Path, create_test_yaml) -> None:
-        """Parser should only compile patterns that pass security validation."""
-        yaml_data = {
-            "events": {
-                "valid": {
-                    "pattern": r"\w+ joined",
-                    "type": "join",
-                    "message": "{player} joined"
-                },
-                "invalid_long": {
-                    "pattern": "x" * (MAX_PATTERN_LENGTH + 1),
-                    "type": "chat"
-                }
-            }
-        }
-        create_test_yaml("test.yml", yaml_data)
-
-        parser = EventParser(patterns_dir=temp_patterns_dir)
-
-        # Only valid pattern should be compiled
-        assert len(parser.compiled_patterns) == 1
-        assert "valid" in parser.compiled_patterns
 
 # ---------------------------------------------------------------------------
 # Player events
 # ---------------------------------------------------------------------------
+
 
 class TestPlayerEvents:
     """Test player join/leave events."""
@@ -348,6 +92,7 @@ class TestPlayerEvents:
             assert event.player_name == "TestPlayer"
             assert event.raw_line == line
 
+
     def test_player_leave(self, parser: EventParser) -> None:
         """Timestamped player leave event should parse or safely return None."""
         line = "2025-11-18 01:56:09 [LEAVE] TestPlayer left the game"
@@ -358,17 +103,19 @@ class TestPlayerEvents:
             assert event.player_name == "TestPlayer"
             assert event.raw_line == line
 
-    def test_player_with_special_chars(self, parser: EventParser) -> None:
-        """Player names with numbers/underscores should parse as JOIN if matched."""
-        line = "2025-11-18 01:56:09 [JOIN] Player_123 joined the game"
-        event = parser.parse_line(line)
+        def test_player_with_special_chars(self, parser: EventParser) -> None:
+            """Player names with numbers/underscores should parse as JOIN if matched."""
+            line = "2025-11-18 01:56:09 [JOIN] Player_123 joined the game"
+            event = parser.parse_line(line)
 
-        if event is not None:
-            assert event.event_type == EventType.JOIN
+            if event is not None:
+                assert event.event_type == EventType.JOIN
+
 
 # ---------------------------------------------------------------------------
 # Chat events
 # ---------------------------------------------------------------------------
+
 
 class TestChatEvents:
     """Test chat message events."""
@@ -398,9 +145,11 @@ class TestChatEvents:
         if event is not None:
             assert event.event_type == EventType.CHAT
 
+
 # ---------------------------------------------------------------------------
 # Death events
 # ---------------------------------------------------------------------------
+
 
 class TestDeathEvents:
     """Test player death events."""
@@ -438,9 +187,11 @@ class TestDeathEvents:
         if event is not None:
             assert event.event_type == EventType.DEATH
 
+
 # ---------------------------------------------------------------------------
 # Research events
 # ---------------------------------------------------------------------------
+
 
 class TestResearchEvents:
     """Test research events."""
@@ -463,9 +214,11 @@ class TestResearchEvents:
             assert event.event_type == EventType.RESEARCH
             assert "Automation" in line
 
+
 # ---------------------------------------------------------------------------
 # Milestone events
 # ---------------------------------------------------------------------------
+
 
 class TestMilestoneEvents:
     """Test milestone and achievement events."""
@@ -487,9 +240,11 @@ class TestMilestoneEvents:
         if event is not None:
             assert event.event_type == EventType.MILESTONE
 
+
 # ---------------------------------------------------------------------------
 # Server events
 # ---------------------------------------------------------------------------
+
 
 class TestServerEvents:
     """Test server-related events."""
@@ -526,9 +281,11 @@ class TestServerEvents:
         if event is not None:
             assert event.event_type == EventType.SERVER
 
+
 # ---------------------------------------------------------------------------
 # Non-matching / ignore cases
 # ---------------------------------------------------------------------------
+
 
 class TestNonMatchingLines:
     """Test that non-matching lines are handled correctly."""
@@ -540,7 +297,7 @@ class TestNonMatchingLines:
 
     def test_whitespace_only(self, parser: EventParser) -> None:
         """Whitespace-only lines should return None."""
-        event = parser.parse_line("   ")
+        event = parser.parse_line(" ")
         assert event is None
 
     def test_random_debug_output(self, parser: EventParser) -> None:
@@ -553,9 +310,11 @@ class TestNonMatchingLines:
         event = parser.parse_line("2024.11.30 11:58:00 [INFO]")
         # Intentionally no strict assertion here: just ensure no exception.
 
+
 # ---------------------------------------------------------------------------
 # Formatting tests
 # ---------------------------------------------------------------------------
+
 
 class TestEventFormatting:
     """Test FactorioEvent formatting for Discord."""
@@ -600,9 +359,11 @@ class TestEventFormatting:
             formatted = FactorioEventFormatter.format_for_discord(event)
             assert event.emoji in formatted or event.formatted_message in formatted
 
+
 # ---------------------------------------------------------------------------
 # Event properties
 # ---------------------------------------------------------------------------
+
 
 class TestEventProperties:
     """Test FactorioEvent properties and metadata."""
@@ -631,9 +392,11 @@ class TestEventProperties:
         if event is not None:
             assert isinstance(event.formatted_message, str)
 
+
 # ---------------------------------------------------------------------------
 # Pattern priority
 # ---------------------------------------------------------------------------
+
 
 class TestPatternPriority:
     """Test that pattern priority ordering works correctly."""
@@ -646,9 +409,11 @@ class TestPatternPriority:
         if event is not None:
             assert event.event_type in (EventType.MILESTONE, EventType.UNKNOWN)
 
+
 # ---------------------------------------------------------------------------
 # Edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestEdgeCases:
     """Test edge cases and error handling."""
@@ -674,9 +439,11 @@ class TestEdgeCases:
         line = "Test\nPlayer joined the game"
         _ = parser.parse_line(line)
 
+
 # ---------------------------------------------------------------------------
 # Multiple event types in sequence
 # ---------------------------------------------------------------------------
+
 
 class TestMultipleEventTypes:
     """Test parsing multiple different event types in sequence."""
@@ -709,9 +476,11 @@ class TestMultipleEventTypes:
             assert isinstance(event.raw_line, str)
             assert len(event.raw_line) > 0
 
+
 # ---------------------------------------------------------------------------
 # Formatter edge cases
 # ---------------------------------------------------------------------------
+
 
 class TestFormatterEdgeCases:
     """Test FactorioEventFormatter edge cases."""
@@ -758,9 +527,11 @@ class TestFormatterEdgeCases:
         assert isinstance(formatted, str)
         assert event.raw_line in formatted
 
+
 # ---------------------------------------------------------------------------
 # Real-world scenarios
 # ---------------------------------------------------------------------------
+
 
 class TestRealWorldScenarios:
     """Test with real-world-like log samples."""
@@ -779,7 +550,7 @@ class TestRealWorldScenarios:
                 assert isinstance(event, FactorioEvent)
 
     def test_pvp_scenario(self, parser: EventParser) -> None:
-        """PVP combat scenario should parse or safely ignore lines."""
+        """PvP combat scenario should parse or safely ignore lines."""
         lines = [
             "Alice was killed by Bob's gun turret.",
             "Bob was killed by Alice.",
@@ -790,45 +561,3 @@ class TestRealWorldScenarios:
             event = parser.parse_line(line)
             if event is not None:
                 assert isinstance(event, FactorioEvent)
-
-# ---------------------------------------------------------------------------
-# Security constants validation
-# ---------------------------------------------------------------------------
-
-class TestSecurityConstants:
-    """Test that security constants are properly defined."""
-
-    def test_max_pattern_length_defined(self) -> None:
-        """MAX_PATTERN_LENGTH should be defined and positive."""
-        assert MAX_PATTERN_LENGTH > 0
-        assert isinstance(MAX_PATTERN_LENGTH, int)
-
-    def test_max_template_length_defined(self) -> None:
-        """MAX_TEMPLATE_LENGTH should be defined and positive."""
-        assert MAX_TEMPLATE_LENGTH > 0
-        assert isinstance(MAX_TEMPLATE_LENGTH, int)
-
-    def test_max_patterns_per_file_defined(self) -> None:
-        """MAX_PATTERNS_PER_FILE should be defined and positive."""
-        assert MAX_PATTERNS_PER_FILE > 0
-        assert isinstance(MAX_PATTERNS_PER_FILE, int)
-
-    def test_max_file_size_defined(self) -> None:
-        """MAX_FILE_SIZE_BYTES should be defined and positive."""
-        assert MAX_FILE_SIZE_BYTES > 0
-        assert isinstance(MAX_FILE_SIZE_BYTES, int)
-
-    def test_allowed_yaml_keys_defined(self) -> None:
-        """ALLOWED_YAML_KEYS should be a non-empty set."""
-        assert isinstance(ALLOWED_YAML_KEYS, set)
-        assert len(ALLOWED_YAML_KEYS) > 0
-        # Check for expected keys
-        assert "pattern" in ALLOWED_YAML_KEYS
-        assert "type" in ALLOWED_YAML_KEYS
-        assert "message" in ALLOWED_YAML_KEYS
-
-    def test_allowed_placeholders_defined(self) -> None:
-        """ALLOWED_TEMPLATE_PLACEHOLDERS should contain player and message."""
-        assert isinstance(ALLOWED_TEMPLATE_PLACEHOLDERS, set)
-        assert "player" in ALLOWED_TEMPLATE_PLACEHOLDERS
-        assert "message" in ALLOWED_TEMPLATE_PLACEHOLDERS

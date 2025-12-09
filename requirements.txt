@@ -1,5 +1,6 @@
 aiohttp==3.13.2
 discord.py==2.6.4
+google_re2==1.1.20251105
 python-dotenv==1.2.1
 PyYAML==6.0.3
 rcon==2.4.9

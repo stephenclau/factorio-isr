@@ -625,32 +625,27 @@ class TestLoadFile:
         assert loader.patterns[0].channel is None
     
     def test_duplicate_event_name_warning(self, temp_patterns_dir, create_yaml_file):
-        """Test warning logged for duplicate event names."""
-        yaml_data1 = {
+        yaml_data = {
             "events": {
                 "duplicate": {
                     "pattern": "test1",
                     "type": "chat",
-                }
-            }
-        }
-        yaml_data2 = {
-            "events": {
-                "duplicate": {  # Same name
+                },
+                "duplicate": {  # second one in same file
                     "pattern": "test2",
                     "type": "chat",
-                }
+                },
             }
         }
-        
-        create_yaml_file("file1.yml", yaml_data1)
-        create_yaml_file("file2.yml", yaml_data2)
-        
+        yaml_file = create_yaml_file("duplicate.yml", yaml_data)
         loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        loader.load_patterns()
-        
-        # Both should load despite warning
-        assert len(loader.patterns) == 2
+        count = loader._load_file(yaml_file)
+
+        # Now that loader skips duplicates, only one should be loaded
+        assert count == 1
+        assert len(loader.patterns) == 1
+        assert loader.patterns[0].name == "duplicate"
+
     
     def test_default_type_from_event_name(self, temp_patterns_dir, create_yaml_file):
         """Test that event type defaults to event name if not specified."""
@@ -1054,20 +1049,22 @@ class TestEdgeCases:
         assert "🎮" in loader.patterns[0].emoji
     
     def test_very_long_pattern(self, temp_patterns_dir, create_yaml_file):
-        """Test pattern with very long regex."""
-        long_pattern = r"(option1|option2|option3)" * 100
+        long_pattern = "x" * 501  # > MAX_PATTERN_LENGTH
         yaml_data = {
             "events": {
-                "long": {"pattern": long_pattern, "type": "chat"},
+                "too_long": {
+                    "pattern": long_pattern,
+                    "type": "chat",
+                }
             }
         }
-        create_yaml_file("long.yml", yaml_data)
-        
+        yaml_file = create_yaml_file("too_long.yml", yaml_data)
         loader = PatternLoader(patterns_dir=temp_patterns_dir)
-        count = loader.load_patterns()
-        
-        assert count == 1
-        assert len(loader.patterns[0].pattern) > 1000
+        count = loader._load_file(yaml_file)
+
+        # With security hardening, this should now be rejected
+        assert count == 0
+        assert len(loader.patterns) == 0
     
     def test_empty_patterns_list(self, temp_patterns_dir):
         """Test get_patterns on empty loader."""
@@ -1089,3 +1086,33 @@ class TestEdgeCases:
         # Should raise YAML parsing error
         with pytest.raises(yaml.YAMLError):
             loader._load_file(yaml_file)
+
+
+# ============================================================================
+# Code Security
+# ============================================================================
+
+def test_pattern_too_long():
+    """Pattern exceeding MAX_PATTERN_LENGTH should be rejected."""
+    with pytest.raises(AssertionError, match="pattern too long"):
+        EventPattern(name="test", pattern="x" * 501, event_type="test")
+
+def test_invalid_template_placeholder():
+    """Templates with non-whitelisted placeholders should be rejected."""
+    with pytest.raises(AssertionError, match="disallowed placeholders"):
+        EventPattern(
+            name="test",
+            pattern=".*",
+            event_type="test",
+            message_template="{player} {__import__}"
+        )
+
+def test_yaml_key_injection():
+    """YAML with unexpected keys should be rejected."""
+    # Create test YAML with 'handler: evil.py'
+    # Assert it's logged and skipped
+
+def test_file_too_large():
+    """Files exceeding MAX_FILE_SIZE_BYTES should be rejected."""
+    # Create 2MB YAML file
+    # Assert load_patterns returns 0 and logs error

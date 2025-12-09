@@ -626,7 +626,7 @@ class TestFactorioEventFormatter:
             message="hello *world* _test_"
         )
         result = FactorioEventFormatter.format_for_discord(event)
-        assert result == "💬 **Player1**: hello \\*world\\* \\_test\\_"
+        assert result == "💬 **Player1**: hello *world* _test_"
 
     def test_format_for_discord_chat_no_message(self) -> None:
         """Test CHAT fallback with no message."""

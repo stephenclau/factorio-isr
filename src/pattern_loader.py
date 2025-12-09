@@ -1,13 +1,34 @@
 """
 Pattern loader for YAML-based event configurations.
+
 Loads event patterns from YAML files for flexible parsing configuration.
+
+SECURITY HARDENING:
+- Pattern length limits (max 500 chars) to prevent ReDoS
+- YAML key whitelist to prevent config injection
+- Template placeholder validation (only {player} and {message})
+- Max patterns per file limit (100)
+- Max file size limit (1MB)
 """
+
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
+import re
 import yaml
 import structlog
 
 logger = structlog.get_logger()
+
+# Security configuration constants
+MAX_PATTERN_LENGTH = 500  # chars
+MAX_TEMPLATE_LENGTH = 200  # chars
+MAX_PATTERNS_PER_FILE = 100
+MAX_FILE_SIZE_BYTES = 1024 * 1024  # 1MB
+ALLOWED_YAML_KEYS: Set[str] = {
+    "pattern", "type", "emoji", "message", 
+    "enabled", "priority", "channel", "description"
+}
+ALLOWED_TEMPLATE_PLACEHOLDERS: Set[str] = {"player", "message"}
 
 
 class EventPattern:
@@ -25,7 +46,7 @@ class EventPattern:
         channel: Optional[str] = None
     ):
         """
-        Initialize event pattern.
+        Initialize event pattern with security validation.
 
         Args:
             name: Pattern identifier
@@ -46,13 +67,32 @@ class EventPattern:
         assert isinstance(enabled, bool), f"enabled must be bool, got {type(enabled)}"
         assert isinstance(priority, int), f"priority must be int, got {type(priority)}"
         assert channel is None or isinstance(channel, str), f"channel must be None or str, got {type(channel)}"
-        
-        # Value assertions
+
+        # Value assertions - basic
         assert len(name) > 0, "name cannot be empty"
         assert len(pattern) > 0, "pattern cannot be empty"
         assert len(event_type) > 0, "event_type cannot be empty"
         assert priority >= 0, f"priority must be non-negative, got {priority}"
-        
+
+        # SECURITY: Pattern length limit
+        assert len(pattern) <= MAX_PATTERN_LENGTH, \
+            f"pattern too long: {len(pattern)} chars (max {MAX_PATTERN_LENGTH})"
+
+        # SECURITY: Template length limit
+        assert len(message_template) <= MAX_TEMPLATE_LENGTH, \
+            f"message_template too long: {len(message_template)} chars (max {MAX_TEMPLATE_LENGTH})"
+
+        # SECURITY: Validate template placeholders
+        if message_template:
+            placeholders = set(re.findall(r'\{(\w+)\}', message_template))
+            invalid_placeholders = placeholders - ALLOWED_TEMPLATE_PLACEHOLDERS
+            assert not invalid_placeholders, \
+                f"message_template contains disallowed placeholders: {invalid_placeholders}. " \
+                f"Only {ALLOWED_TEMPLATE_PLACEHOLDERS} are allowed."
+
+        # SECURITY: Name validation (alphanumeric + underscore only)
+        assert re.match(r'^[a-zA-Z0-9_]+$', name), \
+            f"name must be alphanumeric with underscores only, got: {name}"
 
         self.name: str = name
         self.pattern: str = pattern
@@ -116,17 +156,27 @@ class PatternLoader:
         loaded_count: int = 0
         for yaml_file in yaml_files:
             assert isinstance(yaml_file, Path), f"yaml_file must be Path, got {type(yaml_file)}"
+
             if not yaml_file.exists():
                 logger.warning("pattern_file_not_found", file=str(yaml_file))
+                continue
+
+            # SECURITY: Check file size before loading
+            file_size = yaml_file.stat().st_size
+            if file_size > MAX_FILE_SIZE_BYTES:
+                logger.error(
+                    "pattern_file_too_large",
+                    file=str(yaml_file),
+                    size_bytes=file_size,
+                    max_bytes=MAX_FILE_SIZE_BYTES
+                )
                 continue
 
             count = self._load_file(yaml_file)
             assert isinstance(count, int), f"_load_file must return int, got {type(count)}"
             assert count >= 0, f"_load_file returned negative count: {count}"
-            
             loaded_count += count
             self._loaded_files.append(yaml_file.name)
-            
             logger.info(
                 "patterns_loaded",
                 file=yaml_file.name,
@@ -162,6 +212,7 @@ class PatternLoader:
         assert yaml_file.exists(), f"yaml_file does not exist: {yaml_file}"
 
         with open(yaml_file, 'r', encoding='utf-8') as f:
+            # SECURITY: Use safe_load to prevent arbitrary code execution
             data: Any = yaml.safe_load(f)
 
         # Type check loaded data
@@ -179,6 +230,16 @@ class PatternLoader:
 
         if not isinstance(data['events'], dict):
             logger.warning("events_not_dict", file=str(yaml_file), type=type(data['events']).__name__)
+            return 0
+
+        # SECURITY: Limit number of patterns per file
+        if len(data['events']) > MAX_PATTERNS_PER_FILE:
+            logger.error(
+                "too_many_patterns_in_file",
+                file=str(yaml_file),
+                count=len(data['events']),
+                max=MAX_PATTERNS_PER_FILE
+            )
             return 0
 
         count: int = 0
@@ -202,6 +263,18 @@ class PatternLoader:
                     file=str(yaml_file)
                 )
                 continue
+
+            # SECURITY: Whitelist allowed YAML keys
+            unexpected_keys = set(config.keys()) - ALLOWED_YAML_KEYS
+            if unexpected_keys:
+                logger.warning(
+                    "unexpected_yaml_keys",
+                    name=event_name,
+                    keys=list(unexpected_keys),
+                    allowed=list(ALLOWED_YAML_KEYS),
+                    file=str(yaml_file)
+                )
+                continue  # Reject entire entry if unknown keys present
 
             # Validate required 'pattern' field exists
             if "pattern" not in config:
@@ -278,11 +351,19 @@ class PatternLoader:
                         name=event_name,
                         file=str(yaml_file),
                     )
+                    continue
+
                 # Extract channel (optional)
                 channel: Optional[str] = config.get('channel')
-                if channel is not None:
-                    assert isinstance(channel, str), \
-                        f"'channel' for {event_name} must be str, got {type(channel)}"
+                if channel is not None and not isinstance(channel, str):
+                    logger.warning(
+                        "channel_not_string",
+                        name=event_name,
+                        channel_type=type(channel).__name__,
+                        file=str(yaml_file)
+                    )
+                    channel = None
+
                 # Create pattern (this validates all fields via assertions)
                 pattern = EventPattern(
                     name=event_name,
@@ -387,7 +468,6 @@ class PatternLoader:
         """
         self.patterns.clear()
         self._loaded_files.clear()
-
         assert len(self.patterns) == 0, "patterns should be empty after clear"
         assert len(self._loaded_files) == 0, "_loaded_files should be empty after clear"
 
