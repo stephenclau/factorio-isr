@@ -1,5 +1,4 @@
 #triggers ghub release generation whenever I push a tag starting with "v"
-
 name: 05.Build and Release
 
 on:
@@ -13,6 +12,8 @@ jobs:
     permissions:
       contents: write
       packages: write
+      attestations: write
+      id-token: write
     
     steps:
       - name: Checkout code
@@ -39,18 +40,36 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
       
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
+          sbom: true
+          provenance: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
             ghcr.io/${{ github.repository }}:latest
             ${{ vars.DOCKERHUB_USERNAME }}/factorio-isr:${{ steps.version.outputs.VERSION }}
             ${{ vars.DOCKERHUB_USERNAME }}/factorio-isr:latest
       
+      - name: Generate SBOM (SPDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+          format: spdx-json
+          output-file: sbom-spdx.json
+      
+      - name: Generate SBOM (CycloneDX JSON)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+          format: cyclonedx-json
+          output-file: sbom-cyclonedx.json
+      
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
           generateReleaseNotes: true
+          artifacts: "sbom-spdx.json,sbom-cyclonedx.json"
           token: ${{ secrets.GHCR_TOKEN }}
