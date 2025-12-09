@@ -1,0 +1,113 @@
+services:
+  factorio:
+    container_name: factorio
+    image: slautomaton/factorio:stable
+    pull_policy: always
+    hostname: factorio-dedicated
+    init: true
+    restart: "unless-stopped"
+    dns: #<- for factorio server to resolve domains handshakes when making server public
+      - 8.8.8.8
+      - 1.1.1.1
+    ports:
+      - 34197:34197/udp
+      - 27015:27015/tcp
+    volumes:
+      - /home/factorio/mods:/opt/factorio/mods
+      - /home/factorio/scenarios:/opt/factorio/scenarios
+      - /home/factorio/saves:/opt/factorio/saves
+      - /home/factorio/log:/opt/factorio/log
+      - /home/factorio/script-output:/opt/factorio/script-output
+      - /home/factorio/config:/opt/factorio/config
+    secrets:
+      - FACTORIO_USERNAME
+      - FACTORIO_TOKEN
+      - FACTORIO_GAME_PASSWORD
+      - RCON_PASSWORD
+    environment:
+      - SERVER_NAME=[color=yellow]yourservername[/color][space-age]
+      - SERVER_DESCRIPTION=""
+      - TAGS=""
+      - LOAD_LATEST_SAVE=true
+      - SAVE_NAME=""
+      - MAX_PLAYERS=""
+      - IS_PUBLIC=true
+      - IS_LAN=true
+      - REQUIRE_USER_VERIFICATION=true
+      - ALLOW_COMMANDS=admins-only
+      - AUTOSAVE_INTERVAL=10
+      - AUTOSAVE_SLOTS=12
+      - UID=845 #<= your container host's nonroot user UID/GID (REQUIRED)
+      - GID=845 #<= your container host's nonroot user UID/GID (REQUIRED)
+      - TZ=""
+      - AUTOSAVE_SERVER_ONLY=true
+      - AFK_AUTOKICK_INTERVAL=60
+      - AUTO_PAUSE_WHEN_PLAYERS_CONNECT=false
+      - ONLY_ADMINS_CAN_PAUSE=true
+      - IGNORE_PLAYER_LIMIT_FOR_RETURNING_PLAYERS=false
+      - AUTO_PAUSE=true
+      - PORT=34197
+      - RCON_PORT=27015
+      - FACTORIO_VERSION=stable <-actual tags from wube - stable, experimental
+    networks:
+      - factorio-net
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/localhost/27015' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  factorio-isr:
+    container_name: factorio-isr
+    image: slautomaton/factorio-isr:latest
+    pull_policy: always
+    restart: "unless-stopped"
+    depends_on:
+      factorio:
+        condition: service_healthy  # Wait for RCON to be ready
+    volumes:
+      - /home/factorio/log:/factorio/log:ro
+      - /home/factorio/script-output:/factorio/script-output:ro
+      - /home/factorio/patterns:/patterns:rw  <== by default, the app already has patterns shipped and housed in the /patterns folder in its root dir. this is optional to customize regex patterns with other mods that actually writes to console.log
+      - /home/factorio/config:/config:rw
+    secrets:
+      - DISCORD_BOT_TOKEN
+      - RCON_PASSWORD
+    environment:
+      - UID=845 #<= your container host's nonroot user UID/GID (REQUIRED)
+      - GID=845 #<= your container host's nonroot user UID/GID (REQUIRED)
+      - LOG_LEVEL=info #info or debug
+      - LOG_FORMAT=json #json or console
+      - FACTORIO_LOG_PATH=/factorio/log/console.log #<=== path to your log on your host based off the mount path from your factorio server container above or elsewhere
+      - HEALTH_CHECK_HOST=0.0.0.0
+      - HEALTH_CHECK_PORT=8080
+      - TZ=""
+      - DISCORD_EVENT_CHANNEL_ID=1445304449005387899 #<==enable dev mod in your discord server first, then you can right click any text channel name to get its ID for this value
+      - RCON_BREAKDOWN_MODE=transition
+      - RCON_BREAKDOWN_INTERVAL=300
+    ports:
+      - 8080:8080
+    networks:
+      - factorio-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  factorio-net:
+    name: factorio-net
+    driver: bridge
+
+secrets:
+  FACTORIO_USERNAME:
+    file: ./.secrets/FACTORIO_USERNAME.txt
+  FACTORIO_TOKEN:
+    file: ./.secrets/FACTORIO_TOKEN.txt
+  FACTORIO_GAME_PASSWORD:
+    file: ./.secrets/FACTORIO_GAME_PASSWORD.txt
+  RCON_PASSWORD:
+    file: ./.secrets/RCON_PASSWORD.txt
+  DISCORD_BOT_TOKEN:
+    file: ./.secrets/DISCORD_BOT_TOKEN.txt

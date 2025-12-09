@@ -1,2 +1,4 @@
 remote_theme: just-the-docs/just-the-docs
 color_scheme: dark
+title: Factorio-ISR
+description: Real-time Factorio server event relay that tails console logs, parses rich gameplay and mod events, and streams join, leave, chat, milestones, research, and performance metrics directly to Discord, with Docker-ready deployment, RCON integration, health checks, and high test coverage for reliable automation.

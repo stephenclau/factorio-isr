@@ -1,0 +1,43 @@
+ factorio-isr:
+    container_name: factorio-isr
+    image: slautomaton/factorio-isr:latest
+    pull_policy: always
+    restart: "unless-stopped"
+    
+    volumes:
+      - /home/factorio/log:/factorio/log:ro
+      - /home/factorio/script-output:/factorio/script-output:ro
+      - /home/factorio/patterns:/patterns:rw  <== by default, the app already has patterns shipped and housed in the /patterns folder in its root dir. this is optional to customize regex patterns with other mods that actually writes to console.log
+      - /home/factorio/config:/config:rw
+    secrets:
+      - DISCORD_BOT_TOKEN
+      - RCON_PASSWORD
+    environment:
+      - UID=845 #<= your container host's nonroot user UID/GID (REQUIRED)
+      - GID=845 #<= your container host's nonroot user UID/GID (REQUIRED)
+      - LOG_LEVEL=info #info or debug
+      - LOG_FORMAT=json #json or console
+      - FACTORIO_LOG_PATH=/factorio/log/console.log #<=== path to your log on your host based off the mount path from your factorio server container above or elsewhere
+      - HEALTH_CHECK_HOST=0.0.0.0
+      - HEALTH_CHECK_PORT=8080
+      - TZ=""
+      - DISCORD_EVENT_CHANNEL_ID= #<==enable dev mod in your discord server first, then you can right click any text channel name to get its ID for this value
+      - RCON_BREAKDOWN_MODE=transition ## RCON Breakdown Embed Configuration. Mode: "transition" = send on server state changes, "interval" = send periodically
+      - RCON_BREAKDOWN_INTERVAL=300 # Interval in seconds (only used when mode=interval)
+    ports:
+      - 8080:8080
+    networks:
+      - docker-network-used-by-your-headless-server-containers
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+secrets:  
+  RCON_PASSWORD:
+    file: ./.secrets/RCON_PASSWORD.txt
+  DISCORD_BOT_TOKEN:
+    file: ./.secrets/DISCORD_BOT_TOKEN.txt
+  RCON_PASSWORD_PRD:                       #<==if you tagged your server as prd or eu-west or whatever in the config/servers.yml, append the tag to the secrets file like so and it'll read from that secret first, before falling back to nontagged rcon secret.
+    file: ./.secrets/RCON_PASSWORD_PRD.txt  

@@ -9,14 +9,14 @@
 
 servers:
   # Production server - main 24/7 gameplay
-  lh-west:
-    name: "Los Hermanos Factorio"
-    description: "Main 24/7 server"
-    rcon_host: 172.20.48.220      # Docker container name or IP
+  tag:
+    name: ""
+    description: ""
+    rcon_host: # Docker container name or IP e.g. localhost, 812.180.18.1, 192.168.1.220, factorio-container-name-from-docker-compose.yml
     rcon_port: 27015                # RCON port
-    rcon_password: 
-    event_channel_id: 1443838551019094048  # Discord channel ID for events
-    stats_interval: 300             # Post stats every 5 minutes
+    rcon_password:  #you can hardcode it here, but i recommend secrets
+    event_channel_id:   # Discord channel ID for events for THIS server.
+    stats_interval: 300             # Post stat card every 5 minutes
     # Performance monitoring (NEW)
     collect_ups: true
     collect_evolution: true
