@@ -793,3 +793,358 @@ class TestValidateConfigTargeted:
         )
         assert validate_config(cfg) is True
         assert cfg.log_level == "info"
+
+# ========================================================================
+# PHASE 6: parse_servers_from_yaml Tests
+# ========================================================================
+
+def test_parse_servers_from_yaml_file_not_found(tmp_path: Path) -> None:
+    """Test parse_servers_from_yaml when file doesn't exist."""
+    yaml_path = tmp_path / "nonexistent.yml"
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None
+
+
+def test_parse_servers_from_yaml_missing_servers_key(tmp_path: Path) -> None:
+    """Test parse_servers_from_yaml with missing 'servers' key."""
+    yaml_path = tmp_path / "invalid.yml"
+    yaml_path.write_text("other_key: value\n")
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None
+
+
+def test_parse_servers_from_yaml_empty_file(tmp_path: Path) -> None:
+    """Test parse_servers_from_yaml with empty file."""
+    yaml_path = tmp_path / "empty.yml"
+    yaml_path.write_text("")
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None
+
+
+def test_parse_servers_from_yaml_success_with_password(tmp_path: Path) -> None:
+    """Test successful parsing with password in YAML."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    name: "Production"
+    description: "Main server"
+    rcon_host: "factorio-prod"
+    rcon_port: 27015
+    rcon_password: "secret123"
+    event_channel_id: 123456789
+    stats_interval: 300
+"""
+    yaml_path.write_text(yaml_content)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert "prod" in result
+    assert result["prod"].name == "Production"
+    assert result["prod"].rcon_host == "factorio-prod"
+    assert result["prod"].rcon_port == 27015
+    assert result["prod"].rcon_password == "secret123"
+    assert result["prod"].description == "Main server"
+    assert result["prod"].event_channel_id == 123456789
+
+
+def test_parse_servers_from_yaml_default_values(tmp_path: Path) -> None:
+    """Test parsing with default values for optional fields."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  test:
+    name: "Test Server"
+    rcon_host: "localhost"
+    rcon_password: "test"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert result["test"].rcon_port == 27015  # Default
+    assert result["test"].stats_interval == 300  # Default
+    assert result["test"].description is None
+    assert result["test"].event_channel_id is None
+    assert result["test"].rcon_breakdown_mode == "transition"
+    assert result["test"].rcon_breakdown_interval == 300
+
+
+def test_parse_servers_from_yaml_password_from_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test password loading from secrets when not in YAML."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    name: "Production"
+    rcon_host: "factorio-prod"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    # Mock read_secret to return a password
+    def mock_read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
+        if secret_name == "RCON_PASSWORD_PROD":
+            return "secret_from_file"
+        return default
+    
+    monkeypatch.setattr("config.read_secret", mock_read_secret)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert result["prod"].rcon_password == "secret_from_file"
+
+
+def test_parse_servers_from_yaml_password_fallback_generic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test fallback to generic RCON_PASSWORD secret."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  test:
+    name: "Test"
+    rcon_host: "localhost"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    # Mock read_secret to return generic password
+    def mock_read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
+        if secret_name == "RCON_PASSWORD":
+            return "generic_secret"
+        return default
+    
+    monkeypatch.setattr("config.read_secret", mock_read_secret)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert result["test"].rcon_password == "generic_secret"
+
+
+def test_parse_servers_from_yaml_invalid_tag_format(tmp_path: Path) -> None:
+    """Test validation failure for invalid tag format."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  INVALID_TAG:
+    name: "Invalid"
+    rcon_host: "localhost"
+    rcon_password: "test"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    with pytest.raises(ValueError, match="Invalid tag"):
+        parse_servers_from_yaml(yaml_path)
+
+
+def test_parse_servers_from_yaml_tag_too_long(tmp_path: Path) -> None:
+    """Test validation failure for tag longer than 16 chars."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  this-is-way-too-long-tag:
+    name: "Test"
+    rcon_host: "localhost"
+    rcon_password: "test"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    with pytest.raises(ValueError, match="Invalid tag"):
+        parse_servers_from_yaml(yaml_path)
+
+
+def test_parse_servers_from_yaml_missing_required_field(tmp_path: Path) -> None:
+    """Test error when required field 'name' is missing causes KeyError."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    rcon_host: "localhost"
+    rcon_password: "test"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    # KeyError is caught by the outer exception handler and None is returned
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None
+
+
+
+def test_parse_servers_from_yaml_multiple_servers(tmp_path: Path) -> None:
+    """Test parsing multiple servers."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    name: "Production"
+    rcon_host: "factorio-prod"
+    rcon_password: "secret1"
+  staging:
+    name: "Staging"
+    rcon_host: "factorio-stg"
+    rcon_password: "secret2"
+  dev:
+    name: "Development"
+    rcon_host: "localhost"
+    rcon_password: "secret3"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert len(result) == 3
+    assert "prod" in result
+    assert "staging" in result
+    assert "dev" in result
+
+
+def test_parse_servers_from_yaml_all_optional_fields(tmp_path: Path) -> None:
+    """Test parsing with all optional fields present."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    name: "Production"
+    rcon_host: "factorio-prod"
+    rcon_port: 27020
+    rcon_password: "secret"
+    description: "24/7 main server"
+    event_channel_id: 987654321
+    stats_interval: 600
+    rcon_breakdown_mode: "interval"
+    rcon_breakdown_interval: 900
+    collect_ups: true
+    collect_evolution: false
+    enable_alerts: true
+    alert_check_interval: 120
+    alert_samples_required: 5
+    ups_warning_threshold: 50.0
+    ups_recovery_threshold: 55.0
+    alert_cooldown: 600
+    ups_ema_alpha: 0.3
+"""
+    yaml_path.write_text(yaml_content)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    server = result["prod"]
+    assert server.rcon_port == 27020
+    assert server.description == "24/7 main server"
+    assert server.stats_interval == 600
+    assert server.rcon_breakdown_mode == "interval"
+    assert server.rcon_breakdown_interval == 900
+    assert server.collect_ups is True
+    assert server.collect_evolution is False
+    assert server.enable_alerts is True
+    assert server.alert_check_interval == 120
+    assert server.alert_samples_required == 5
+    assert server.ups_warning_threshold == 50.0
+    assert server.ups_recovery_threshold == 55.0
+    assert server.alert_cooldown == 600
+    assert server.ups_ema_alpha == 0.3
+
+
+def test_parse_servers_from_yaml_invalid_yaml_syntax(tmp_path: Path) -> None:
+    """Test handling of invalid YAML syntax."""
+    yaml_path = tmp_path / "invalid.yml"
+    yaml_path.write_text("servers:\n  prod:\n    name: [invalid yaml\n")
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None  # Should catch YAML parse error
+
+
+def test_parse_servers_from_yaml_no_yaml_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test handling when PyYAML is not installed."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_path.write_text("servers:\n  prod:\n    name: Test\n")
+    
+    # Mock import to fail
+    import builtins
+    real_import = builtins.__import__
+    
+    def mock_import(name, *args, **kwargs):
+        if name == "yaml":
+            raise ImportError("No module named yaml")
+        return real_import(name, *args, **kwargs)
+    
+    monkeypatch.setattr(builtins, "__import__", mock_import)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None
+
+
+def test_parse_servers_from_yaml_io_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test handling of file I/O errors."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_path.write_text("servers:\n  prod:\n    name: Test\n")
+    
+    # Make file unreadable
+    original_open = open
+    
+    def mock_open(*args, **kwargs):
+        if str(yaml_path) in str(args[0]):
+            raise IOError("Permission denied")
+        return original_open(*args, **kwargs)
+    
+    monkeypatch.setattr("builtins.open", mock_open)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is None
+
+
+def test_parse_servers_from_yaml_empty_password_uses_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that empty password string in YAML falls back to secrets."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    name: "Production"
+    rcon_host: "localhost"
+    rcon_password: ""
+"""
+    yaml_path.write_text(yaml_content)
+    
+    # Mock read_secret to return a password
+    def mock_read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
+        if secret_name == "RCON_PASSWORD_PROD":
+            return "from_secret"
+        return default
+    
+    monkeypatch.setattr("config.read_secret", mock_read_secret)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert result["prod"].rcon_password == "from_secret"
+
+
+def test_parse_servers_from_yaml_breakdown_mode_case_insensitive(tmp_path: Path) -> None:
+    """Test that rcon_breakdown_mode is lowercased."""
+    yaml_path = tmp_path / "servers.yml"
+    yaml_content = """
+servers:
+  prod:
+    name: "Production"
+    rcon_host: "localhost"
+    rcon_password: "test"
+    rcon_breakdown_mode: "INTERVAL"
+"""
+    yaml_path.write_text(yaml_content)
+    
+    result = parse_servers_from_yaml(yaml_path)
+    
+    assert result is not None
+    assert result["prod"].rcon_breakdown_mode == "interval"  # Lowercased

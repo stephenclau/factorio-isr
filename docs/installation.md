@@ -1,13 +1,15 @@
 # 💾 Installation Guide
 
-This guide covers multiple ways to install and run Factorio ISR.
+Quick setup guide for getting Factorio ISR running locally or with Docker.
 
 ## Prerequisites
 
-- Docker and Docker Compose (recommended)
-- OR Python 3.13+ for local development
+- Docker and Docker Compose (recommended), OR
+- Python 3.11+ for local development
 - A running Factorio server with console logging enabled
-- A Discord webhook URL
+- A Discord bot token and channel ID
+
+---
 
 ## Docker CLI Installation
 
@@ -15,7 +17,7 @@ This guide covers multiple ways to install and run Factorio ISR.
 
 ```bash
 mkdir -p .secrets
-echo "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN" > .secrets/DISCORD_WEBHOOK_URL.txt
+echo "your-discord-bot-token" > .secrets/DISCORD_BOT_TOKEN.txt
 ```
 
 ### Run with Docker
@@ -24,18 +26,19 @@ echo "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN" > .secrets/DI
 docker run -d \
   --name factorio-isr \
   -v /path/to/factorio/log:/factorio/log:ro \
-  -v $(pwd)/.secrets/DISCORD_WEBHOOK_URL.txt:/run/secrets/DISCORD_WEBHOOK_URL:ro \
+  -v $(pwd)/.secrets/DISCORD_BOT_TOKEN.txt:/run/secrets/DISCORD_BOT_TOKEN:ro \
   -e FACTORIO_LOG_PATH=/factorio/log/console.log \
+  -e DISCORD_EVENT_CHANNEL_ID=123456789012345678 \
   -e LOG_LEVEL=info \
   -p 8080:8080 \
   slautomaton/factorio-isr:latest
 ```
 
+---
+
 ## Docker Compose Installation (Recommended)
 
-### As a Sidecar Container
-
-Create a `docker-compose.yml` file:
+### Create docker-compose.yml
 
 ```yaml
 services:
@@ -53,10 +56,12 @@ services:
       - factorio
     volumes:
       - factorio-data:/factorio:ro
+      - ./patterns:/app/patterns:ro
     secrets:
-      - DISCORD_WEBHOOK_URL
+      - discord_bot_token
     environment:
       - FACTORIO_LOG_PATH=/factorio/console.log
+      - DISCORD_EVENT_CHANNEL_ID=123456789012345678
       - LOG_LEVEL=info
       - BOT_NAME=Factorio Server Bot
     ports:
@@ -66,11 +71,11 @@ volumes:
   factorio-data:
 
 secrets:
-  DISCORD_WEBHOOK_URL:
-    file: ./.secrets/DISCORD_WEBHOOK_URL.txt
+  discord_bot_token:
+    file: ./.secrets/DISCORD_BOT_TOKEN.txt
 ```
 
-### Start the Services
+### Start Services
 
 ```bash
 docker compose up -d
@@ -82,9 +87,11 @@ docker compose up -d
 docker compose logs -f factorio-isr
 ```
 
+---
+
 ## Local Development Installation
 
-### Clone the Repository
+### Clone Repository
 
 ```bash
 git clone https://github.com/stephenclau/factorio-isr.git
@@ -108,7 +115,8 @@ pip install -r requirements.txt
 
 ```bash
 cat > .env << EOF
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_TOKEN
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_EVENT_CHANNEL_ID=123456789012345678
 FACTORIO_LOG_PATH=/path/to/factorio/console.log
 LOG_LEVEL=debug
 LOG_FORMAT=console
@@ -117,40 +125,40 @@ BOT_NAME=Factorio Dev Bot
 EOF
 ```
 
-### Run the Application
+### Run Application
 
 ```bash
 python -m src.main
 ```
 
-## Verifying Installation
+---
 
-### Check Health Endpoint
+## Verify Installation
+
+### Health Check
 
 ```bash
 curl http://localhost:8080/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "healthy",
-  "service": "factorio-isr"
+  "uptime_seconds": 123,
+  "version": "2.0.0"
 }
 ```
 
-### Test Discord Integration
+### Verify Discord Connection
 
-Send a test message to verify your webhook works:
+Check bot is online in Discord and responding to events. You should see bot status update to show server info.
 
-```bash
-curl -X POST "YOUR_WEBHOOK_URL" \
-  -H "Content-Type: application/json" \
-  -d '{"content": "Test message from Factorio ISR"}'
-```
+---
 
 ## Next Steps
 
-- Configure environment variables: [Configuration Guide](configuration.md)
-- Set up for production: [Docker Deployment Guide](docker-deployment.md)
-- Start developing: [Development Guide](development.md)
+- **Configure:** [Configuration Guide](configuration.md) – Environment variables, RCON, patterns
+- **Production:** [Deployment Guide](DEPLOYMENT.md) – Systemd, Docker Compose, monitoring
+- **Development:** [Development Guide](development.md) – Running tests, adding features

@@ -1,17 +1,19 @@
-# Troubleshooting Guide
+# 🔧 Troubleshooting Guide
 
-Common issues and solutions for Factorio ISR.
+Common issues and solutions for Factorio ISR with bot integration, multi-server support, and advanced features.
 
 ## Table of Contents
 
 - [Startup Issues](#startup-issues)
+- [Discord Bot Issues](#discord-bot-issues)
 - [RCON Problems](#rcon-problems)
-- [Discord Issues](#discord-issues)
+- [Multi-Server Issues](#multi-server-issues)
+- [Slash Commands](#slash-commands)
+- [Mentions Feature](#mentions-feature)
 - [Log Tailing Issues](#log-tailing-issues)
 - [Pattern Matching](#pattern-matching)
 - [Docker Issues](#docker-issues)
 - [Performance Issues](#performance-issues)
-- [Configuration Issues](#configuration-issues)
 
 ---
 
@@ -28,67 +30,75 @@ Common issues and solutions for Factorio ISR.
 pip install -r requirements.txt
 
 # Verify installation
-pip list | grep -E "aiohttp|structlog|rcon|pyyaml|dotenv"
+pip list | grep -E "discord.py|structlog|rcon|pyyaml|dotenv"
 ```
 
 ---
 
-**Error:** `ValueError: DISCORD_WEBHOOK_URL is required`
+**Error:** `ValueError: DISCORD_BOT_TOKEN is required`
 
 **Solution:**
 
 ```bash
 # Check .env file
-cat .env | grep DISCORD_WEBHOOK_URL
+cat .env | grep DISCORD_BOT_TOKEN
 
 # Or check secrets
-cat .secrets/DISCORD_WEBHOOK_URL.txt
+cat .secrets/DISCORD_BOT_TOKEN.txt
 
-# Verify it's set
-python -c "
-import sys
-sys.path.insert(0, 'src')
-from config import load_config
-config = load_config()
-print(f'Webhook: {config.discord_webhook_url[:50]}...')
-"
+# Verify in container
+docker exec factorio-isr ls -la /run/secrets/DISCORD_BOT_TOKEN
 ```
 
 ---
 
-**Error:** `ValueError: FACTORIO_LOG_PATH is required`
+**Error:** `ValueError: servers.yml not found or empty`
 
 **Solution:**
 
 ```bash
-# Set in .env
-echo "FACTORIO_LOG_PATH=/path/to/factorio/console.log" >> .env
+# Verify servers.yml exists
+ls -la config/servers.yml
 
-# Verify file exists
-ls -la /path/to/factorio/console.log
+# Check YAML syntax
+python -c "import yaml; yaml.safe_load(open('config/servers.yml'))"
+
+# Minimal config
+cat > config/servers.yml << EOF
+servers:
+  default:
+    log_path: /factorio/console.log
+    discord:
+      event_channel_id: 123456789012345678
+EOF
 ```
 
 ---
 
 ### Config Validation Fails
 
-**Error:** `ValueError: RCON_PASSWORD is required when RCON_ENABLED is true`
+**Error:** `ValueError: Invalid server configuration for 'SERVER_NAME'`
 
 **Solution:**
 
 ```bash
-# Option 1: Set RCON password
-echo "your-password" > .secrets/RCON_PASSWORD.txt
-chmod 600 .secrets/RCON_PASSWORD.txt
+# Check servers.yml structure
+cat config/servers.yml
 
-# Option 2: Disable RCON
-# Edit .env
-RCON_ENABLED=false
+# Ensure all required fields present
+servers:
+  my_server:
+    log_path: /factorio/console.log  # Required
+    discord:
+      event_channel_id: 123...       # Required
+
+# Validate YAML syntax
+python -m yaml.tool config/servers.yml
 ```
 
 ---
 
-**Error:** `ValueError: LOG_LEVEL must be one of [....]`
+**Error:** `ValueError: LOG_LEVEL must be one of [...]`
 
 **Solution:**
 
@@ -100,121 +110,198 @@ LOG_LEVEL=info
 
 ---
 
+## Discord Bot Issues
+
+### Bot Not Coming Online
+
+**Symptom:** Bot shows as offline in Discord
+
+**Diagnosis:**
+
+```bash
+# Check token
+cat .secrets/DISCORD_BOT_TOKEN.txt
+
+# Verify bot invited to server
+# Discord Developer Portal → Your App → OAuth2 → Bot
+
+# Check logs
+docker-compose logs factorio-isr | grep -i "bot\|discord\|login"
+```
+
+**Solutions:**
+
+1. **Verify bot token is valid:**
+   - Discord Developer Portal → Bot → Reset Token
+   - Update `.secrets/DISCORD_BOT_TOKEN.txt`
+
+2. **Check bot is invited to server:**
+   - Required scopes: `bot`, `applications.commands`
+   - Required permissions: Send Messages, Embed Links, Use Slash Commands
+
+3. **Verify intents enabled:**
+   - Discord Developer Portal → Bot → Privileged Gateway Intents
+   - Enable: Server Members Intent, Message Content Intent (if reading chat)
+
+4. **Check for startup errors:**
+   ```bash
+   docker-compose logs factorio-isr | grep -i error
+   ```
+
+---
+
+### Messages Not Sending
+
+**Symptom:** Bot online but events not appearing in Discord
+
+**Diagnosis:**
+
+```bash
+# Check channel ID
+grep event_channel_id config/servers.yml
+
+# Check bot permissions
+# Discord → Channel Settings → Permissions → Your Bot
+
+# Check logs for permission errors
+docker-compose logs factorio-isr | grep -i "permission\|forbidden"
+```
+
+**Solutions:**
+
+1. **Verify channel ID is correct:**
+   ```bash
+   # Get channel ID: Enable Developer Mode in Discord
+   # Right-click channel → Copy ID
+   ```
+
+2. **Check bot has permissions in channel:**
+   - View Channel
+   - Send Messages
+   - Embed Links
+   - Attach Files (for stats embeds)
+
+3. **Verify per-server channel configuration:**
+   ```yaml
+   servers:
+     my_server:
+       discord:
+         event_channel_id: 123456789012345678  # Must exist and bot has access
+   ```
+
+---
+
+### Slash Commands Not Appearing
+
+**Symptom:** `/stats`, `/players`, etc. not showing in Discord
+
+**Diagnosis:**
+
+```bash
+# Check bot invited with applications.commands scope
+# Check logs for command sync
+docker-compose logs factorio-isr | grep -i "command\|slash"
+```
+
+**Solutions:**
+
+1. **Re-invite bot with correct scopes:**
+   - Discord Developer Portal → OAuth2 → URL Generator
+   - Select: `bot`, `applications.commands`
+   - Bot Permissions: Send Messages, Embed Links, Use Slash Commands
+
+2. **Wait for command sync:**
+   - Commands can take up to 1 hour to appear globally
+   - Check logs for: `synced_slash_commands`
+
+3. **Check guild commands:**
+   ```bash
+   # Bot registers commands per-guild when it joins
+   # Kick and re-invite bot to force re-sync
+   ```
+
+---
+
+### Slash Commands Fail
+
+**Error:** `/stats` → "This interaction failed"
+
+**Diagnosis:**
+
+```bash
+# Check logs when running command
+docker-compose logs factorio-isr -f
+
+# Look for specific error
+docker-compose logs factorio-isr | grep -i "stats\|command\|error"
+```
+
+**Solutions:**
+
+1. **RCON not configured:**
+   ```yaml
+   # servers.yml - RCON required for /stats, /players
+   servers:
+     my_server:
+       rcon:
+         host: localhost
+         port: 27015
+         password_file: .secrets/rcon_myserver.txt
+   ```
+
+2. **Wrong server name:**
+   ```bash
+   # Server name in command must match servers.yml
+   /stats server:my_server  # Must match "my_server:" in YAML
+   ```
+
+3. **Bot missing permissions:**
+   - Ensure bot can send messages in the channel where command was used
+
+---
+
 ## RCON Problems
 
 ### RCON Not Connecting
 
-**Symptom:** `{"event": "rcon_disabled", ...}` in logs
+**Symptom:** `{"event": "rcon_connection_failed", "server": "...", ...}` in logs
 
 **Diagnosis:**
 
 ```bash
-# 1. Check RCON enabled
-grep RCON_ENABLED .env
+# Check servers.yml RCON config
+grep -A 5 "rcon:" config/servers.yml
 
-# 2. Check password set
-ls -la .secrets/RCON_PASSWORD.txt
-cat .secrets/RCON_PASSWORD.txt
+# Check password file
+cat .secrets/rcon_myserver.txt
 
-# 3. Check rcon library installed
-python -c "import rcon; print('✅ Installed')"
-```
-
-**Solutions:**
-
-```bash
-# Install rcon library
-pip install rcon
-
-# Set RCON password
-echo "your-password" > .secrets/RCON_PASSWORD.txt
-
-# Enable RCON
-# Edit .env:
-RCON_ENABLED=true
-RCON_HOST=localhost
-RCON_PORT=27015
-```
-
----
-
-### Connection Refused
-
-**Error:** `ConnectionRefusedError: [Errno 111] Connection refused`
-
-**Diagnosis:**
-
-```bash
-# Check Factorio server is running
-ps aux | grep factorio
-
-# Check RCON port is listening
-netstat -tlnp | grep 27015
-# or
-ss -tlnp | grep 27015
-
-# Test connection
-telnet localhost 27015
-```
-
-**Solutions:**
-
-1. **Start Factorio server**
-
-2. **Enable RCON in Factorio:**
-   ```json
-   // server-settings.json
-   {
-     "rcon-port": 27015,
-     "rcon-password": "your-password"
-   }
-   ```
-
-3. **Check firewall:**
-   ```bash
-   sudo ufw status
-   sudo ufw allow 27015/tcp
-   ```
-
-4. **Verify correct host:**
-   ```bash
-   # Same machine
-   RCON_HOST=localhost
-
-   # Different machine
-   RCON_HOST=192.168.1.50
-   ```
-
----
-
-### Authentication Failed
-
-**Error:** `Authentication failed` or `Invalid password`
-
-**Diagnosis:**
-
-```bash
-# Compare passwords
-cat .secrets/RCON_PASSWORD.txt
-grep rcon-password /path/to/factorio/server-settings.json
-```
-
-**Solutions:**
-
-```bash
-# Ensure passwords match exactly
-# No extra whitespace
-echo -n "your-password" > .secrets/RCON_PASSWORD.txt
-
-# Check for hidden characters
-od -c .secrets/RCON_PASSWORD.txt
-
-# Test manually
+# Test RCON manually
 python -c "
 from rcon.source import Client
-with Client('localhost', 27015, passwd='your-password') as c:
+with open('.secrets/rcon_myserver.txt') as f:
+    pw = f.read().strip()
+with Client('localhost', 27015, passwd=pw) as c:
     print(c.run('/time'))
 "
+```
+
+**Solutions:**
+
+```bash
+# Verify RCON section in servers.yml
+servers:
+  my_server:
+    rcon:
+      host: localhost
+      port: 27015
+      password_file: .secrets/rcon_myserver.txt
+
+# Ensure password file exists and readable
+ls -la .secrets/rcon_myserver.txt
+chmod 600 .secrets/rcon_myserver.txt
+
+# Check Factorio RCON is enabled
+grep rcon-port /path/to/factorio/server-settings.json
 ```
 
 ---
@@ -226,180 +313,330 @@ with Client('localhost', 27015, passwd='your-password') as c:
 **Diagnosis:**
 
 ```bash
-# Check stats collector started
-docker-compose logs factorio-isr | grep stats_collector_started
-
 # Check stats interval
-grep STATS_INTERVAL .env
+grep stats_interval config/servers.yml
+
+# Check collector started
+docker-compose logs factorio-isr | grep "stats_collector_started"
 
 # Check for errors
-docker-compose logs factorio-isr | grep -i "stats\|rcon" | grep -i error
+docker-compose logs factorio-isr | grep -i "stats" | grep -i error
 ```
 
 **Solutions:**
 
 ```bash
-# Verify stats interval (seconds)
-STATS_INTERVAL=300  # 5 minutes
+# Verify stats interval is set (default 300 = 5 min)
+servers:
+  my_server:
+    rcon:
+      stats_interval: 300
 
-# Test Discord webhook
-curl -X POST "$(cat .secrets/DISCORD_WEBHOOK_URL.txt)" \
-    -H "Content-Type: application/json" \
-    -d '{"content":"Test stats"}'
+# Wait for interval to elapse
+# Check logs for stats_posted event
 
-# Check RCON queries work
+# Ensure bot has permission to post embeds
+# Discord → Channel Settings → Permissions → Embed Links
+```
+
+---
+
+### UPS/Evolution Monitoring Not Working
+
+**Symptom:** Stats posted but missing UPS or evolution data
+
+**Diagnosis:**
+
+```bash
+# Check RCON commands work
 python -c "
 from rcon.source import Client
-with Client('localhost', 27015, passwd='$(cat .secrets/RCON_PASSWORD.txt)') as c:
-    print('Players:', c.run('/players'))
-    print('Time:', c.run('/time'))
+with open('.secrets/rcon_myserver.txt') as f:
+    pw = f.read().strip()
+with Client('localhost', 27015, passwd=pw) as c:
+    print('UPS:', c.run('/measured-command game.speed'))
+    print('Evolution:', c.run('/c game.print(game.forces[\"enemy\"].evolution_factor)'))
 "
-
-# Restart application
-docker-compose restart factorio-isr
-```
-
----
-
-## Discord Issues
-
-### Messages Not Sending
-
-**Symptom:** Events logged but not appearing in Discord
-
-**Diagnosis:**
-
-```bash
-# Check webhook URL
-cat .secrets/DISCORD_WEBHOOK_URL.txt
-
-# Test webhook
-curl -X POST "$(cat .secrets/DISCORD_WEBHOOK_URL.txt)" \
-    -H "Content-Type: application/json" \
-    -d '{"content":"Test message"}'
-
-# Check logs for webhook errors
-docker-compose logs factorio-isr | grep -i webhook | grep -i error
 ```
 
 **Solutions:**
 
-1. **Verify webhook URL is correct:**
-   ```bash
-   # Should start with: https://discord.com/api/webhooks/
-   cat .secrets/DISCORD_WEBHOOK_URL.txt
-   ```
-
-2. **Check webhook exists in Discord:**
-   - Server Settings → Integrations → Webhooks
-   - Verify webhook is not deleted
-
-3. **Test webhook manually:**
-   ```bash
-   curl -X POST "YOUR_WEBHOOK_URL" \
-       -H "Content-Type: application/json" \
-       -d '{"content":"Manual test"}'
-   ```
-
-4. **Check rate limiting:**
-   - Discord limits: 30 requests per 60 seconds per webhook
-   - Reduce event frequency if needed
+- UPS monitoring requires RCON access
+- Evolution factor requires Lua access via RCON
+- Ensure Factorio version supports commands used
 
 ---
 
-### Wrong Channel
+## Multi-Server Issues
 
-**Symptom:** Events appear in wrong Discord channel
+### Wrong Server's Events Appearing
+
+**Symptom:** Events from server A appearing in server B's channel
 
 **Diagnosis:**
 
 ```bash
-# Check WEBHOOK_CHANNELS configuration
-grep WEBHOOK_CHANNELS .env
+# Check servers.yml channel IDs
+grep -A 3 "discord:" config/servers.yml
 
-# Verify channel names in patterns
-grep "channel:" patterns/*.yml
+# Check logs for server name in events
+docker-compose logs factorio-isr | grep "event_sent"
 ```
 
 **Solutions:**
 
-1. **Check channel name matches:**
-   ```bash
-   # .env
-   WEBHOOK_CHANNELS={"chat":"URL1","events":"URL2"}
+```yaml
+# Ensure each server has unique channel ID
+servers:
+  server_a:
+    discord:
+      event_channel_id: 111111111111111111  # Server A channel
 
-   # Pattern must match exactly (case-sensitive)
-   discord:
-     channel: chat  # ← Must be "chat" not "Chat"
-   ```
-
-2. **Verify webhook URLs:**
-   ```bash
-   # Test each channel
-   curl -X POST "CHAT_WEBHOOK_URL" \
-       -d '{"content":"Test chat channel"}'
-
-   curl -X POST "EVENTS_WEBHOOK_URL" \
-       -d '{"content":"Test events channel"}'
-   ```
-
-3. **Check pattern priority:**
-   ```yaml
-   # Higher priority matches first
-   - name: admin_death
-     priority: 100
-     discord:
-       channel: admin
-
-   - name: regular_death
-     priority: 50
-     discord:
-       channel: deaths
-   ```
+  server_b:
+    discord:
+      event_channel_id: 222222222222222222  # Server B channel (different!)
+```
 
 ---
 
-### Messages Malformed
+### Some Servers Not Monitored
 
-**Symptom:** Discord messages look wrong or incomplete
+**Symptom:** Only some servers posting events
 
 **Diagnosis:**
 
 ```bash
-# Check logs for formatting errors
-docker-compose logs factorio-isr | grep -i discord | grep -i error
+# Check logs for each server initialization
+docker-compose logs factorio-isr | grep "server_initialized"
 
-# View raw message data
-LOG_LEVEL=debug docker-compose up
+# Check log files exist
+ls -la /path/to/factorio/*/console.log
 ```
 
 **Solutions:**
 
-1. **Check field substitution:**
+```bash
+# Verify all log paths in servers.yml exist
+for server in $(grep "log_path:" config/servers.yml | awk '{print $2}'); do
+    ls -la "$server" || echo "Missing: $server"
+done
+
+# Ensure all servers have valid config
+python -c "
+import yaml
+with open('config/servers.yml') as f:
+    config = yaml.safe_load(f)
+    for name, cfg in config['servers'].items():
+        assert 'log_path' in cfg, f'{name}: missing log_path'
+        assert 'discord' in cfg, f'{name}: missing discord section'
+        print(f'✅ {name}')
+"
+```
+
+---
+
+### Bot Presence Shows Wrong Server Count
+
+**Symptom:** Bot status shows "Watching 1/3 servers" incorrectly
+
+**Diagnosis:**
+
+```bash
+# Check RCON status for all servers
+docker-compose logs factorio-isr | grep "rcon_connection"
+
+# Look for connection failures
+docker-compose logs factorio-isr | grep "rcon_connection_failed"
+```
+
+**Solutions:**
+
+- Presence updates based on active RCON connections
+- If a server's RCON is down, it won't count as "online"
+- Fix RCON issues for missing servers (see RCON section)
+
+---
+
+## Slash Commands
+
+### `/stats` Not Working
+
+**Error:** "Could not retrieve stats for server X"
+
+**Solutions:**
+
+1. **RCON not configured for that server:**
    ```yaml
-   fields:
-     player: 1
-     killer: 2
-   discord:
-     description: "{player} killed by {killer}"  # ✅
-     # Not: "{1} killed by {2}"  # ❌
+   servers:
+     my_server:
+       rcon:  # Must be present
+         host: localhost
+         port: 27015
+         password_file: .secrets/rcon_myserver.txt
    ```
 
-2. **Verify regex captures:**
-   ```python
-   import re
-   pattern = r'(.+) was killed by (.+)'
-   line = 'Player was killed by biter'
-   match = re.search(pattern, line)
-   print(match.groups())  # Should print: ('Player', 'biter')
+2. **Server name typo:**
+   ```bash
+   # Server name in command must match servers.yml exactly
+   /stats server:my_server  # Case-sensitive!
    ```
 
-3. **Check emoji encoding:**
-   ```yaml
-   discord:
-     emoji: "💀"  # ✅ Actual emoji
-     # Not: ":skull:"  # ❌ Discord shortcode
+3. **RCON connection down:**
+   ```bash
+   # Check logs
+   docker-compose logs factorio-isr | grep "my_server" | grep "rcon"
    ```
+
+---
+
+### `/players` Shows No Players
+
+**Symptom:** Command runs but says "No players online" when players are present
+
+**Solutions:**
+
+- Verify RCON connected and returning player list
+- Test manually:
+  ```bash
+  python -c "
+  from rcon.source import Client
+  with open('.secrets/rcon_myserver.txt') as f:
+      pw = f.read().strip()
+  with Client('localhost', 27015, passwd=pw) as c:
+      print(c.run('/players'))
+  "
+  ```
+
+---
+
+### `/save` Command Fails
+
+**Error:** "Could not save game for server X"
+
+**Solutions:**
+
+1. **RCON permissions:**
+   - Factorio server must allow `/save` command via RCON
+   - Check `server-adminlist.json` if admin-only
+
+2. **RCON connection issue:**
+   ```bash
+   # Test save manually
+   python -c "
+   from rcon.source import Client
+   with open('.secrets/rcon_myserver.txt') as f:
+       pw = f.read().strip()
+   with Client('localhost', 27015, passwd=pw) as c:
+       print(c.run('/save'))
+   "
+   ```
+
+---
+
+## Mentions Feature
+
+### @mentions Not Working
+
+**Symptom:** `@username` in Factorio chat not pinging Discord user
+
+**Diagnosis:**
+
+```bash
+# Check mentions.yml exists
+ls -la config/mentions.yml
+
+# Check format
+cat config/mentions.yml
+
+# Check logs for mention parsing
+LOG_LEVEL=debug docker-compose up | grep -i mention
+```
+
+**Solutions:**
+
+1. **Create mentions.yml:**
+   ```yaml
+   # config/mentions.yml
+   mentions:
+     alice:
+       type: user
+       discord_id: 123456789012345678
+       aliases:
+         - alice
+         - Alice
+         - ALICE
+
+     moderators:
+       type: role
+       discord_id: 987654321098765432
+       aliases:
+         - mods
+         - moderators
+   ```
+
+2. **Verify Discord IDs:**
+   - Enable Developer Mode in Discord
+   - Right-click user/role → Copy ID
+   - Use that ID in mentions.yml
+
+3. **Check bot permissions:**
+   - Bot needs "Mention Everyone" permission to @role mentions
+   - Ensure bot can see the user/role
+
+---
+
+### Role Mentions Not Working
+
+**Error:** `@moderators` shows as plain text, doesn't ping
+
+**Solutions:**
+
+```yaml
+# Ensure type: role
+mentions:
+  moderators:
+    type: role  # Not user
+    discord_id: 987654321098765432
+
+# Check bot has "Mention Everyone" permission
+# Discord → Server Settings → Roles → Your Bot → Mention Everyone
+```
+
+---
+
+### Security Monitor Mentions
+
+**Symptom:** Security events not triggering @admin ping
+
+**Diagnosis:**
+
+```bash
+# Check secmon.yml exists
+ls -la config/secmon.yml
+
+# Check format
+cat config/secmon.yml
+```
+
+**Solutions:**
+
+```yaml
+# config/secmon.yml
+security:
+  sensitive_commands:
+    enabled: true
+    mention_group: admins  # Must match mentions.yml entry
+    patterns:
+      - '/c '
+      - '/command'
+      - 'script.raise_event'
+
+# config/mentions.yml
+mentions:
+  admins:  # Matches mention_group above
+    type: role
+    discord_id: 123456789012345678
+```
 
 ---
 
@@ -412,27 +649,31 @@ LOG_LEVEL=debug docker-compose up
 **Diagnosis:**
 
 ```bash
-# Check log path
-grep FACTORIO_LOG_PATH .env
+# Check log path in servers.yml
+grep log_path config/servers.yml
 
-# Verify file exists
+# Verify files exist
 ls -la /path/to/factorio/console.log
 
-# Check permissions
-ls -la /path/to/factorio/
+# Check Docker mount
+docker exec factorio-isr ls -la /factorio/console.log
 ```
 
 **Solutions:**
 
 ```bash
-# Correct path in .env
-FACTORIO_LOG_PATH=/correct/path/to/console.log
-
-# Fix permissions
-sudo chmod 644 /path/to/factorio/console.log
+# Fix path in servers.yml
+servers:
+  my_server:
+    log_path: /factorio/console.log  # Correct path
 
 # For Docker, verify mount
-docker exec factorio-isr ls -la /factorio/console.log
+# docker-compose.yml
+volumes:
+  - /host/path/to/factorio/logs:/factorio:ro
+
+# Check permissions
+chmod 644 /path/to/factorio/console.log
 ```
 
 ---
@@ -444,36 +685,33 @@ docker exec factorio-isr ls -la /factorio/console.log
 **Diagnosis:**
 
 ```bash
-# Check if log is being read
+# Check log is being read
 docker-compose logs factorio-isr | grep "log_file_opened"
 
 # Verify log has content
 tail -f /path/to/factorio/console.log
 
 # Check pattern matching
-LOG_LEVEL=debug docker-compose up
+LOG_LEVEL=debug docker-compose up | grep "event_parsed"
 ```
 
 **Solutions:**
 
 1. **Verify log file is active:**
    ```bash
-   # Add test entry
+   # Test entry
    echo "$(date '+%Y-%m-%d %H:%M:%S') [CHAT] TestUser: Test!" >> /path/to/factorio/console.log
    ```
 
-2. **Check patterns are loaded:**
+2. **Check patterns loaded:**
    ```bash
    docker-compose logs factorio-isr | grep "patterns_loaded"
+   ls -la patterns/
    ```
 
-3. **Test pattern matching:**
+3. **Verify YAML syntax:**
    ```bash
-   # View pattern files
-   ls -la patterns/
-
-   # Verify YAML syntax
-   python -m yaml patterns/vanilla.yml
+   python -c "import yaml; yaml.safe_load(open('patterns/vanilla.yml'))"
    ```
 
 ---
@@ -482,29 +720,13 @@ LOG_LEVEL=debug docker-compose up
 
 **Symptom:** Old events repeating after log rotation
 
-**Diagnosis:**
+**Solution:**
+
+Application handles rotation automatically via inode tracking. If issues persist:
 
 ```bash
-# Check inode tracking
-docker-compose logs factorio-isr | grep "rotation_detected"
-
-# Verify rotation method
-ls -li /path/to/factorio/console.log*
-```
-
-**Solutions:**
-
-Application handles rotation automatically. If issues persist:
-
-```bash
-# Restart application after rotation
+# Restart after rotation
 docker-compose restart factorio-isr
-
-# Or use logrotate postrotate script
-# /etc/logrotate.d/factorio
-postrotate
-    docker-compose -f /path/to/docker-compose.yml restart factorio-isr
-endscript
 ```
 
 ---
@@ -519,105 +741,68 @@ endscript
 
 ```bash
 # Enable debug logging
-LOG_LEVEL=debug docker-compose up
+LOG_LEVEL=debug docker-compose up | grep "pattern_matched\|no_match"
 
 # Test regex manually
 python -c "
 import re
 pattern = r'YOUR_PATTERN'
-test_line = 'YOUR_LOG_LINE'
-match = re.search(pattern, test_line)
+line = 'YOUR_LOG_LINE'
+match = re.search(pattern, line)
 print(f'Match: {match.groups() if match else None}')
 "
 ```
 
 **Solutions:**
 
-1. **Check regex escaping:**
+1. **Check pattern syntax:**
    ```yaml
-   regex: '\[CHAT\]'  # ✅ Escaped brackets
-   regex: '[CHAT]'      # ❌ Character class
+   events:
+     player_join:
+       pattern: '\[JOIN\] (.+)'  # Escaped brackets
+       type: join
+       emoji: "👋"
+       message: "{player} joined"
    ```
 
-2. **Test with actual log lines:**
+2. **Test with real log line:**
    ```bash
-   # Get real log line
    tail -1 /path/to/factorio/console.log
-
-   # Test pattern
-   python -c "
-   import re
-   pattern = r'YOUR_PATTERN'
-   line = 'PASTE_REAL_LOG_LINE'
-   print('Match:', re.search(pattern, line))
-   "
+   # Copy line and test in Python
    ```
 
-3. **Check pattern priority:**
+3. **Check priority:**
    ```yaml
-   # Higher priority patterns match first
-   - name: specific_pattern
-     priority: 90
+   # Higher priority = checked first
+   events:
+     admin_join:
+       pattern: '\[JOIN\] (Admin|Mod) .+'
+       priority: 100  # Checked before regular join
 
-   - name: generic_pattern
-     priority: 50
+     regular_join:
+       pattern: '\[JOIN\] (.+)'
+       priority: 50
    ```
 
 ---
 
 ### Wrong Pattern Matching
 
-**Symptom:** Wrong pattern matches log line
+**Symptom:** Generic pattern matching instead of specific
 
 **Solution:**
 
 ```yaml
 # Use higher priority for specific patterns
-patterns:
-  - name: admin_join
-    regex: '\[JOIN\] (Admin|Moderator).+'
-    priority: 100  # ← Higher priority
+events:
+  death_by_train:
+    pattern: '(.+) was killed by locomotive'
+    priority: 90  # Higher
 
-  - name: regular_join
-    regex: '\[JOIN\] (.+)'
-    priority: 50   # ← Lower priority
+  death_generic:
+    pattern: '(.+) was killed'
+    priority: 50  # Lower
 ```
-
----
-
-### Pattern Syntax Error
-
-**Error:** `yaml.scanner.ScannerError`
-
-**Diagnosis:**
-
-```bash
-# Validate YAML syntax
-python -m yaml patterns/your-pattern.yml
-```
-
-**Solutions:**
-
-1. **Check indentation (2 spaces):**
-   ```yaml
-   patterns:
-     - name: example  # 2 spaces
-       regex: 'pattern'  # 4 spaces
-       discord:  # 4 spaces
-         emoji: "🎮"  # 6 spaces
-   ```
-
-2. **Quote strings with special characters:**
-   ```yaml
-   regex: 'Pattern with "quotes"'  # ✅
-   regex: Pattern with "quotes"    # ❌
-   ```
-
-3. **Escape backslashes:**
-   ```yaml
-   regex: '\[CHAT\]'  # ✅
-   regex: '\[CHAT\]'    # ❌ (might work but inconsistent)
-   ```
 
 ---
 
@@ -632,46 +817,24 @@ python -m yaml patterns/your-pattern.yml
 docker-compose ps
 
 # View logs
-docker-compose logs factorio-isr
+docker-compose logs factorio-isr | tail -50
 
-# Inspect container
-docker inspect factorio-isr
+# Check config
+docker-compose config
 ```
 
 **Solutions:**
 
 ```bash
-# Check for config errors
+# Look for startup errors
 docker-compose logs factorio-isr | grep -i error
-
-# Test configuration
-docker-compose config
 
 # Verify secrets mounted
 docker exec factorio-isr ls -la /run/secrets/
 
-# Run interactively for debugging
+# Test interactively
 docker-compose run --rm factorio-isr /bin/bash
-```
-
----
-
-### Port Already in Use
-
-**Error:** `Bind for 0.0.0.0:8080 failed: port is already allocated`
-
-**Solutions:**
-
-```bash
-# Find what's using the port
-sudo netstat -tlnp | grep 8080
-# or
-sudo ss -tlnp | grep 8080
-
-# Kill the process or change port
-# docker-compose.yml:
-ports:
-  - "8081:8080"  # Use different external port
+python -m src.main
 ```
 
 ---
@@ -686,13 +849,12 @@ ports:
 # Verify host path exists
 ls -la /path/to/factorio/console.log
 
-# Check docker-compose.yml mount
+# Check docker-compose.yml
 volumes:
-  - /path/to/factorio/logs:/factorio:ro  # ✅ Directory
-  # Not: /path/to/console.log:/factorio:ro  # ❌ File
+  - /path/to/factorio/logs:/factorio:ro  # ✅ Directory mount
 
-# Verify permissions
-ls -la /path/to/factorio/
+# Don't mount individual file
+# - /path/to/console.log:/factorio:ro  # ❌ File mount
 ```
 
 ---
@@ -704,25 +866,21 @@ ls -la /path/to/factorio/
 **Diagnosis:**
 
 ```bash
-# Check CPU usage
+# Check CPU
 docker stats factorio-isr
 
-# Check for excessive polling
-docker-compose logs factorio-isr | grep "poll_interval"
+# Check log polling
+docker-compose logs factorio-isr | grep "poll"
 ```
 
 **Solutions:**
 
 ```bash
-# Increase poll interval (default: 0.1 seconds)
-# In src/log_tailer.py:
-poll_interval=0.5  # Check every 500ms instead
-
 # Reduce log level
 LOG_LEVEL=info  # Not debug
 
-# Filter low-priority events
-# Use lower priority in patterns
+# Check for log spam
+# Filter verbose patterns with priority=1
 ```
 
 ---
@@ -732,154 +890,38 @@ LOG_LEVEL=info  # Not debug
 **Diagnosis:**
 
 ```bash
-# Check memory usage
+# Check memory
 docker stats factorio-isr
 
-# Look for memory leaks
-docker-compose logs factorio-isr | grep -i memory
+# Look for leaks
+docker-compose logs factorio-isr | wc -l
 ```
 
 **Solutions:**
 
 ```bash
-# Set memory limits
-# docker-compose.yml:
+# Set memory limit
+# docker-compose.yml
 deploy:
   resources:
     limits:
       memory: 512M
 
-# Restart periodically if memory leak suspected
-# Add to cron:
-0 3 * * * docker-compose restart factorio-isr
-
-# Enable log rotation
-# Prevent log files from growing too large
-```
-
----
-
-### Slow Discord Posting
-
-**Symptom:** Long delay between event and Discord message
-
-**Diagnosis:**
-
-```bash
-# Check for rate limiting
-docker-compose logs factorio-isr | grep -i "rate"
-
-# Check network latency
-ping discord.com
-
-# Check webhook response times
-time curl -X POST "$(cat .secrets/DISCORD_WEBHOOK_URL.txt)" \
-    -d '{"content":"Test"}'
-```
-
-**Solutions:**
-
-```bash
-# Reduce event frequency
-# Use pattern priorities to filter noise
-
-# Check rate limiting (30 req/60s per webhook)
-# Use multiple webhooks if needed
-
-# Verify network connectivity
-traceroute discord.com
-```
-
----
-
-## Configuration Issues
-
-### Environment Variables Not Loaded
-
-**Diagnosis:**
-
-```bash
-# Check .env file exists
-ls -la .env
-
-# Verify format
-cat .env
-
-# Test loading
-python -c "
-from dotenv import load_dotenv
-import os
-load_dotenv()
-print('Webhook:', os.getenv('DISCORD_WEBHOOK_URL', 'NOT SET'))
-"
-```
-
-**Solutions:**
-
-```bash
-# Ensure .env in correct location
-ls -la .env
-
-# Check format (no spaces around =)
-KEY=value  # ✅
-KEY = value  # ❌
-
-# Restart to pick up changes
+# Restart if needed
 docker-compose restart factorio-isr
 ```
 
 ---
 
-### Secrets Not Found
+### Rate Limiting
 
-**Error:** `Secret file not found: /run/secrets/...`
-
-**Solutions:**
-
-```bash
-# Check secrets exist
-ls -la .secrets/
-
-# Verify docker-compose.yml secrets section
-secrets:
-  discord_webhook_url:
-    file: .secrets/DISCORD_WEBHOOK_URL.txt  # ✅ Correct path
-
-# Check inside container
-docker exec factorio-isr ls -la /run/secrets/
-```
-
----
-
-### JSON Parsing Error
-
-**Error:** `json.JSONDecodeError: Expecting property name`
-
-**Diagnosis:**
-
-```bash
-# Check WEBHOOK_CHANNELS format
-grep WEBHOOK_CHANNELS .env
-
-# Validate JSON
-python -c "
-import json
-channels = 'YOUR_JSON_HERE'
-print(json.loads(channels))
-"
-```
+**Symptom:** Discord events delayed or "Rate Limited" in logs
 
 **Solutions:**
 
-```bash
-# Use double quotes (not single)
-WEBHOOK_CHANNELS={"chat":"url"}  # ✅
-WEBHOOK_CHANNELS={'chat':'url'}  # ❌
-
-# No trailing commas
-WEBHOOK_CHANNELS={"a":"url1","b":"url2"}  # ✅
-WEBHOOK_CHANNELS={"a":"url1","b":"url2",}  # ❌
-```
+- Discord bot rate limits: ~50 messages per second per channel
+- Use multiple channels if needed
+- Filter low-priority events with `priority: 1` in patterns
 
 ---
 
@@ -893,17 +935,15 @@ uname -a
 docker --version
 python --version
 
-# Application info
-docker-compose logs --tail=100 factorio-isr
-docker-compose ps
-docker stats factorio-isr --no-stream
+# Application logs
+docker-compose logs --tail=200 factorio-isr
 
-# Configuration
-cat .env | grep -v PASSWORD
-ls -la .secrets/
+# Config (redact secrets)
+cat config/servers.yml
+ls -la config/
 ls -la patterns/
 
-# Test health
+# Health check
 curl http://localhost:8080/health
 ```
 
@@ -914,12 +954,10 @@ curl http://localhost:8080/health
 ```bash
 # .env
 LOG_LEVEL=debug
-LOG_FORMAT=console  # Easier to read
+LOG_FORMAT=console
 
-# Restart
+# Restart and watch
 docker-compose restart factorio-isr
-
-# View debug logs
 docker-compose logs -f factorio-isr
 ```
 
@@ -927,23 +965,23 @@ docker-compose logs -f factorio-isr
 
 ### Report Issues
 
-When reporting issues, include:
+Include:
 
-1. **Error message** - Full error text
-2. **Logs** - Recent application logs
-3. **Configuration** - .env (redact secrets)
+1. **Error message** - Full text
+2. **Logs** - Last 50-100 lines
+3. **Configuration** - `servers.yml`, patterns (redact secrets)
 4. **Environment** - OS, Docker version, Python version
-5. **Steps to reproduce** - How to trigger the issue
+5. **Steps to reproduce**
 
 ---
 
 ## Next Steps
 
-- [RCON Setup](RCON_SETUP.md) - RCON configuration
-- [Deployment](DEPLOYMENT.md) - Production deployment
+- [RCON Setup](RCON_SETUP.md) - Configure RCON per server
+- [Configuration](configuration.md) - All environment variables
 - [Examples](EXAMPLES.md) - Common configurations
 - [Patterns](PATTERNS.md) - Pattern syntax
 
 ---
 
-**Still having issues?** Open an issue on [GitHub](https://github.com/yourusername/factorio-isr/issues) with diagnostic information above.
+**Still stuck?** Open an issue on [GitHub](https://github.com/stephenclau/factorio-isr/issues) with diagnostic info.

@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from security_monitor import Infraction
 
 from event_parser import (
     EventParser,
@@ -731,3 +732,642 @@ class TestEventParserIntegration:
             result = FactorioEventFormatter.format_for_discord(event)
             assert "✅" in result
             assert "TestPlayer" in result
+
+# ============================================================================
+# Tests for timeout_handler, _safe_regex_search, check_rate_limit_for_event,
+# and _create_security_alert_event
+# ============================================================================
+
+class TestTimeoutHandler:
+    """Test timeout_handler signal handler function."""
+    
+    def test_timeout_handler_raises_timeout_error(self):
+        """timeout_handler should raise TimeoutError when called."""
+        from event_parser import timeout_handler, TimeoutError
+        
+        with pytest.raises(TimeoutError, match="Regex match exceeded timeout"):
+            timeout_handler(None, None)
+    
+    def test_timeout_handler_with_signum_and_frame(self):
+        """timeout_handler should work with actual signal arguments."""
+        from event_parser import timeout_handler, TimeoutError
+        import signal
+        
+        # Simulate signal handler call with real signal arguments
+        with pytest.raises(TimeoutError):
+            timeout_handler(signal.SIGALRM, None)
+
+
+class TestSafeRegexSearch:
+    """Test _safe_regex_search with various conditions."""
+    
+    def test_safe_regex_search_happy_path_match(self, event_parser, mock_event_pattern):
+        """Successful regex match should return Match object."""
+        event_parser.pattern_loader.get_patterns.return_value = [mock_event_pattern]
+        event_parser._compile_patterns()
+        
+        regex, _ = event_parser.compiled_patterns["test_pattern"]
+        result = event_parser._safe_regex_search(regex, "TestPlayer joined", "test_pattern")
+        
+        assert result is not None
+        assert result.group(0) == "TestPlayer joined"
+    
+    def test_safe_regex_search_happy_path_no_match(self, event_parser, mock_event_pattern):
+        """Non-matching line should return None gracefully."""
+        event_parser.pattern_loader.get_patterns.return_value = [mock_event_pattern]
+        event_parser._compile_patterns()
+        
+        regex, _ = event_parser.compiled_patterns["test_pattern"]
+        result = event_parser._safe_regex_search(regex, "Random line", "test_pattern")
+        
+        assert result is None
+    
+    def test_safe_regex_search_stdlib_timeout_path(self, event_parser):
+        """Timeout on stdlib regex should be caught and return None (RE2 not installed)."""
+        from event_parser import TimeoutError as EventParserTimeoutError
+        
+        # Since RE2 is not installed, test the stdlib path
+        pattern_obj = EventPattern(
+            name="test",
+            pattern=r".*",
+            event_type="chat",
+            emoji="",
+            message_template="",
+            channel="general",
+            enabled=True,
+            priority=1
+        )
+        
+        # Mock the compiled regex to raise TimeoutError
+        mock_regex = Mock()
+        mock_regex.search.side_effect = EventParserTimeoutError("Regex match exceeded timeout")
+        
+        result = event_parser._safe_regex_search(mock_regex, "test line", "test_pattern")
+        assert result is None
+    
+    def test_safe_regex_search_no_signal_alarm_windows(self, event_parser):
+        """signal.alarm unavailable (Windows) should use untimed fallback."""
+        pattern_obj = EventPattern(
+            name="test",
+            pattern=r"test",
+            event_type="chat",
+            emoji="",
+            message_template="",
+            channel="general",
+            enabled=True,
+            priority=1
+        )
+        
+        event_parser.pattern_loader.get_patterns.return_value = [pattern_obj]
+        event_parser._compile_patterns()
+        regex, _ = event_parser.compiled_patterns["test"]
+        
+        # Mock signal to raise AttributeError (simulating Windows)
+        with patch('signal.signal', side_effect=AttributeError("No SIGALRM on Windows")):
+            with patch('signal.alarm', side_effect=AttributeError("No alarm on Windows")):
+                result = event_parser._safe_regex_search(regex, "test line", "test")
+                # Should still work, using fallback path
+                assert result is not None
+    
+    def test_safe_regex_search_unexpected_exception(self, event_parser):
+        """Unexpected exceptions should be caught and logged."""
+        mock_regex = Mock()
+        mock_regex.search.side_effect = RuntimeError("Unexpected error")
+        
+        # Should not raise, should return None
+        result = event_parser._safe_regex_search(mock_regex, "test", "pattern")
+        assert result is None
+    
+    def test_safe_regex_search_with_special_characters(self, event_parser):
+        """Regex with special characters should be handled safely."""
+        pattern_obj = EventPattern(
+            name="special",
+            pattern=r"^\[CHAT\] (\w+): (.+)$",
+            event_type="chat",
+            emoji="💬",
+            message_template="{player}: {message}",
+            channel="chat",
+            enabled=True,
+            priority=1
+        )
+        
+        event_parser.pattern_loader.get_patterns.return_value = [pattern_obj]
+        event_parser._compile_patterns()
+        regex, _ = event_parser.compiled_patterns["special"]
+        
+        result = event_parser._safe_regex_search(
+            regex, 
+            "[CHAT] Alice: hello @everyone", 
+            "special"
+        )
+        assert result is not None
+        assert result.group(1) == "Alice"
+    
+    def test_safe_regex_search_exception_during_compile(self, event_parser):
+        """Exception during pattern compilation should be handled."""
+        # Create a pattern with invalid regex
+        invalid_pattern = EventPattern(
+            name="invalid",
+            pattern=r"[invalid(regex",  # Unclosed bracket
+            event_type="chat",
+            emoji="",
+            message_template="",
+            channel="general",
+            enabled=True,
+            priority=1
+        )
+        
+        event_parser.pattern_loader.get_patterns.return_value = [invalid_pattern]
+        
+        # Should not crash, just skip the invalid pattern
+        event_parser._compile_patterns()
+        
+        # Invalid pattern should not be compiled
+        assert "invalid" not in event_parser.compiled_patterns
+    
+    def test_safe_regex_search_signal_handling_success(self, event_parser, mock_event_pattern):
+        """Successful match with signal handling should return match and clear alarm."""
+        import signal
+        
+        event_parser.pattern_loader.get_patterns.return_value = [mock_event_pattern]
+        event_parser._compile_patterns()
+        
+        regex, _ = event_parser.compiled_patterns["test_pattern"]
+        
+        # Track that alarm was cleared
+        alarm_calls = []
+        
+        def mock_alarm(seconds):
+            alarm_calls.append(seconds)
+        
+        with patch('signal.alarm', side_effect=mock_alarm):
+            with patch('signal.signal'):
+                result = event_parser._safe_regex_search(regex, "TestPlayer joined", "test_pattern")
+        
+        # Should have match
+        assert result is not None
+        # Should have set alarm and then cleared it (0)
+        assert 0 in alarm_calls
+
+
+class TestCheckRateLimitForEvent:
+    """Test check_rate_limit_for_event logic paths."""
+    
+    def test_check_rate_limit_happy_path_no_player(self, event_parser):
+        """Event without player_name should always be allowed."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name=None,
+            message="Server started",
+            raw_line="Server started"
+        )
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        assert allowed is True
+        assert reason is None
+    
+    def test_check_rate_limit_happy_path_chat_message(self, event_parser):
+        """Regular chat message should check default rate limit."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Alice",
+            message="Hello world",
+            raw_line="[CHAT] Alice: Hello world",
+            metadata={}
+        )
+        
+        # Mock security monitor to return allowed
+        event_parser.security_monitor.check_rate_limit = Mock(return_value=(True, None))
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is True
+        assert reason is None
+        event_parser.security_monitor.check_rate_limit.assert_called_once_with(
+            action_type="chat_message",
+            player_name="Alice"
+        )
+    
+    def test_check_rate_limit_happy_path_mention_everyone(self, event_parser):
+        """Event with 'everyone' in mentions list (with non-group type) should use mention_everyone action type."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Charlie",
+            message="@everyone alert!",
+            raw_line="[CHAT] Charlie: @everyone alert!",
+            metadata={
+                "mentions": ["everyone"],
+                "mention_type": "user"  # Set to "user" or "mixed" to avoid the if branch
+            }
+        )
+        
+        # Create a fresh mock for this test to avoid contamination
+        event_parser.security_monitor.check_rate_limit = Mock(return_value=(True, None))
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is True
+        # Since mention_type is not "group", it falls to elif which checks for "everyone"
+        event_parser.security_monitor.check_rate_limit.assert_called_once_with(
+            action_type="mention_everyone",
+            player_name="Charlie"
+        )
+
+    def test_check_rate_limit_happy_path_mention_admin(self, event_parser):
+        """Event with group mention (not everyone) should use mention_admin action type."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Bob",
+            message="@admins help!",
+            raw_line="[CHAT] Bob: @admins help!",
+            metadata={
+                "mentions": ["admins"],
+                "mention_type": "group"
+            }
+        )
+        
+        # Create a fresh mock for this test
+        event_parser.security_monitor.check_rate_limit = Mock(return_value=(True, None))
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is True
+        event_parser.security_monitor.check_rate_limit.assert_called_once_with(
+            action_type="mention_admin",
+            player_name="Bob"
+        )
+
+    
+    
+    def test_check_rate_limit_error_path_rate_exceeded(self, event_parser):
+        """Rate limit exceeded should return False with reason."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Spammer",
+            message="spam spam spam",
+            raw_line="[CHAT] Spammer: spam spam spam",
+            metadata={}
+        )
+        
+        # Mock security monitor to return rate limited
+        event_parser.security_monitor.check_rate_limit = Mock(
+            return_value=(False, "Rate limit exceeded: 10 messages/min")
+        )
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is False
+        assert reason == "Rate limit exceeded: 10 messages/min"
+    
+    def test_check_rate_limit_user_mentions_default_action(self, event_parser):
+        """User mentions (not group) should use default chat_message action."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Dave",
+            message="@Alice hey!",
+            raw_line="[CHAT] Dave: @Alice hey!",
+            metadata={
+                "mentions": ["Alice"],
+                "mention_type": "user"
+            }
+        )
+        
+        event_parser.security_monitor.check_rate_limit = Mock(return_value=(True, None))
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is True
+        event_parser.security_monitor.check_rate_limit.assert_called_once_with(
+            action_type="chat_message",
+            player_name="Dave"
+        )
+    
+    def test_check_rate_limit_empty_player_name(self, event_parser):
+        """Empty string player_name should be treated as None."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="",
+            message="test",
+            raw_line="test"
+        )
+        
+        # Empty string is falsy, should return True without calling security monitor
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        assert allowed is True
+        assert reason is None
+    
+    def test_check_rate_limit_mixed_mention_types(self, event_parser):
+        """Mixed mention types should use default chat_message action."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Eve",
+            message="@Alice @admins check this",
+            raw_line="[CHAT] Eve: @Alice @admins check this",
+            metadata={
+                "mentions": ["Alice", "admins"],
+                "mention_type": "mixed"
+            }
+        )
+        
+        event_parser.security_monitor.check_rate_limit = Mock(return_value=(True, None))
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is True
+        # Mixed should fall through to default chat_message
+        event_parser.security_monitor.check_rate_limit.assert_called_once_with(
+            action_type="chat_message",
+            player_name="Eve"
+        )
+    
+    def test_check_rate_limit_mention_here(self, event_parser):
+        """Event with @here should use mention_everyone action type."""
+        event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Frank",
+            message="@here urgent!",
+            raw_line="[CHAT] Frank: @here urgent!",
+            metadata={
+                "mentions": ["here"],
+                "mention_type": "group"
+            }
+        )
+        
+        event_parser.security_monitor.check_rate_limit = Mock(return_value=(True, None))
+        
+        allowed, reason = event_parser.check_rate_limit_for_event(event)
+        
+        assert allowed is True
+        # @here is not @everyone, so it should use mention_admin
+        event_parser.security_monitor.check_rate_limit.assert_called_once_with(
+            action_type="mention_admin",
+            player_name="Frank"
+        )
+
+
+class TestCreateSecurityAlertEvent:
+    """Test _create_security_alert_event with various infractions."""
+    
+    def test_create_security_alert_happy_path_complete(self, event_parser):
+        """Complete infraction should create properly formatted alert."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Attacker",
+            message="malicious payload",
+            raw_line="[CHAT] Attacker: malicious payload"
+        )
+        
+        infraction = Infraction(
+            player_name="Attacker",
+            severity="critical",
+            pattern_type="sql_injection",
+            matched_pattern="DROP TABLE",
+            raw_text="malicious payload",
+            timestamp=datetime(2024, 1, 15, 10, 30, 0),
+            auto_banned=True,
+            metadata={
+                "description": "SQL Injection Attempt",
+                "match": "DROP TABLE",
+                "pattern_name": "sql_injection"
+            }
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        # Check event type and routing
+        assert alert_event.event_type == EventType.SERVER
+        assert alert_event.player_name == "Attacker"
+        assert alert_event.metadata["channel"] == event_parser.security_channel
+        assert alert_event.emoji == "🚨"
+        
+        # Check formatted message contains all parts
+        assert "🚨 **SECURITY ALERT** 🚨" in alert_event.formatted_message
+        assert "**Player:** Attacker" in alert_event.formatted_message
+        assert "**Severity:** CRITICAL" in alert_event.formatted_message
+        assert "**Type:** SQL Injection Attempt" in alert_event.formatted_message
+        assert "**Matched:** `DROP TABLE`" in alert_event.formatted_message
+        assert "**Action:** BANNED" in alert_event.formatted_message
+        assert "2024-01-15 10:30:00" in alert_event.formatted_message
+        
+        # Check metadata
+        assert alert_event.metadata["severity"] == "critical"
+        assert alert_event.metadata["auto_banned"] is True
+        assert "infraction" in alert_event.metadata
+    
+    def test_create_security_alert_happy_path_not_banned(self, event_parser):
+        """Infraction without auto_ban should show LOGGED action."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Suspicious",
+            message="suspicious text",
+            raw_line="[CHAT] Suspicious: suspicious text"
+        )
+        
+        infraction = Infraction(
+            player_name="Suspicious",
+            severity="low",
+            pattern_type="suspicious_pattern",
+            matched_pattern="sus",
+            raw_text="suspicious text",
+            timestamp=datetime(2024, 1, 15, 11, 0, 0),
+            auto_banned=False,
+            metadata={
+                "description": "Suspicious Pattern",
+                "match": "sus",
+            }
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        assert "**Action:** LOGGED" in alert_event.formatted_message
+        assert alert_event.metadata["auto_banned"] is False
+    
+    def test_create_security_alert_error_path_missing_metadata(self, event_parser):
+        """Missing metadata fields should use fallback values."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Player",
+            message="test",
+            raw_line="test"
+        )
+        
+        # Infraction with minimal metadata
+        infraction = Infraction(
+            player_name="Player",
+            severity="medium",
+            pattern_type="unknown",
+            matched_pattern="",
+            raw_text="test message",
+            timestamp=datetime(2024, 1, 15, 12, 0, 0),
+            auto_banned=False,
+            metadata={}  # Empty metadata
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        # Should handle missing keys gracefully with .get()
+        assert "**Type:** None" in alert_event.formatted_message
+        assert "**Matched:** `N/A`" in alert_event.formatted_message
+        assert alert_event.formatted_message is not None
+    
+    def test_create_security_alert_error_path_long_raw_text(self, event_parser):
+        """Long raw text should be truncated in alert."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Verbose",
+            message="x" * 500,
+            raw_line="x" * 500
+        )
+        
+        infraction = Infraction(
+            player_name="Verbose",
+            severity="high",
+            pattern_type="spam",
+            matched_pattern="xxx",
+            raw_text="x" * 500,
+            timestamp=datetime.now(),
+            auto_banned=True,
+            metadata={"description": "Spam"}
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        # Raw text should be truncated to 100 chars
+        raw_line = [line for line in alert_event.formatted_message.split('\n') if '**Raw:**' in line][0]
+        # Extract the actual content between backticks
+        assert '...' in raw_line  # Truncation indicator present
+    
+    def test_create_security_alert_preserves_original_raw_line(self, event_parser):
+        """Alert event should preserve original event's raw_line."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_raw = "[CHAT] Test: original message"
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Test",
+            message="original message",
+            raw_line=original_raw
+        )
+        
+        infraction = Infraction(
+            player_name="Test",
+            severity="low",
+            pattern_type="test",
+            matched_pattern="test",
+            raw_text="test",
+            timestamp=datetime.now(),
+            auto_banned=False,
+            metadata={}
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        assert alert_event.raw_line == original_raw
+    
+    def test_create_security_alert_uses_custom_security_channel(self):
+        """Security alert should route to custom security channel."""
+        from security_monitor import Infraction, SecurityMonitor
+        from datetime import datetime
+        
+        # Create parser with custom security channel
+        with patch('event_parser.PatternLoader') as mock_loader:
+            mock_loader.return_value.load_patterns.return_value = 0
+            parser = EventParser(
+                Path("patterns"),
+                security_monitor=SecurityMonitor(),
+                security_channel="custom-security"
+            )
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Test",
+            message="test",
+            raw_line="test"
+        )
+        
+        infraction = Infraction(
+            player_name="Test",
+            severity="medium",
+            pattern_type="test",
+            matched_pattern="test",
+            raw_text="test",
+            timestamp=datetime.now(),
+            auto_banned=False,
+            metadata={}
+        )
+        
+        alert_event = parser._create_security_alert_event(original_event, infraction)
+        
+        assert alert_event.metadata["channel"] == "custom-security"
+    
+    def test_create_security_alert_infraction_to_dict_in_metadata(self, event_parser):
+        """Alert metadata should contain serialized infraction."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="Test",
+            message="test",
+            raw_line="test"
+        )
+        
+        infraction = Infraction(
+            player_name="Test",
+            severity="low",
+            pattern_type="test_type",
+            matched_pattern="test_pattern",
+            raw_text="test",
+            timestamp=datetime.now(),
+            auto_banned=False,
+            metadata={"key": "value"}
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        # Check that to_dict() was called and stored
+        assert "infraction" in alert_event.metadata
+        infraction_dict = alert_event.metadata["infraction"]
+        assert isinstance(infraction_dict, dict)
+        assert infraction_dict["player_name"] == "Test"
+    
+    def test_create_security_alert_with_medium_severity(self, event_parser):
+        """Medium severity infraction should be formatted correctly."""
+        from security_monitor import Infraction
+        from datetime import datetime
+        
+        original_event = FactorioEvent(
+            event_type=EventType.CHAT,
+            player_name="MediumThreat",
+            message="slightly suspicious",
+            raw_line="[CHAT] MediumThreat: slightly suspicious"
+        )
+        
+        infraction = Infraction(
+            player_name="MediumThreat",
+            severity="medium",
+            pattern_type="suspicious_keyword",
+            matched_pattern="suspicious",
+            raw_text="slightly suspicious",
+            timestamp=datetime.now(),
+            auto_banned=False,
+            metadata={"description": "Keyword Watch"}
+        )
+        
+        alert_event = event_parser._create_security_alert_event(original_event, infraction)
+        
+        assert "**Severity:** MEDIUM" in alert_event.formatted_message
+        assert alert_event.metadata["severity"] == "medium"

@@ -2836,3 +2836,264 @@ async def test_on_ready_syncs_commands(monkeypatch):
     assert dummy_guild in fake_sync.calls
     assert fake_copy_global_to.calls == [dummy_guild]
 
+
+# ========================================================================
+# PHASE 6: send_message Tests
+# ========================================================================
+
+@pytest.mark.asyncio
+async def test_send_message_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test successful message sending."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = 100
+    
+    channel = DummyTextChannel(guild=DummyGuild(), id=100)
+    
+    def fake_get_channel(cid: int):
+        if cid == 100:
+            return channel
+        return None
+    
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+    
+    await bot.send_message("Test message")
+    
+    assert len(channel.sent_messages) == 1
+    assert channel.sent_messages[0] == "Test message"
+
+
+@pytest.mark.asyncio
+async def test_send_message_not_connected() -> None:
+    """Test send_message when bot not connected."""
+    bot = DiscordBot(token="x")
+    bot._connected = False
+    bot.event_channel_id = 100
+    
+    # Should return early without error
+    await bot.send_message("Test")
+    # No assertion needed - just verify no exception
+
+
+@pytest.mark.asyncio
+async def test_send_message_no_channel_configured() -> None:
+    """Test send_message when no channel configured."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = None
+    
+    # Should return early without error
+    await bot.send_message("Test")
+    # No assertion needed - just verify no exception
+
+
+@pytest.mark.asyncio
+async def test_send_message_channel_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test send_message when channel not found."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = 999
+    
+    def fake_get_channel(cid: int):
+        return None
+    
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+    
+    await bot.send_message("Test")
+    # No assertion needed - just verify no exception
+
+
+@pytest.mark.asyncio
+async def test_send_message_invalid_channel_type(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test send_message with non-TextChannel."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = 100
+    
+    # Return a non-TextChannel object
+    fake_channel = DummyGuild()  # Not a TextChannel
+    
+    def fake_get_channel(cid: int):
+        return fake_channel
+    
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+    
+    await bot.send_message("Test")
+    # No assertion needed - just verify no exception
+
+
+@pytest.mark.asyncio
+async def test_send_message_forbidden(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test send_message handles Forbidden error."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = 100
+    
+    channel = DummyTextChannel(guild=DummyGuild(), id=100)
+    
+    # Make send raise Forbidden
+    async def raise_forbidden(msg: str):
+        raise discord.errors.Forbidden(MagicMock(), "forbidden")
+    
+    channel.send = raise_forbidden  # type: ignore
+    
+    def fake_get_channel(cid: int):
+        if cid == 100:
+            return channel
+        return None
+    
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+    
+    # Should handle exception gracefully
+    await bot.send_message("Test")
+
+
+@pytest.mark.asyncio
+async def test_send_message_http_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test send_message handles HTTPException."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = 100
+    
+    channel = DummyTextChannel(guild=DummyGuild(), id=100)
+    
+    # Make send raise HTTPException
+    async def raise_http(msg: str):
+        raise discord.errors.HTTPException(MagicMock(), "http error")
+    
+    channel.send = raise_http  # type: ignore
+    
+    def fake_get_channel(cid: int):
+        if cid == 100:
+            return channel
+        return None
+    
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+    
+    # Should handle exception gracefully
+    await bot.send_message("Test")
+
+
+@pytest.mark.asyncio
+async def test_send_message_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test send_message handles unexpected exceptions."""
+    bot = DiscordBot(token="x")
+    bot._connected = True
+    bot.event_channel_id = 100
+    
+    channel = DummyTextChannel(guild=DummyGuild(), id=100)
+    
+    # Make send raise unexpected exception
+    async def raise_unexpected(msg: str):
+        raise RuntimeError("Unexpected error")
+    
+    channel.send = raise_unexpected  # type: ignore
+    
+    def fake_get_channel(cid: int):
+        if cid == 100:
+            return channel
+        return None
+    
+    monkeypatch.setattr(bot, "get_channel", fake_get_channel)
+    
+    # Should handle exception gracefully
+    await bot.send_message("Test")
+
+
+# ========================================================================
+# PHASE 6: _get_game_uptime Tests
+# ========================================================================
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_success() -> None:
+    """Test _get_game_uptime with valid tick count."""
+    bot = DiscordBot(token="x")
+    
+    # Mock RCON client that returns valid tick count
+    # 36000 ticks = 600 seconds = 10 minutes
+    rcon = DummyRconClient(is_connected=True, execute_result="36000")
+    
+    result = await bot._get_game_uptime(rcon)
+    
+    assert isinstance(result, str)
+    assert result != "Unknown"
+    assert "10m" in result or "10" in result  # Should show 10 minutes
+
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_not_connected() -> None:
+    """Test _get_game_uptime when RCON not connected."""
+    bot = DiscordBot(token="x")
+    
+    rcon = DummyRconClient(is_connected=False)
+    
+    result = await bot._get_game_uptime(rcon)
+    
+    assert result == "Unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_none_client() -> None:
+    """Test _get_game_uptime with None client."""
+    bot = DiscordBot(token="x")
+    
+    result = await bot._get_game_uptime(None)  # type: ignore
+    
+    assert result == "Unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_empty_response() -> None:
+    """Test _get_game_uptime with empty RCON response."""
+    bot = DiscordBot(token="x")
+    
+    # RCON returns empty string
+    rcon = DummyRconClient(is_connected=True, execute_result="")
+    
+    result = await bot._get_game_uptime(rcon)
+    
+    assert result == "Unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_invalid_response() -> None:
+    """Test _get_game_uptime with non-numeric response."""
+    bot = DiscordBot(token="x")
+    
+    # RCON returns non-numeric data
+    rcon = DummyRconClient(is_connected=True, execute_result="not a number")
+    
+    result = await bot._get_game_uptime(rcon)
+    
+    assert result == "Unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_negative_ticks() -> None:
+    """Test _get_game_uptime with negative tick count."""
+    bot = DiscordBot(token="x")
+    
+    # RCON returns negative number
+    rcon = DummyRconClient(is_connected=True, execute_result="-1000")
+    
+    result = await bot._get_game_uptime(rcon)
+    
+    assert result == "Unknown"
+
+
+@pytest.mark.asyncio
+async def test_get_game_uptime_rcon_exception() -> None:
+    """Test _get_game_uptime when RCON raises exception."""
+    bot = DiscordBot(token="x")
+    
+    # Create RCON that raises exception on execute
+    rcon = DummyRconClient(is_connected=True)
+    
+    async def raise_error(cmd: str) -> str:
+        raise RuntimeError("RCON error")
+    
+    rcon.execute = raise_error  # type: ignore
+    
+    result = await bot._get_game_uptime(rcon)
+    
+    assert result == "Unknown"

@@ -1,17 +1,17 @@
 # 📋 Configuration Guide
 
-Complete configuration reference for Factorio ISR (Phase 1-3).
+Complete configuration reference for Factorio ISR.
 
 ## Table of Contents
 
 - [Environment Variables](#environment-variables)
 - [Docker Secrets](#docker-secrets-recommended-for-production)
-- [RCON Configuration](#rcon-configuration-phase-3)
-- [Multi-Channel Routing](#multi-channel-routing-phase-2)
-- [Pattern Configuration](#pattern-configuration-phase-2)
-- [Discord Webhook Setup](#getting-a-discord-webhook)
+- [Discord Bot Setup](#discord-bot-setup)
+- [RCON Configuration](#rcon-configuration)
+- [Multi-Server Support](#multi-server-support)
+- [Pattern Configuration](#pattern-configuration)
 - [Supported Events](#supported-events)
-- [Log Configuration](#log-levels)
+- [Log Levels](#log-levels)
 - [Health Monitoring](#health-monitoring)
 - [Example Configurations](#example-configurations)
 
@@ -19,21 +19,22 @@ Complete configuration reference for Factorio ISR (Phase 1-3).
 
 ## Environment Variables
 
-### Core Configuration
+### Core Configuration (Discord Bot)
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DISCORD_WEBHOOK_URL` | ✅ Yes | - | Discord webhook URL for posting events (can use secret file) |
+| `DISCORD_BOT_TOKEN` | ✅ Yes | - | Discord bot token (can use secret file) |
+| `DISCORD_EVENT_CHANNEL_ID` | ✅ Yes | - | Discord channel ID for event notifications |
 | `FACTORIO_LOG_PATH` | ✅ Yes | - | Path to Factorio console.log file |
-| `BOT_NAME` | No | `Factorio ISR` | Display name for Discord webhook |
-| `BOT_AVATAR_URL` | No | - | Avatar URL for Discord webhook |
+| `BOT_NAME` | No | `Factorio ISR` | Display name for Discord bot |
+| `BOT_AVATAR_URL` | No | - | Avatar URL for Discord bot |
 
 ### Logging
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `LOG_LEVEL` | No | `info` | Logging level: `debug`, `info`, `warning`, `error`, `critical` |
-| `LOG_FORMAT` | No | `console` | Log output format: `json` (production) or `console` (development) |
+| `LOG_FORMAT` | No | `json` | Log output format: `json` (production) or `console` (development) |
 
 ### Health Check
 
@@ -42,25 +43,14 @@ Complete configuration reference for Factorio ISR (Phase 1-3).
 | `HEALTH_CHECK_HOST` | No | `0.0.0.0` | Health check server bind address |
 | `HEALTH_CHECK_PORT` | No | `8080` | Health check server port |
 
-### Pattern Configuration (Phase 2)
+### Pattern Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PATTERNS_DIR` | No | `patterns` | Directory containing pattern YAML files |
 | `PATTERN_FILES` | No | All `.yml` files | JSON array of specific pattern files to load |
 
-### Multi-Channel Routing (Phase 2)
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `WEBHOOK_CHANNELS` | No | `{}` | JSON object mapping channel names to webhook URLs |
-
-**Example:**
-```bash
-WEBHOOK_CHANNELS={"chat":"https://discord.com/webhooks/...","admin":"https://discord.com/webhooks/..."}
-```
-
-### RCON Configuration (Phase 3) ✨
+### RCON Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
@@ -72,7 +62,13 @@ WEBHOOK_CHANNELS={"chat":"https://discord.com/webhooks/...","admin":"https://dis
 
 *Required when `RCON_ENABLED=true`
 
-**📖 See [RCON Setup Guide](docs/RCON_SETUP.md) for detailed configuration instructions**
+### Multi-Server Support
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `SERVERS_CONFIG` | No | `config/servers.yml` | Path to servers.yml configuration file |
+
+**📖 See [RCON Setup Guide](RCON_SETUP.md) for detailed configuration instructions**
 
 ---
 
@@ -86,10 +82,10 @@ For production deployments, use Docker secrets or local `.secrets/` folder for s
 # Create secrets directory
 mkdir -p .secrets
 
-# Add Discord webhook
-echo "https://discord.com/api/webhooks/YOUR_ID/YOUR_TOKEN" > .secrets/DISCORD_WEBHOOK_URL.txt
+# Add Discord bot token
+echo "your-discord-bot-token" > .secrets/DISCORD_BOT_TOKEN.txt
 
-# Add RCON password (Phase 3)
+# Add RCON password (optional)
 echo "your-rcon-password" > .secrets/RCON_PASSWORD.txt
 
 # Secure files
@@ -105,48 +101,98 @@ The application automatically checks:
 2. `/run/secrets/SECRET_NAME` (Docker secrets)
 3. Environment variable `$SECRET_NAME` (fallback)
 
----
-
 ### Docker Compose Secrets
 
 ```yaml
 services:
   factorio-isr:
     secrets:
-      - discord_webhook_url
+      - discord_bot_token
       - rcon_password
     environment:
+      - DISCORD_EVENT_CHANNEL_ID=123456789012345678
       - RCON_ENABLED=true
       - RCON_HOST=factorio-server
 
 secrets:
-  discord_webhook_url:
-    file: .secrets/DISCORD_WEBHOOK_URL.txt
+  discord_bot_token:
+    file: .secrets/DISCORD_BOT_TOKEN.txt
   rcon_password:
     file: .secrets/RCON_PASSWORD.txt
 ```
-
----
 
 ### Docker Swarm Secrets
 
 ```bash
 # Create secrets
-docker secret create discord_webhook .secrets/DISCORD_WEBHOOK_URL.txt
+docker secret create discord_bot_token .secrets/DISCORD_BOT_TOKEN.txt
 docker secret create rcon_password .secrets/RCON_PASSWORD.txt
 
 # Deploy service
 docker service create \
   --name factorio-isr \
-  --secret discord_webhook \
+  --secret discord_bot_token \
   --secret rcon_password \
+  -e DISCORD_EVENT_CHANNEL_ID=123456789012345678 \
   -e RCON_ENABLED=true \
   yourusername/factorio-isr:latest
 ```
 
 ---
 
-## RCON Configuration (Phase 3)
+## Discord Bot Setup
+
+### Creating a Discord Bot
+
+1. **Go to Discord Developer Portal**
+   - Visit [Discord Developer Portal](https://discord.com/developers/applications)
+   - Click "New Application"
+   - Name it (e.g., "Factorio ISR")
+   - Click "Create"
+
+2. **Add a Bot**
+   - In the left sidebar, click "Bot"
+   - Click "Add Bot"
+   - Copy the token under "TOKEN"
+   - Save this token in `.secrets/DISCORD_BOT_TOKEN.txt`
+
+3. **Configure Bot Permissions**
+   - Under "Bot" → "Intents", enable:
+     - `Message Content Intent` (required to read messages)
+     - `Server Members Intent` (optional, for advanced features)
+
+4. **Generate Invite URL**
+   - Go to "OAuth2" → "URL Generator"
+   - Under "SCOPES", select:
+     - `bot`
+     - `applications.commands` (for slash commands)
+   - Under "BOT PERMISSIONS", select:
+     - `Send Messages`
+     - `Embed Links`
+     - `Read Message History`
+     - `Use Slash Commands`
+   - Copy the generated URL and open it in your browser
+   - Select your Discord server and authorize
+
+5. **Get Event Channel ID**
+   - In Discord, enable Developer Mode: User Settings → Advanced → Developer Mode
+   - Right-click the channel where events should be posted
+   - Click "Copy Channel ID"
+   - Set `DISCORD_EVENT_CHANNEL_ID=YOUR_ID` in `.env`
+
+### Verify Bot Setup
+
+```bash
+# Test bot connection
+curl -X GET https://discord.com/api/v10/users/@me \
+  -H "Authorization: Bot YOUR_BOT_TOKEN"
+
+# Should return bot user info
+```
+
+---
+
+## RCON Configuration
 
 ### Enable RCON
 
@@ -158,8 +204,9 @@ RCON_PORT=27015
 STATS_INTERVAL=300
 ```
 
+Store password securely:
+
 ```bash
-# Store password securely
 echo "your-rcon-password" > .secrets/RCON_PASSWORD.txt
 chmod 600 .secrets/RCON_PASSWORD.txt
 ```
@@ -170,6 +217,8 @@ When enabled, RCON integration provides:
 - 📊 **Real-time player count** posted to Discord every 5 minutes (configurable)
 - 👥 **Online player list** with player names
 - ⏰ **Server game time** (day/time in-game)
+- 📈 **UPS monitoring** with low-UPS alerts
+- 🧬 **Evolution factor** tracking per surface
 - 🔄 **Automatic reconnection** if connection is lost
 
 ### Discord Stats Format
@@ -179,6 +228,8 @@ When enabled, RCON integration provides:
 👥 Players Online: 3
 📝 Alice, Bob, Charlie
 ⏰ Game Time: Day 42, 13:45
+📈 UPS: 59.8/60 ✅
+🧬 Evolution: 45.2%
 ```
 
 Stats are posted every `STATS_INTERVAL` seconds (default: 300 = 5 minutes).
@@ -190,64 +241,44 @@ Stats are posted every `STATS_INTERVAL` seconds (default: 300 = 5 minutes).
 - ✅ Network connectivity to RCON port
 - ✅ `rcon` Python package installed (included in requirements.txt)
 
-**📖 Complete guide:** [RCON Setup Guide](docs/RCON_SETUP.md)
+**📖 Complete guide:** [RCON Setup Guide](RCON_SETUP.md)
 
 ---
 
-## Multi-Channel Routing (Phase 2)
+## Multi-Server Support
 
-Route different event types to different Discord channels.
-
-### Basic Setup
-
-```bash
-# .env
-DISCORD_WEBHOOK_URL=https://discord.com/webhooks/MAIN_WEBHOOK
-WEBHOOK_CHANNELS={"chat":"https://discord.com/webhooks/CHAT","events":"https://discord.com/webhooks/EVENTS"}
-```
-
-### Pattern Channel Assignment
+Configure multiple Factorio servers via `config/servers.yml`:
 
 ```yaml
-# patterns/routing.yml
-patterns:
-  - name: chat_message
-    regex: '\[CHAT\] (.+?): (.+)'
-    event_type: chat
-    discord:
-      channel: chat  # Routes to chat webhook
-      emoji: "💬"
-
-  - name: player_death
-    regex: '(.+) was killed'
-    event_type: death
-    discord:
-      channel: events  # Routes to events webhook
-      emoji: "💀"
+servers:
+  los_hermanos:
+    log_path: /factorio/los_hermanos/console.log
+    rcon_host: factorio-1.internal
+    rcon_port: 27015
+    rcon_password: password1
+    discord_channel_id: 123456789012345678
+    stats_interval: 300
+    
+  space_age:
+    log_path: /factorio/space_age/console.log
+    rcon_host: factorio-2.internal
+    rcon_port: 27015
+    rcon_password: password2
+    discord_channel_id: 987654321098765432
+    stats_interval: 300
 ```
 
-### Common Channel Setups
+Set in environment:
 
-**Simple (2 channels):**
 ```bash
-WEBHOOK_CHANNELS={"chat":"URL1","events":"URL2"}
+SERVERS_CONFIG=config/servers.yml
 ```
 
-**Medium (4 channels):**
-```bash
-WEBHOOK_CHANNELS={"chat":"URL1","events":"URL2","milestones":"URL3","admin":"URL4"}
-```
-
-**Advanced (6+ channels):**
-```bash
-WEBHOOK_CHANNELS={"chat":"URL1","joins":"URL2","deaths":"URL3","achievements":"URL4","research":"URL5","milestones":"URL6"}
-```
-
-**📖 Complete guide:** [Multi-Channel Routing Guide](docs/MULTI_CHANNEL.md)
+The bot will coordinate events and stats across all configured servers.
 
 ---
 
-## Pattern Configuration (Phase 2)
+## Pattern Configuration
 
 Customize event detection and Discord formatting with YAML patterns.
 
@@ -267,19 +298,15 @@ Create custom pattern files in `patterns/` directory:
 
 ```yaml
 # patterns/custom.yml
-patterns:
-  - name: custom_event
-    regex: 'Your regex pattern here'
-    event_type: custom
-    priority: 50
-    fields:
-      field_name: 1
-    discord:
-      channel: general
-      emoji: "🎮"
-      color: 0x00FF00
-      title: "Event Title"
-      description: "{field_name} did something"
+events:
+  rocket_launch:
+    pattern: 'rocket.*launched'
+    type: milestone
+    emoji: "🚀"
+    message: "Rocket launched by {player}!"
+    enabled: true
+    priority: 5
+    channel: milestones
 ```
 
 ### Load Specific Patterns
@@ -289,71 +316,41 @@ patterns:
 PATTERN_FILES=["vanilla.yml","krastorio2.yml","space-exploration.yml"]
 ```
 
-**📖 Complete syntax reference:** [Pattern Guide](docs/PATTERNS.md)
-
----
-
-## Getting a Discord Webhook
-
-### Step-by-Step Instructions
-
-1. **Open Discord** → Go to your server
-2. **Right-click channel** → Edit Channel
-3. **Navigate to Integrations** → Webhooks
-4. **Click New Webhook**
-5. **Customize:**
-   - Name: "Factorio Server", "Factorio Chat", etc.
-   - Avatar: Optional custom icon
-6. **Copy Webhook URL**
-7. **Add to configuration:**
-   - `.env`: `DISCORD_WEBHOOK_URL=...`
-   - Or `.secrets/DISCORD_WEBHOOK_URL.txt`
-
-### Webhook URL Format
-
-```
-https://discord.com/api/webhooks/{WEBHOOK_ID}/{WEBHOOK_TOKEN}
-```
-
-### Multiple Webhooks
-
-For multi-channel routing, create separate webhooks for each channel:
-- One webhook for chat messages
-- One webhook for game events
-- One webhook for admin notifications
-- etc.
+**📖 Complete syntax reference:** [Pattern Guide](PATTERNS.md)
 
 ---
 
 ## Supported Events
 
-### Phase 1: Core Events
+### Core Events (Phase 1-2)
 
-- ✅ **Player Join** - Player connected to server
-- 👋 **Player Leave** - Player disconnected
-- 💬 **Chat Messages** - Player chat
-- 🖥️ **Server Messages** - Server announcements
-- 💀 **Deaths** - Player deaths with cause
-- 🏆 **Achievements** - Achievement unlocks
-- 🔬 **Research** - Technology research completion
-- 🚀 **Rocket Launches** - Rocket launch celebrations
+- ✅ **Player Join** – Player connected to server
+- 👋 **Player Leave** – Player disconnected
+- 💬 **Chat Messages** – Player chat
+- 🖥️ **Server Messages** – Server announcements
+- 💀 **Deaths** – Player deaths with cause
+- 🏆 **Achievements** – Achievement unlocks
+- 🔬 **Research** – Technology research completion
+- 🚀 **Rocket Launches** – Rocket launch celebrations
 
-### Phase 2: Enhanced Events
+### Advanced Events (Phase 2+)
 
-- 📋 **Custom Patterns** - Define your own event types
-- 🎯 **Priority Routing** - Route by event importance
-- 📨 **Multi-Channel** - Different events to different channels
-- 🎨 **Custom Formatting** - Full Discord embed customization
-- 🧩 **Mod Support** - Patterns for popular mods
+- 📋 **Custom Patterns** – Define your own event types
+- 🎯 **Priority Routing** – Route by event importance
+- 📨 **Multi-Channel** – Different events to different channels
+- 🎨 **Custom Formatting** – Full Discord formatting
+- 🧩 **Mod Support** – Patterns for popular mods
 
-### Phase 3: RCON Statistics ✨
+### Metrics & Alerts (Phase 6)
 
-- 📊 **Server Stats** - Automated status reports
-- 👥 **Player Count** - Real-time player tracking
-- 📝 **Player List** - Who's online
-- ⏰ **Game Time** - Current in-game time
+- 📊 **Server Stats** – Automated status reports
+- 👥 **Player Count** – Real-time player tracking
+- 📝 **Player List** – Who's online
+- ⏰ **Game Time** – Current in-game time
+- 📈 **UPS Monitoring** – Low-UPS alerts with thresholds
+- 🧬 **Evolution Tracking** – Biters evolution per surface
 
-**📖 See examples:** [Usage Examples](docs/EXAMPLES.md)
+**📖 See examples:** [Usage Examples](EXAMPLES.md)
 
 ---
 
@@ -380,7 +377,7 @@ LOG_FORMAT=console  # Easier to read
 
 ```bash
 LOG_LEVEL=info
-LOG_FORMAT=json  # Structured logging
+LOG_FORMAT=json  # Structured logging for aggregation
 ```
 
 ---
@@ -397,11 +394,12 @@ curl http://localhost:8080/health
 ```
 
 **Response:**
+
 ```json
 {
   "status": "healthy",
-  "uptime": 12345,
-  "version": "1.0.0"
+  "uptime_seconds": 3600,
+  "version": "2.0.0"
 }
 ```
 
@@ -436,30 +434,34 @@ systemctl status factorio-isr
 
 ## Example Configurations
 
-### Minimal (Phase 1)
+### Minimal (Log Tailing + Bot)
 
 ```bash
 # .env
-DISCORD_WEBHOOK_URL=https://discord.com/webhooks/...
+DISCORD_BOT_TOKEN=your-bot-token
+DISCORD_EVENT_CHANNEL_ID=123456789012345678
 FACTORIO_LOG_PATH=/factorio/console.log
+LOG_LEVEL=info
+LOG_FORMAT=json
 ```
 
-### Development
+### Development (with Debug Logging)
 
 ```bash
 # .env
-DISCORD_WEBHOOK_URL=https://discord.com/webhooks/...
+DISCORD_BOT_TOKEN=your-bot-token
+DISCORD_EVENT_CHANNEL_ID=123456789012345678
 FACTORIO_LOG_PATH=/path/to/factorio/console.log
 LOG_LEVEL=debug
 LOG_FORMAT=console
 BOT_NAME=Factorio Dev Bot
+HEALTH_CHECK_PORT=8080
 ```
 
-### Production with RCON (Phase 3)
+### Production with RCON
 
 ```bash
 # .env
-# Use secret files for sensitive data
 FACTORIO_LOG_PATH=/factorio/console.log
 LOG_LEVEL=info
 LOG_FORMAT=json
@@ -475,34 +477,49 @@ STATS_INTERVAL=300
 ```
 
 ```bash
-# .secrets/DISCORD_WEBHOOK_URL.txt
-https://discord.com/webhooks/...
+# .secrets/DISCORD_BOT_TOKEN.txt
+your-discord-bot-token
 
 # .secrets/RCON_PASSWORD.txt
 your-secure-rcon-password
 ```
 
-### Production with Multi-Channel (Phase 2 + 3)
+### Production Multi-Server
 
 ```bash
 # .env
 FACTORIO_LOG_PATH=/factorio/console.log
 LOG_LEVEL=info
 LOG_FORMAT=json
-BOT_NAME=Factorio Server
+BOT_NAME=Factorio Multi-Server Bot
 
-# Multi-channel routing
-WEBHOOK_CHANNELS={"chat":"https://discord.com/webhooks/CHAT","events":"https://discord.com/webhooks/EVENTS","milestones":"https://discord.com/webhooks/MILESTONES","admin":"https://discord.com/webhooks/ADMIN"}
-
-# Custom patterns
+# Patterns
 PATTERNS_DIR=patterns
-PATTERN_FILES=["vanilla.yml","custom.yml","krastorio2.yml"]
+PATTERN_FILES=["vanilla.yml","research.yml","achievements.yml"]
+
+# Multi-server
+SERVERS_CONFIG=config/servers.yml
 
 # RCON enabled
 RCON_ENABLED=true
-RCON_HOST=factorio-server
-RCON_PORT=27015
-STATS_INTERVAL=300
+```
+
+```yaml
+# config/servers.yml
+servers:
+  los_hermanos:
+    log_path: /factorio/los_hermanos/console.log
+    rcon_host: factorio-1.internal
+    rcon_port: 27015
+    discord_channel_id: 123456789012345678
+    stats_interval: 300
+    
+  space_age:
+    log_path: /factorio/space_age/console.log
+    rcon_host: factorio-2.internal
+    rcon_port: 27015
+    discord_channel_id: 987654321098765432
+    stats_interval: 300
 ```
 
 ---
@@ -511,11 +528,14 @@ STATS_INTERVAL=300
 
 | Phase | Status | Features |
 |-------|--------|----------|
-| **Phase 1** | ✅ Complete | Core log monitoring, Discord integration, health checks |
-| **Phase 2** | ✅ Complete | YAML patterns, multi-channel routing, custom events |
+| **Phase 1** | ✅ Complete | Core log monitoring, Discord bot integration, health checks |
+| **Phase 2** | ✅ Complete | YAML patterns, multi-server support, custom events |
 | **Phase 3** | ✅ Complete | RCON integration, server statistics, player tracking |
+| **Phase 4** | ✅ Complete | Discord bot with slash commands, permission system |
+| **Phase 5** | ✅ Complete | Admin commands, RCON write operations, multi-server |
+| **Phase 6** | ✅ In use | Metrics polling, UPS alerts, hardened regex/config |
 
-**All phases production-ready with 95%+ test coverage!**
+**All phases production-ready with high test coverage!**
 
 ---
 
@@ -523,44 +543,47 @@ STATS_INTERVAL=300
 
 ### Complete Guides
 
-- **[RCON Setup Guide](docs/RCON_SETUP.md)** ⭐ - Configure Phase 3 server statistics
-- **[Usage Examples](docs/EXAMPLES.md)** - Common configuration scenarios
-- **[Multi-Channel Guide](docs/MULTI_CHANNEL.md)** - Route events to different channels
-- **[Pattern Syntax](docs/PATTERNS.md)** - Complete pattern reference
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
-- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Discord Bot Setup](#discord-bot-setup)** – Create and configure your bot
+- **[RCON Setup Guide](RCON_SETUP.md)** ⭐ – Configure server statistics
+- **[Usage Examples](EXAMPLES.md)** – Common configuration scenarios
+- **[Pattern Syntax](PATTERNS.md)** – Complete pattern reference
+- **[Deployment Guide](DEPLOYMENT.md)** – Production deployment
+- **[Troubleshooting](TROUBLESHOOTING.md)** – Common issues and solutions
+- **[Mentions Guide](mentions.md)** – @mention role vocabulary
+- **[Security Guide](secmon.md)** – Security monitoring and rate limiting
 
 ### Quick Links
 
 - **Getting Started:** [README.md](../README.md)
-- **Docker Deployment:** [Deployment Guide](docs/DEPLOYMENT.md)
-- **Pattern Examples:** [Examples](docs/EXAMPLES.md)
-- **Common Issues:** [Troubleshooting](docs/TROUBLESHOOTING.md)
+- **Docker Deployment:** [Deployment Guide](DEPLOYMENT.md)
+- **Pattern Examples:** [Examples](EXAMPLES.md)
+- **Common Issues:** [Troubleshooting](TROUBLESHOOTING.md)
 
 ---
 
 ## Next Steps
 
 1. **Basic Setup:**
-   - [Get Discord webhook](#getting-a-discord-webhook)
+   - [Create Discord bot](#discord-bot-setup)
    - [Configure environment variables](#environment-variables)
    - [Start the application](../README.md#quick-start)
 
-2. **Enable RCON (Phase 3):**
-   - [RCON Setup Guide](docs/RCON_SETUP.md)
+2. **Enable RCON (optional):**
+   - [RCON Setup Guide](RCON_SETUP.md)
    - Configure Factorio server RCON
    - Enable stats collection
 
 3. **Advanced Features:**
-   - [Multi-channel routing](docs/MULTI_CHANNEL.md)
-   - [Custom patterns](docs/PATTERNS.md)
-   - [Mod-specific events](docs/EXAMPLES.md#custom-mod-events)
+   - [Custom patterns](PATTERNS.md)
+   - [Multi-server configuration](configuration.md#multi-server-support)
+   - [Mod-specific events](EXAMPLES.md)
+   - [Mention role vocabulary](mentions.md)
 
 4. **Deploy to Production:**
-   - [Deployment Guide](docs/DEPLOYMENT.md)
+   - [Deployment Guide](DEPLOYMENT.md)
    - Set up monitoring
-   - Configure backups
+   - Configure log rotation
 
 ---
 
-**Need help?** Check the [Troubleshooting Guide](docs/TROUBLESHOOTING.md) or open an issue on GitHub.
+**Need help?** Check the [Troubleshooting Guide](TROUBLESHOOTING.md) or open an issue on GitHub.

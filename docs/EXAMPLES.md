@@ -1,4 +1,4 @@
-# Usage Examples
+# 📖 Usage Examples
 
 Common configuration scenarios and use cases for Factorio ISR.
 
@@ -6,7 +6,6 @@ Common configuration scenarios and use cases for Factorio ISR.
 
 - [Basic Setup](#basic-setup)
 - [RCON Statistics](#rcon-statistics)
-- [Multi-Channel Routing](#multi-channel-routing)
 - [Custom Mod Events](#custom-mod-events)
 - [Docker Deployment](#docker-deployment)
 - [Multiple Servers](#multiple-servers)
@@ -18,11 +17,12 @@ Common configuration scenarios and use cases for Factorio ISR.
 
 ### Minimal Configuration
 
-Monitor Factorio logs and send events to single Discord channel:
+Monitor Factorio logs and send events to Discord via bot:
 
 ```bash
 # .env
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_EVENT_CHANNEL_ID=123456789012345678
 FACTORIO_LOG_PATH=/factorio/console.log
 BOT_NAME=My Factorio Server
 ```
@@ -48,7 +48,8 @@ Post player count and server time every 5 minutes:
 
 ```bash
 # .env
-DISCORD_WEBHOOK_URL=https://discord.com/webhooks/YOUR_WEBHOOK
+DISCORD_BOT_TOKEN=your-discord-bot-token
+DISCORD_EVENT_CHANNEL_ID=123456789012345678
 FACTORIO_LOG_PATH=/factorio/console.log
 
 # Enable RCON
@@ -68,153 +69,34 @@ python -m src.main
 ```
 
 **Discord Output (every 5 minutes):**
+
 ```
 📊 **Server Status**
 👥 Players Online: 3
 📝 Alice, Bob, Charlie
 ⏰ Game Time: Day 42, 13:45
+📈 UPS: 59.8/60 ✅
+🧬 Evolution: 45.2%
 ```
-
----
 
 ### Custom Stats Interval
 
-#### Every 10 Minutes
+**Every 10 Minutes**
+
 ```bash
 STATS_INTERVAL=600
 ```
 
-#### Every Hour
+**Every Hour**
+
 ```bash
 STATS_INTERVAL=3600
 ```
 
-#### Every Minute (Testing Only)
+**Every Minute (Testing Only)**
+
 ```bash
 STATS_INTERVAL=60  # Not recommended for production
-```
-
----
-
-## Multi-Channel Routing
-
-### Separate Chat and Events
-
-Route chat messages to one channel, game events to another:
-
-```bash
-# .env
-DISCORD_WEBHOOK_URL=https://discord.com/webhooks/MAIN_WEBHOOK
-WEBHOOK_CHANNELS={"chat":"https://discord.com/webhooks/CHAT_WEBHOOK","events":"https://discord.com/webhooks/EVENTS_WEBHOOK"}
-```
-
-```yaml
-# patterns/routing.yml
-patterns:
-  - name: chat_message
-    regex: '\[CHAT\] (.+?): (.+)'
-    event_type: chat
-    fields:
-      player: 1
-      message: 2
-    discord:
-      channel: chat
-      emoji: "💬"
-      title: "{player}"
-      description: "{message}"
-
-  - name: player_death
-    regex: '(.+) was killed by (.+)'
-    event_type: death
-    fields:
-      player: 1
-      killer: 2
-    discord:
-      channel: events
-      emoji: "💀"
-      color: 0xFF0000
-      title: "Player Death"
-      description: "{player} was killed by {killer}"
-```
-
----
-
-### Admin Notifications
-
-Send admin events to a private channel:
-
-```bash
-# .env
-WEBHOOK_CHANNELS={"general":"https://discord.com/webhooks/GENERAL","admin":"https://discord.com/webhooks/ADMIN"}
-```
-
-```yaml
-# patterns/admin.yml
-patterns:
-  - name: admin_join
-    regex: '\[JOIN\] (Admin|Moderator|Owner).+'
-    event_type: admin
-    priority: 100
-    discord:
-      channel: admin
-      emoji: "🛡️"
-      color: 0xFF0000
-      title: "Admin Online"
-
-  - name: admin_command
-    regex: '(.+) used admin command: (.+)'
-    event_type: admin
-    fields:
-      player: 1
-      command: 2
-    discord:
-      channel: admin
-      emoji: "⚙️"
-      color: 0xFFAA00
-      title: "Admin Command"
-      description: "{player} executed: {command}"
-```
-
----
-
-### Milestone Channel
-
-Route major achievements to a dedicated milestones channel:
-
-```bash
-WEBHOOK_CHANNELS={"general":"https://discord.com/webhooks/GENERAL","milestones":"https://discord.com/webhooks/MILESTONES"}
-```
-
-```yaml
-# patterns/milestones.yml
-patterns:
-  - name: rocket_launch
-    regex: 'Rocket launched'
-    event_type: milestone
-    priority: 100
-    discord:
-      channel: milestones
-      emoji: "🚀"
-      color: 0x00FF00
-      title: "🎉 ROCKET LAUNCHED! 🎉"
-      description: "The team has launched a rocket!"
-
-  - name: first_oil
-    regex: 'First oil processing'
-    event_type: milestone
-    discord:
-      channel: milestones
-      emoji: "🛢️"
-      title: "Oil Processing Unlocked"
-
-  - name: nuclear_power
-    regex: 'Nuclear power plant activated'
-    event_type: milestone
-    discord:
-      channel: milestones
-      emoji: "☢️"
-      color: 0x00FF00
-      title: "Nuclear Power Online!"
 ```
 
 ---
@@ -227,42 +109,33 @@ Track vehicle deployment and destruction:
 
 ```yaml
 # patterns/aai-vehicles.yml
-patterns:
-  - name: vehicle_deployed
-    regex: '(.+) deployed a (.+)'
-    event_type: vehicle
+events:
+  vehicle_deployed:
+    pattern: '(.+) deployed a (.+)'
+    type: vehicle
+    emoji: "🚗"
+    message: "{player} deployed a {vehicle}"
+    enabled: true
     priority: 80
-    fields:
-      player: 1
-      vehicle: 2
-    discord:
-      emoji: "🚗"
-      color: 0x00AAFF
-      title: "Vehicle Deployed"
-      description: "{player} deployed a {vehicle}"
+    channel: events
 
-  - name: vehicle_destroyed
-    regex: 'Vehicle (.+) was destroyed by (.+)'
-    event_type: death
-    fields:
-      vehicle: 1
-      cause: 2
-    discord:
-      emoji: "💥"
-      color: 0xFF0000
-      title: "Vehicle Destroyed"
-      description: "{vehicle} was destroyed by {cause}!"
+  vehicle_destroyed:
+    pattern: 'Vehicle (.+) was destroyed by (.+)'
+    type: death
+    emoji: "💥"
+    message: "{vehicle} was destroyed by {cause}!"
+    enabled: true
+    priority: 85
+    channel: milestones
 
-  - name: vehicle_abandoned
-    regex: '(.+) abandoned (.+)'
-    event_type: vehicle
-    fields:
-      player: 1
-      vehicle: 2
-    discord:
-      emoji: "🚙"
-      color: 0xFFAA00
-      description: "{player} abandoned {vehicle}"
+  vehicle_abandoned:
+    pattern: '(.+) abandoned (.+)'
+    type: vehicle
+    emoji: "🚙"
+    message: "{player} abandoned {vehicle}"
+    enabled: true
+    priority: 5
+    channel: events
 ```
 
 ---
@@ -273,35 +146,33 @@ Track Krastorio 2 specific events:
 
 ```yaml
 # patterns/krastorio2.yml
-patterns:
-  - name: matter_stabilizer
-    regex: 'Matter stabilizer (activated|deactivated)'
-    event_type: achievement
-    fields:
-      state: 1
-    discord:
-      emoji: "⚗️"
-      color: 0x9B59B6
-      title: "Matter Stabilizer {state}"
+events:
+  matter_stabilizer:
+    pattern: 'Matter stabilizer (activated|deactivated)'
+    type: achievement
+    emoji: "⚗️"
+    message: "Matter stabilizer {state}"
+    enabled: true
+    priority: 50
+    channel: events
 
-  - name: intergalactic_transceiver
-    regex: 'Intergalactic transceiver built'
-    event_type: milestone
+  intergalactic_transceiver:
+    pattern: 'Intergalactic transceiver built'
+    type: milestone
+    emoji: "📡"
+    message: "🌌 Intergalactic Communication Enabled!"
+    enabled: true
     priority: 100
-    discord:
-      emoji: "📡"
-      color: 0x3498DB
-      title: "🌌 Intergalactic Communication!"
-      description: "The Intergalactic Transceiver is operational!"
+    channel: milestones
 
-  - name: matter_conversion
-    regex: 'Matter converted: (.+) units'
-    event_type: resource
-    fields:
-      amount: 1
-    discord:
-      emoji: "⚗️"
-      description: "Converted {amount} units of matter"
+  matter_conversion:
+    pattern: 'Matter converted: (.+) units'
+    type: resource
+    emoji: "⚗️"
+    message: "Converted {amount} units of matter"
+    enabled: true
+    priority: 20
+    channel: events
 ```
 
 ---
@@ -312,52 +183,42 @@ Track space-related events:
 
 ```yaml
 # patterns/space-exploration.yml
-patterns:
-  - name: satellite_launched
-    regex: '(.+) launched satellite to (.+)'
-    event_type: milestone
+events:
+  satellite_launched:
+    pattern: '(.+) launched satellite to (.+)'
+    type: milestone
+    emoji: "🛰️"
+    message: "{player} launched satellite to {destination}"
+    enabled: true
     priority: 95
-    fields:
-      player: 1
-      destination: 2
-    discord:
-      emoji: "🛰️"
-      color: 0x3498DB
-      title: "Satellite Launched"
-      description: "{player} launched satellite to {destination}"
+    channel: milestones
 
-  - name: planet_discovered
-    regex: 'Planet discovered: (.+)'
-    event_type: milestone
+  planet_discovered:
+    pattern: 'Planet discovered: (.+)'
+    type: milestone
+    emoji: "🌎"
+    message: "🌟 New Planet Discovered: {planet}!"
+    enabled: true
     priority: 100
-    fields:
-      planet: 1
-    discord:
-      emoji: "🌎"
-      color: 0x27AE60
-      title: "🌟 New Planet Discovered!"
-      description: "Planet {planet} has been discovered!"
+    channel: milestones
 
-  - name: space_death
-    regex: '(.+) died in space'
-    event_type: death
+  space_death:
+    pattern: '(.+) died in space'
+    type: death
+    emoji: "💀"
+    message: "{player} died in the cold void of space"
+    enabled: true
     priority: 90
-    fields:
-      player: 1
-    discord:
-      emoji: "💀"
-      color: 0xFF0000
-      title: "Death in Space"
-      description: "{player} died in the cold void of space"
+    channel: events
 
-  - name: cargo_rocket
-    regex: 'Cargo rocket launched to (.+)'
-    event_type: logistics
-    fields:
-      destination: 1
-    discord:
-      emoji: "📦"
-      description: "Cargo rocket launched to {destination}"
+  cargo_rocket:
+    pattern: 'Cargo rocket launched to (.+)'
+    type: logistics
+    emoji: "📦"
+    message: "Cargo rocket launched to {destination}"
+    enabled: true
+    priority: 30
+    channel: events
 ```
 
 ---
@@ -368,48 +229,64 @@ Track factory building events:
 
 ```yaml
 # patterns/factorissimo.yml
-patterns:
-  - name: factory_built
-    regex: '(.+) built a (.+) factory building'
-    event_type: achievement
-    fields:
-      player: 1
-      size: 2
-    discord:
-      emoji: "🏭"
-      color: 0x95A5A6
-      description: "{player} built a {size} factory building"
+events:
+  factory_built:
+    pattern: 'Factory building constructed'
+    type: milestone
+    emoji: "🏭"
+    message: "New factory building constructed!"
+    enabled: true
+    priority: 40
+    channel: events
 
-  - name: recursive_factory
-    regex: 'Factory building placed inside factory building'
-    event_type: achievement
-    priority: 90
-    discord:
-      emoji: "🏭"
-      color: 0xE74C3C
-      title: "Recursive Factory!"
-      description: "Inception level: Factory building inside factory building"
+  factory_upgraded:
+    pattern: '(.+) upgraded factory to level (.+)'
+    type: milestone
+    emoji: "⬆️"
+    message: "{player} upgraded factory to level {level}"
+    enabled: true
+    priority: 50
+    channel: events
 ```
 
 ---
 
 ## Docker Deployment
 
-### Single Server Setup
+### Basic Docker
+
+```bash
+# Create secrets
+mkdir -p .secrets
+echo "your-discord-bot-token" > .secrets/DISCORD_BOT_TOKEN.txt
+
+# Run container
+docker run -d \
+  --name factorio-isr \
+  -e DISCORD_BOT_TOKEN="" \
+  -e DISCORD_EVENT_CHANNEL_ID=123456789012345678 \
+  -e FACTORIO_LOG_PATH=/factorio/console.log \
+  -e LOG_LEVEL=info \
+  -v /path/to/factorio/logs:/factorio:ro \
+  -v $(pwd)/.secrets/DISCORD_BOT_TOKEN.txt:/run/secrets/DISCORD_BOT_TOKEN:ro \
+  -p 8080:8080 \
+  slautomaton/factorio-isr:latest
+```
+
+### Docker Compose with RCON
 
 ```yaml
-# docker-compose.yml
 version: '3.8'
 
 services:
   factorio-isr:
-    build: .
+    image: slautomaton/factorio-isr:latest
     container_name: factorio-isr
     restart: unless-stopped
 
     environment:
+      - DISCORD_EVENT_CHANNEL_ID=123456789012345678
       - FACTORIO_LOG_PATH=/factorio/console.log
-      - BOT_NAME=My Factorio Server
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       - RCON_ENABLED=true
@@ -418,12 +295,13 @@ services:
       - STATS_INTERVAL=300
 
     secrets:
-      - discord_webhook_url
+      - discord_bot_token
       - rcon_password
 
     volumes:
-      - /srv/factorio/logs:/factorio:ro
+      - /path/to/factorio/logs:/factorio:ro
       - ./patterns:/app/patterns:ro
+      - ./config:/app/config:ro
 
     ports:
       - "8080:8080"
@@ -432,77 +310,10 @@ services:
       - factorio
 
 secrets:
-  discord_webhook_url:
-    file: .secrets/DISCORD_WEBHOOK_URL.txt
+  discord_bot_token:
+    file: ./.secrets/DISCORD_BOT_TOKEN.txt
   rcon_password:
-    file: .secrets/RCON_PASSWORD.txt
-
-networks:
-  factorio:
-    external: true
-```
-
-**Deploy:**
-```bash
-docker-compose up -d
-docker-compose logs -f
-```
-
----
-
-### With Factorio Server
-
-Run ISR alongside Factorio server:
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  factorio:
-    image: factoriotools/factorio:stable
-    container_name: factorio-server
-    restart: unless-stopped
-    ports:
-      - "34197:34197/udp"
-      - "27015:27015/tcp"
-    volumes:
-      - ./factorio:/factorio
-    environment:
-      - RCON_PORT=27015
-      - RCON_PASSWORD_FILE=/run/secrets/rcon_password
-    secrets:
-      - rcon_password
-    networks:
-      - factorio
-
-  factorio-isr:
-    build: ./factorio-isr
-    container_name: factorio-isr
-    restart: unless-stopped
-    depends_on:
-      - factorio
-    environment:
-      - FACTORIO_LOG_PATH=/factorio/console.log
-      - BOT_NAME=Factorio Server
-      - RCON_ENABLED=true
-      - RCON_HOST=factorio
-      - RCON_PORT=27015
-    secrets:
-      - discord_webhook_url
-      - rcon_password
-    volumes:
-      - ./factorio:/factorio:ro
-    ports:
-      - "8080:8080"
-    networks:
-      - factorio
-
-secrets:
-  discord_webhook_url:
-    file: .secrets/DISCORD_WEBHOOK_URL.txt
-  rcon_password:
-    file: .secrets/RCON_PASSWORD.txt
+    file: ./.secrets/RCON_PASSWORD.txt
 
 networks:
   factorio:
@@ -513,291 +324,129 @@ networks:
 
 ## Multiple Servers
 
-### Separate ISR Instances
-
-Run one ISR instance per Factorio server:
+### Configuration (servers.yml)
 
 ```yaml
-# docker-compose.yml
-version: '3.8'
+servers:
+  los_hermanos:
+    log_path: /factorio/los_hermanos/console.log
+    rcon_host: factorio-1.internal
+    rcon_port: 27015
+    discord_channel_id: 123456789012345678
+    stats_interval: 300
 
-services:
-  # Vanilla Server
-  factorio-isr-vanilla:
-    build: .
-    container_name: factorio-isr-vanilla
-    restart: unless-stopped
-    environment:
-      - FACTORIO_LOG_PATH=/factorio/console.log
-      - BOT_NAME=Vanilla Server
-      - RCON_ENABLED=true
-      - RCON_HOST=factorio-vanilla
-      - RCON_PORT=27015
-    secrets:
-      - discord_webhook_vanilla
-      - rcon_password_vanilla
-    volumes:
-      - /srv/factorio-vanilla/logs:/factorio:ro
-    ports:
-      - "8081:8080"
+  space_age:
+    log_path: /factorio/space_age/console.log
+    rcon_host: factorio-2.internal
+    rcon_port: 27015
+    discord_channel_id: 987654321098765432
+    stats_interval: 300
+```
 
-  # Modded Server
-  factorio-isr-modded:
-    build: .
-    container_name: factorio-isr-modded
-    restart: unless-stopped
-    environment:
-      - FACTORIO_LOG_PATH=/factorio/console.log
-      - BOT_NAME=Modded Server (K2+SE)
-      - RCON_ENABLED=true
-      - RCON_HOST=factorio-modded
-      - RCON_PORT=27015
-      - PATTERNS_DIR=patterns-modded
-    secrets:
-      - discord_webhook_modded
-      - rcon_password_modded
-    volumes:
-      - /srv/factorio-modded/logs:/factorio:ro
-      - ./patterns-modded:/app/patterns-modded:ro
-    ports:
-      - "8082:8080"
+### Environment
 
-  # Testing Server
-  factorio-isr-testing:
-    build: .
-    container_name: factorio-isr-testing
-    restart: unless-stopped
-    environment:
-      - FACTORIO_LOG_PATH=/factorio/console.log
-      - BOT_NAME=Testing Server
-      - RCON_ENABLED=false
-      - LOG_LEVEL=debug
-    secrets:
-      - discord_webhook_testing
-    volumes:
-      - /srv/factorio-testing/logs:/factorio:ro
-    ports:
-      - "8083:8080"
+```bash
+# .env
+SERVERS_CONFIG=config/servers.yml
+RCON_ENABLED=true
+LOG_LEVEL=info
+```
 
-secrets:
-  discord_webhook_vanilla:
-    file: .secrets/DISCORD_WEBHOOK_VANILLA.txt
-  rcon_password_vanilla:
-    file: .secrets/RCON_PASSWORD_VANILLA.txt
-  discord_webhook_modded:
-    file: .secrets/DISCORD_WEBHOOK_MODDED.txt
-  rcon_password_modded:
-    file: .secrets/RCON_PASSWORD_MODDED.txt
-  discord_webhook_testing:
-    file: .secrets/DISCORD_WEBHOOK_TESTING.txt
+The bot will coordinate events across both servers and show presence like:
+
+```
+Watching 2/2 servers online
 ```
 
 ---
 
 ## Advanced Patterns
 
-### Conditional Routing by Player
-
-Route admin actions differently:
+### Pattern with Extracted Fields
 
 ```yaml
-# patterns/conditional.yml
-patterns:
-  - name: admin_death
-    regex: '(Admin|Moderator|Owner) was killed'
-    event_type: death
-    priority: 110
-    discord:
-      channel: admin
-      emoji: "💀"
-      color: 0xFF0000
-      title: "⚠️ Admin Death Alert!"
-
-  - name: regular_death
-    regex: '(.+) was killed'
-    event_type: death
-    priority: 50
-    discord:
-      emoji: "💀"
-      description: "{0} was killed"
+events:
+  research_complete:
+    pattern: '(.+) research completed: (.+) \(level (\d+)\)'
+    type: research
+    emoji: "🔬"
+    message: "{player} completed {technology} research (level {level})"
+    enabled: true
+    priority: 30
+    channel: events
 ```
 
----
+**Log Input:**
 
-### Rate Limiting Common Events
+```
+Alice research completed: Automation 3 (level 3)
+```
 
-Reduce noise from frequent events:
+**Discord Output:**
+
+```
+🔬 Alice completed Automation 3 research (level 3)
+```
+
+### Conditional Patterns (High Priority)
 
 ```yaml
-# patterns/filtered.yml
-patterns:
-  - name: tree_mined
-    regex: '(.+) mined a tree'
-    event_type: resource
-    priority: 1  # Very low priority
-    # Don't send to Discord - too spammy
+events:
+  boss_spawn:
+    pattern: 'Enemy spawned: .*behemoth'
+    type: danger
+    emoji: "👹"
+    message: "⚠️ BEHEMOTH SPOTTED!"
+    enabled: true
+    priority: 100  # High priority = sent first
+    channel: alerts
 
-  - name: ore_mined
-    regex: '(.+) mined (.+) ore'
-    event_type: resource
-    priority: 5
-    # Also skip Discord
-
-  - name: rocket_launch
-    regex: 'Rocket launched'
-    event_type: milestone
-    priority: 100  # High priority - always send
-    discord:
-      emoji: "🚀"
-      title: "🎉 ROCKET LAUNCHED! 🎉"
+  death_important:
+    pattern: '(Owner|Admin).*was killed'
+    type: death
+    emoji: "💀"
+    message: "Critical: {player} was killed!"
+    enabled: true
+    priority: 99
+    channel: alerts
 ```
 
----
-
-### Complex Regex Patterns
-
-Match complex log formats:
+### Disabled Patterns (Optional)
 
 ```yaml
-# patterns/complex.yml
-patterns:
-  - name: combat_stats
-    regex: '(.+) killed: (\d+) biters, (\d+) spitters, (\d+) worms'
-    event_type: achievement
-    fields:
-      player: 1
-      biters: 2
-      spitters: 3
-      worms: 4
-    discord:
-      emoji: "⚔️"
-      color: 0xFF0000
-      title: "Combat Statistics"
-      description: "{player}: {biters} biters, {spitters} spitters, {worms} worms"
-
-  - name: production_milestone
-    regex: 'Production: (.+) reached (\d+(?:,\d+)*) items/minute'
-    event_type: milestone
-    fields:
-      item: 1
-      rate: 2
-    discord:
-      emoji: "📈"
-      color: 0x00FF00
-      title: "Production Milestone"
-      description: "{item}: {rate} items/minute"
+events:
+  verbose_log:
+    pattern: 'verbose log message'
+    type: debug
+    emoji: "📝"
+    message: "{text}"
+    enabled: false  # Disabled, not parsed
+    priority: 1
+    channel: debug
 ```
 
 ---
 
-## Testing Configuration
+## Common Issues
 
-### Test Discord Webhook
+**No events appearing?**
+- Check `FACTORIO_LOG_PATH` is readable
+- Verify Factorio is writing logs
+- Enable `LOG_LEVEL=debug` to see parsing details
 
-```bash
-curl -X POST "$(cat .secrets/DISCORD_WEBHOOK_URL.txt)" \
-  -H "Content-Type: application/json" \
-  -d '{"content":"🧪 Test message from Factorio ISR setup"}'
-```
+**Bot offline?**
+- Verify `DISCORD_BOT_TOKEN` is valid
+- Check bot is invited to server
+- Verify `DISCORD_EVENT_CHANNEL_ID` is correct
 
----
-
-### Test RCON Connection
-
-```bash
-python -c "
-from rcon.source import Client
-with Client('localhost', 27015, passwd='$(cat .secrets/RCON_PASSWORD.txt)') as c:
-    print(f'Server time: {c.run("/time")}')
-    print(f'Players: {c.run("/players")}')
-"
-```
+**RCON stats not updating?**
+- Check `RCON_ENABLED=true`
+- Verify host/port/password
+- Confirm RCON is enabled in Factorio server
 
 ---
 
-### Simulate Log Events
-
-```bash
-# Add test events to log file
-LOG_FILE=/path/to/factorio/console.log
-
-echo "$(date '+%Y-%m-%d %H:%M:%S') [CHAT] TestUser: Hello world!" >> $LOG_FILE
-echo "$(date '+%Y-%m-%d %H:%M:%S') [JOIN] TestUser joined the game" >> $LOG_FILE
-echo "$(date '+%Y-%m-%d %H:%M:%S') TestUser was killed by a small-biter" >> $LOG_FILE
-echo "$(date '+%Y-%m-%d %H:%M:%S') [LEAVE] TestUser left the game" >> $LOG_FILE
-```
-
----
-
-### Dry Run Mode
-
-Test patterns without sending to Discord:
-
-```bash
-# Temporarily disable webhook
-export DISCORD_WEBHOOK_URL=""
-
-# Run with debug logging
-LOG_LEVEL=debug python -m src.main
-```
-
----
-
-## Production Best Practices
-
-### Logging Configuration
-
-```bash
-# Production
-LOG_LEVEL=info
-LOG_FORMAT=json
-
-# Development
-LOG_LEVEL=debug
-LOG_FORMAT=console
-
-# Troubleshooting
-LOG_LEVEL=debug
-LOG_FORMAT=json
-```
-
----
-
-### Health Monitoring
-
-```bash
-# Automated health check
-*/5 * * * * curl -f http://localhost:8080/health || /usr/local/bin/alert.sh
-```
-
----
-
-### Log Rotation
-
-```bash
-# /etc/logrotate.d/factorio-isr
-/opt/factorio-isr/logs/*.log {
-    daily
-    rotate 7
-    compress
-    delaycompress
-    notifempty
-    create 0644 factorio factorio
-    postrotate
-        docker-compose -f /opt/factorio-isr/docker-compose.yml restart factorio-isr
-    endscript
-}
-```
-
----
-
-## Next Steps
-
-- [RCON Setup Guide](RCON_SETUP.md) - Configure server statistics
-- [Multi-Channel Guide](MULTI_CHANNEL.md) - Route events to different channels
-- [Pattern Syntax](PATTERNS.md) - Complete pattern reference
-- [Deployment Guide](DEPLOYMENT.md) - Production deployment
-
----
-
-**Happy monitoring! 🏭🚂**
+**See also:**
+- [Pattern Syntax](PATTERNS.md) – Full pattern reference
+- [Configuration Guide](configuration.md) – All environment variables
+- [RCON Setup](RCON_SETUP.md) – Detailed RCON configuration
