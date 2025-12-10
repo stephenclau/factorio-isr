@@ -267,7 +267,7 @@ class TestApplicationStart:
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.MultiServerLogTailer") as mock_tailer_class, \
-             patch("main.BotDiscordInterface", BotDiscordInterface):
+             patch("discord_interface.BotDiscordInterface") as mock_bot_interface_class:
             
             # Mock HealthCheckServer
             mock_health_server = AsyncMock()
@@ -283,6 +283,7 @@ class TestApplicationStart:
             mock_discord.bot.set_server_manager = MagicMock()
             mock_discord.disconnect = AsyncMock()
             mock_discord_factory.return_value = mock_discord
+            mock_bot_interface_class.return_value = mock_discord
 
             # Mock ServerManager
             mock_server_manager = AsyncMock()
@@ -605,7 +606,7 @@ class TestApplicationIntegration:
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.MultiServerLogTailer") as mock_tailer_class, \
-             patch("main.BotDiscordInterface", BotDiscordInterface):
+             patch("discord_interface.BotDiscordInterface") as mock_bot_interface_class:
             
             # Mock HealthCheckServer
             mock_health_server = AsyncMock()
@@ -620,6 +621,7 @@ class TestApplicationIntegration:
             mock_discord.bot = MagicMock()
             mock_discord.bot.set_server_manager = MagicMock()
             mock_discord_factory.return_value = mock_discord
+            mock_bot_interface_class.return_value = mock_discord
 
             # Mock ServerManager
             mock_server_manager = AsyncMock()
