@@ -32,6 +32,23 @@ from discord_interface import BotDiscordInterface  # type: ignore
 
 
 # ============================================================================
+# Mock Helpers
+# ============================================================================
+
+class MockBotDiscordInterface(BotDiscordInterface):
+    """Mock implementation that passes isinstance checks."""
+    
+    def __init__(self) -> None:
+        """Initialize with all required async mocks."""
+        self.connect = AsyncMock()
+        self.disconnect = AsyncMock()
+        self.send_event = AsyncMock(return_value=True)
+        self.test_connection = AsyncMock(return_value=True)
+        self.bot = MagicMock()
+        self.bot.set_server_manager = MagicMock()
+
+
+# ============================================================================
 # Fixtures
 # ============================================================================
 
@@ -267,7 +284,7 @@ class TestApplicationStart:
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.MultiServerLogTailer") as mock_tailer_class, \
-             patch("discord_interface.BotDiscordInterface") as mock_bot_interface_class:
+             patch("discord_interface.BotDiscordInterface", MockBotDiscordInterface):
             
             # Mock HealthCheckServer
             mock_health_server = AsyncMock()
@@ -275,15 +292,9 @@ class TestApplicationStart:
             mock_health_server.stop = AsyncMock()
             mock_health_class.return_value = mock_health_server
             
-            # Mock Discord bot interface - must be instance of BotDiscordInterface
-            mock_discord = MagicMock(spec=BotDiscordInterface)
-            mock_discord.connect = AsyncMock()
-            mock_discord.test_connection = AsyncMock(return_value=True)
-            mock_discord.bot = MagicMock()
-            mock_discord.bot.set_server_manager = MagicMock()
-            mock_discord.disconnect = AsyncMock()
+            # Create a real mock instance that passes isinstance
+            mock_discord = MockBotDiscordInterface()
             mock_discord_factory.return_value = mock_discord
-            mock_bot_interface_class.return_value = mock_discord
 
             # Mock ServerManager
             mock_server_manager = AsyncMock()
@@ -606,7 +617,7 @@ class TestApplicationIntegration:
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.MultiServerLogTailer") as mock_tailer_class, \
-             patch("discord_interface.BotDiscordInterface") as mock_bot_interface_class:
+             patch("discord_interface.BotDiscordInterface", MockBotDiscordInterface):
             
             # Mock HealthCheckServer
             mock_health_server = AsyncMock()
@@ -614,14 +625,9 @@ class TestApplicationIntegration:
             mock_health_server.stop = AsyncMock()
             mock_health_class.return_value = mock_health_server
             
-            # Mock Discord bot interface - must be instance of BotDiscordInterface
-            mock_discord = MagicMock(spec=BotDiscordInterface)
-            mock_discord.connect = AsyncMock()
-            mock_discord.disconnect = AsyncMock()
-            mock_discord.bot = MagicMock()
-            mock_discord.bot.set_server_manager = MagicMock()
+            # Create a real mock instance that passes isinstance
+            mock_discord = MockBotDiscordInterface()
             mock_discord_factory.return_value = mock_discord
-            mock_bot_interface_class.return_value = mock_discord
 
             # Mock ServerManager
             mock_server_manager = AsyncMock()
