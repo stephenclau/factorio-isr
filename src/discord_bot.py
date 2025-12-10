@@ -662,63 +662,68 @@ class DiscordBot(discord.Client):
                 await asyncio.sleep(10)
 
     async def _notify_rcon_disconnected(self, server_tag: str) -> None:
-        """Send notification when RCON disconnects."""
-        if not self.event_channel_id or self.rcon_status_notified:
+        """Send notification when RCON disconnects for a specific server."""
+        if not self.server_manager:
             return
-
+        
         try:
-            channel = self.get_channel(self.event_channel_id)
-            if channel and isinstance(channel, discord.TextChannel):
-                embed = EmbedBuilder.info_embed(
-                    title="⚠️ RCON Connection Lost",
-                    message=(
-                        "Connection to Factorio server lost.\n"
-                        "Bot will automatically reconnect when server is available.\n\n"
-                        "Commands requiring RCON will be unavailable until reconnection."
-                    ),
-                )
-                embed.color = EmbedBuilder.COLOR_WARNING
-                await channel.send(embed=embed)
-                self.rcon_status_notified = True
-                logger.info("rcon_disconnection_notified", channel_id=self.event_channel_id, server_tag=server_tag)
-
-                # Update presence to reflect disconnected state
-                await self.update_presence()
+            config = self.server_manager.get_config(server_tag)
+            channel_id = config.event_channel_id
+            
+            if not channel_id:
+                logger.debug("skip_rcon_disconnect_notification_no_channel", server_tag=server_tag)
+                return
+                
+            embed = EmbedBuilder.info_embed(
+                title=f"⚠️ RCON Connection Lost - {config.name}",
+                message=(
+                    "Connection to Factorio server lost.\n"
+                    "Bot will automatically reconnect when server is available.\n\n"
+                    "Commands requiring RCON will be unavailable until reconnection."
+                ),
+            )
+            embed.color = EmbedBuilder.COLOR_WARNING
+            await self._send_to_channel(channel_id, embed)
+            logger.info("rcon_disconnection_notified", server_tag=server_tag, channel_id=channel_id)
         except Exception as e:
-            logger.warning("rcon_disconnection_notification_failed", error=str(e), server_tag=server_tag)
+            logger.warning("rcon_disconnection_notification_failed", server_tag=server_tag, error=str(e))
+
 
     async def _notify_rcon_reconnected(self, server_tag: str) -> None:
-        """Send notification when RCON reconnects."""
-        if not self.event_channel_id:
+        """Send notification when RCON reconnects for a specific server."""
+        if not self.server_manager:
             return
-
+        
         try:
-            channel = self.get_channel(self.event_channel_id)
-            if channel and isinstance(channel, discord.TextChannel):
-                # Calculate downtime if we know when we lost connection
-                downtime_msg = ""
-                if self.rcon_last_connected:
-                    downtime = datetime.now(timezone.utc) - self.rcon_last_connected
-                    minutes = int(downtime.total_seconds() / 60)
-                    if minutes > 0:
-                        downtime_msg = f"\nDowntime: ~{minutes} minute{'s' if minutes != 1 else ''}"
+            config = self.server_manager.get_config(server_tag)
+            channel_id = config.event_channel_id
+            
+            if not channel_id:
+                logger.debug("skip_rcon_reconnect_notification_no_channel", server_tag=server_tag)
+                return
+                
+            state = self.rcon_server_states.get(server_tag, {})
+            last_connected = state.get("last_connected")
+            
+            downtime_msg = ""
+            if isinstance(last_connected, datetime):
+                downtime = datetime.now(timezone.utc) - last_connected
+                minutes = int(downtime.total_seconds() / 60)
+                if minutes > 0:
+                    downtime_msg = f"\nDowntime: ~{minutes} minute{'s' if minutes != 1 else ''}"
 
-                embed = EmbedBuilder.info_embed(
-                    title="✅ RCON Reconnected",
-                    message=(
-                        f"Successfully reconnected to Factorio server!{downtime_msg}\n\n"
-                        "All bot commands are now fully operational."
-                    ),
-                )
-                embed.color = EmbedBuilder.COLOR_SUCCESS
-                await channel.send(embed=embed)
-                self.rcon_status_notified = False
-                logger.info("rcon_reconnection_notified", channel_id=self.event_channel_id, server_tag=server_tag)
-
-                # Update presence to reflect reconnected state
-                await self.update_presence()
+            embed = EmbedBuilder.info_embed(
+                title=f"✅ RCON Reconnected - {config.name}",
+                message=(
+                    f"Successfully reconnected to Factorio server!{downtime_msg}\n\n"
+                    "All bot commands are now fully operational."
+                ),
+            )
+            embed.color = EmbedBuilder.COLOR_SUCCESS
+            await self._send_to_channel(channel_id, embed)
+            logger.info("rcon_reconnection_notified", server_tag=server_tag, channel_id=channel_id)
         except Exception as e:
-            logger.warning("rcon_reconnection_notification_failed", error=str(e), server_tag=server_tag)
+            logger.warning("rcon_reconnection_notification_failed", server_tag=server_tag, error=str(e))
 
     # ========================================================================
     # Bot Lifecycle
@@ -2258,69 +2263,67 @@ class DiscordBot(discord.Client):
     # ========================================================================
 
     async def _send_connection_notification(self) -> None:
-        """Send a notification to Discord when bot connects."""
-        if self.event_channel_id is None:
-            logger.debug("skip_connection_notification_no_channel")
+        """Send connection notification to all configured server channels."""
+        if not self.server_manager:
+            logger.debug("skip_connection_notification_no_server_manager")
             return
 
-        try:
-            channel = self.get_channel(self.event_channel_id)
-            if channel is None or not isinstance(channel, discord.TextChannel):
-                logger.warning("connection_notification_invalid_channel")
-                return
+        bot_name = self.user.name if self.user else "Factorio ISR Bot"
+        guild_count = len(self.guilds)
+        
+        embed = EmbedBuilder.info_embed(
+            title=f"🤖 {bot_name} Connected",
+            message=(
+                "✅ Bot connected with Discord\n"
+                f"📡 Connected to {guild_count} server{'s' if guild_count != 1 else ''}\n"
+                "💬 Type `/factorio help` to see available commands"
+            ),
+        )
+        embed.color = EmbedBuilder.COLOR_SUCCESS
 
-            bot_name = self.user.name if self.user else "Factorio ISR Bot"
-            guild_count = len(self.guilds)
+        # Send to each server's channel
+        for tag, config in self.server_manager.list_servers().items():
+            channel_id = config.event_channel_id
+            if channel_id:
+                await self._send_to_channel(channel_id, embed)
+                logger.info("connection_notification_sent", server_tag=tag, channel_id=channel_id)
 
-            embed = EmbedBuilder.info_embed(
-                title=f"🤖 {bot_name} Connected",
-                message=(
-                    "✅ Bot connected with Discord\n"
-                    f"📡 Connected to {guild_count} server"
-                    f"{'s' if guild_count != 1 else ''}\n"
-                    "💬 Type `/factorio help` to see available commands"
-                ),
-            )
-            embed.color = EmbedBuilder.COLOR_SUCCESS
-            await channel.send(embed=embed)
-            logger.info("connection_notification_sent", channel_id=self.event_channel_id)
-        except discord.errors.Forbidden:
-            logger.warning("connection_notification_forbidden")
-        except Exception as e:
-            logger.warning("connection_notification_failed", error=str(e))
 
     async def _send_disconnection_notification(self) -> None:
-        """Send a notification to Discord when bot disconnects."""
-        if not self._connected:
-            logger.debug("skip_disconnection_notification_not_connected")
+        """Send disconnection notification to all configured server channels."""
+        if not self._connected or not self.server_manager:
             return
 
-        if self.event_channel_id is None:
-            logger.debug("skip_disconnection_notification_no_channel")
-            return
+        bot_name = self.user.name if self.user else "Factorio ISR Bot"
+        embed = EmbedBuilder.info_embed(
+            title=f"👋 {bot_name} Disconnecting",
+            message=(
+                "⚠️ Bot lost connection with Discord\n"
+                "🔄 Monitoring will resume when bot reconnects"
+            ),
+        )
+        embed.color = EmbedBuilder.COLOR_WARNING
 
+        # Send to each server's channel
+        for tag, config in self.server_manager.list_servers().items():
+            channel_id = config.event_channel_id
+            if channel_id:
+                await self._send_to_channel(channel_id, embed)
+                logger.info("disconnection_notification_sent", server_tag=tag, channel_id=channel_id)
+        
+        # Small delay to allow messages to send before disconnect
+        await asyncio.sleep(0.5)
+        
+    async def _send_to_channel(self, channel_id: int, embed: Any) -> None:
+        """Helper to send embed to a specific channel."""
         try:
-            channel = self.get_channel(self.event_channel_id)
-            if channel is None or not isinstance(channel, discord.TextChannel):
-                logger.warning("disconnection_notification_invalid_channel")
-                return
-
-            bot_name = self.user.name if self.user else "Factorio ISR Bot"
-            embed = EmbedBuilder.info_embed(
-                title=f"👋 {bot_name} Disconnecting",
-                message=(
-                    "⚠️ Bot lost connection with Discord\n"
-                    "🔄 Monitoring will resume when bot reconnects"
-                ),
-            )
-            embed.color = EmbedBuilder.COLOR_WARNING
-            await channel.send(embed=embed)
-            logger.info("disconnection_notification_sent", channel_id=self.event_channel_id)
-            await asyncio.sleep(0.5)
+            channel = self.get_channel(channel_id)
+            if channel and isinstance(channel, discord.TextChannel):
+                await channel.send(embed=embed)
         except discord.errors.Forbidden:
-            logger.warning("disconnection_notification_forbidden")
+            logger.warning("send_to_channel_forbidden", channel_id=channel_id)
         except Exception as e:
-            logger.warning("disconnection_notification_failed", error=str(e))
+            logger.warning("send_to_channel_failed", channel_id=channel_id, error=str(e))
 
     # ========================================================================
     # Event Sending
