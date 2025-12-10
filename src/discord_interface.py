@@ -277,6 +277,9 @@ class BotDiscordInterface(DiscordInterface):
     def __init__(self, discord_bot: Any) -> None:
         self.bot = discord_bot
 
+        # Channel binding for per-server instances
+        self.channel_id: Optional[int] = None
+
         # PHASE 5.1: Discord-specific features
         if DISCORD_AVAILABLE:
             self.embed_builder = EmbedBuilder()
@@ -289,6 +292,21 @@ class BotDiscordInterface(DiscordInterface):
         self.query_cooldown = QUERY_COOLDOWN
         self.admin_cooldown = ADMIN_COOLDOWN
         self.danger_cooldown = DANGER_COOLDOWN
+
+    def use_channel(self, channel_id: int) -> "BotDiscordInterface":
+        """
+        Create a channel-bound copy of this interface for per-server use.
+        
+        Args:
+            channel_id: Discord channel ID for this server's events
+            
+        Returns:
+            New BotDiscordInterface instance bound to the specified channel
+        """
+        instance = BotDiscordInterface(self.bot)
+        instance.channel_id = channel_id
+        logger.debug("interface_bound_to_channel", channel_id=channel_id)
+        return instance
 
     async def connect(self) -> None:
         await self.bot.connect_bot()
@@ -315,7 +333,10 @@ class BotDiscordInterface(DiscordInterface):
             logger.warning("send_message_not_connected")
             return False
 
-        if self.bot.event_channel_id is None:
+        # Use interface's bound channel, or fall back to bot's global channel
+        target_channel_id = self.channel_id or self.bot.event_channel_id
+        
+        if target_channel_id is None:
             logger.warning("send_message_no_channel")
             return False
 
@@ -324,21 +345,21 @@ class BotDiscordInterface(DiscordInterface):
             return False
 
         try:
-            channel = self.bot.get_channel(self.bot.event_channel_id)
+            channel = self.bot.get_channel(target_channel_id)
             if channel is None:
-                logger.error("send_message_channel_not_found", channel_id=self.bot.event_channel_id)
+                logger.error("send_message_channel_not_found", channel_id=target_channel_id)
                 return False
 
             if not isinstance(channel, discord.TextChannel):
-                logger.error("send_message_invalid_channel_type", channel_id=self.bot.event_channel_id)
+                logger.error("send_message_invalid_channel_type", channel_id=target_channel_id)
                 return False
 
             await channel.send(message)
-            logger.debug("message_sent", channel_id=self.bot.event_channel_id)
+            logger.debug("message_sent", channel_id=target_channel_id)
             return True
 
         except discord.errors.Forbidden:
-            logger.error("send_message_forbidden", channel_id=self.bot.event_channel_id)
+            logger.error("send_message_forbidden", channel_id=target_channel_id)
             return False
         except discord.errors.HTTPException as e:
             logger.error("send_message_http_error", error=str(e))
@@ -352,7 +373,10 @@ class BotDiscordInterface(DiscordInterface):
             logger.warning("send_embed_not_connected")
             return False
 
-        if self.bot.event_channel_id is None:
+        # Use interface's bound channel, or fall back to bot's global channel
+        target_channel_id = self.channel_id or self.bot.event_channel_id
+        
+        if target_channel_id is None:
             logger.warning("send_embed_no_channel")
             return False
 
@@ -361,21 +385,21 @@ class BotDiscordInterface(DiscordInterface):
             return False
 
         try:
-            channel = self.bot.get_channel(self.bot.event_channel_id)
+            channel = self.bot.get_channel(target_channel_id)
             if channel is None:
-                logger.error("send_embed_channel_not_found", channel_id=self.bot.event_channel_id)
+                logger.error("send_embed_channel_not_found", channel_id=target_channel_id)
                 return False
 
             if not isinstance(channel, discord.TextChannel):
-                logger.error("send_embed_invalid_channel_type", channel_id=self.bot.event_channel_id)
+                logger.error("send_embed_invalid_channel_type", channel_id=target_channel_id)
                 return False
 
             await channel.send(embed=embed)
-            logger.debug("embed_sent", channel_id=self.bot.event_channel_id)
+            logger.debug("embed_sent", channel_id=target_channel_id)
             return True
 
         except discord.errors.Forbidden:
-            logger.error("send_embed_forbidden", channel_id=self.bot.event_channel_id)
+            logger.error("send_embed_forbidden", channel_id=target_channel_id)
             return False
         except discord.errors.HTTPException as e:
             logger.error("send_embed_http_error", error=str(e))
