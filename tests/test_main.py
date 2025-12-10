@@ -213,8 +213,8 @@ class TestApplicationStart:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=9999,
+            health_check_host="127.0.0.1",
+            health_check_port=8888,
             log_level="info",
             log_format="console",
             servers={"test": mock_server_config},
@@ -253,7 +253,7 @@ class TestApplicationStart:
             patterns_dir=temp_patterns_dir,
             pattern_files=None,
             health_check_host="0.0.0.0",
-            health_check_port=9999,
+            health_check_port=8080,
             log_level="info",
             log_format="console",
             servers={"test": mock_server_config},
@@ -261,10 +261,17 @@ class TestApplicationStart:
 
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
+             patch("main.HealthCheckServer") as mock_health_class, \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_discord_factory, \
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.MultiServerLogTailer") as mock_tailer_class:
+            
+            # Mock HealthCheckServer
+            mock_health_server = AsyncMock()
+            mock_health_server.start = AsyncMock()
+            mock_health_server.stop = AsyncMock()
+            mock_health_class.return_value = mock_health_server
             
             # Mock Discord bot interface
             mock_discord = AsyncMock()
@@ -590,10 +597,17 @@ class TestApplicationIntegration:
 
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
+             patch("main.HealthCheckServer") as mock_health_class, \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_discord_factory, \
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.MultiServerLogTailer") as mock_tailer_class:
+            
+            # Mock HealthCheckServer
+            mock_health_server = AsyncMock()
+            mock_health_server.start = AsyncMock()
+            mock_health_server.stop = AsyncMock()
+            mock_health_class.return_value = mock_health_server
             
             # Mock Discord bot interface
             mock_discord = AsyncMock()
