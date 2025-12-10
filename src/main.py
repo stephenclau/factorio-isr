@@ -33,7 +33,7 @@ import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional, Any, Union
 
 try:
     from multi_log_tailer import MultiServerLogTailer
@@ -122,7 +122,7 @@ class Application:
         """Initialize application components."""
         self.config: Any = None
         self.health_server: Optional[HealthCheckServer] = None
-        self.logtailer: Optional[MultiServerLogTailer] = None
+        self.logtailer: Optional[Union[MultiServerLogTailer, Any]] = None
         self.discord: Optional[DiscordInterface] = None
         self.event_parser: Optional[EventParser] = None
         self.server_manager: Optional[Any] = None
