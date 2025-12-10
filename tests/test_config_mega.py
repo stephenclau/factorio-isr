@@ -16,45 +16,35 @@
 """
 Comprehensive tests for config.py with 95%+ code coverage.
 
-Merged from:
-- test_config.py
-- test_config_targeted.py
+Covers Phase 6 Multi-Server Architecture:
+- Config dataclass with servers.yml requirement
+- ServerConfig per-server configuration
+- load_config() from environment + servers.yml
+- validate_config() checks
+- Safe type conversion functions
 
-Covers:
-- read_secret (local .txt/.plain, Docker secrets, error paths)
-- get_config_value
-- parse_webhook_channels / parse_pattern_files
-- ServerConfig, parse_servers_from_yaml, parse_servers_from_json
-- load_config, validate_config (Discord, RCON, multi-server branches)
-
-Phase 6 Updates:
-- Removed tests for discord_event_channel_id (now per-server in ServerConfig)
-- Removed tests for send_test_message (not in current Config)
-- Updated ServerConfig tests for RCON breakdown configuration
-- Added multi-server event_channel_id per-server tests
+Note: get_config_value was removed in refactor - config now loads
+directly from environment variables and YAML files.
 """
 
 from __future__ import annotations
 
-import json
 import os
+import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
-from unittest.mock import patch
+from typing import Dict, Optional
+from unittest.mock import patch, MagicMock
 
 import pytest
+import yaml
 
 from config import (
     Config,
     ServerConfig,
-    get_config_value,
     load_config,
-    parse_pattern_files,
-    parse_servers_from_json,
-    parse_servers_from_yaml,
-    parse_webhook_channels,
-    read_secret,
     validate_config,
+    _safe_int,
+    _safe_float,
 )
 
 
@@ -62,10 +52,10 @@ from config import (
 # Global fixtures
 # ======================================================================
 
+
 @pytest.fixture(autouse=True)
 def isolate_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Isolate tests from real environment and filesystem."""
-    # Work in a clean temp directory
     monkeypatch.chdir(tmp_path)
 
     # Clear config-related environment variables
@@ -77,742 +67,644 @@ def isolate_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         "HEALTH_",
         "PATTERNS_",
         "PATTERN_",
-        "WEBHOOK_",
-        "SEND_",
-        "RCON_",
-        "STATS_",
-        "SERVERS",
+        "CONFIG_",
     ]
     for key in list(os.environ.keys()):
         if any(key.startswith(p) for p in prefixes):
             monkeypatch.delenv(key, raising=False)
 
-    # Prevent .env loading from touching host env
-    monkeypatch.setattr("config.load_dotenv", lambda: None)
-
 
 @pytest.fixture
-def minimal_config() -> Config:
-    """Minimal valid Config instance."""
-    return Config(
-        discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-        factorio_log_path=Path("/factorio/console.log"),
-    )
+def temp_servers_yml(tmp_path: Path) -> Path:
+    """Create temporary servers.yml for testing."""
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    servers_yml = config_dir / "servers.yml"
+
+    # Create a valid servers.yml
+    servers_content = {
+        "servers": {
+            "prod": {
+                "name": "Production",
+                "log_path": "console.log",
+                "rcon_host": "prod.example.com",
+                "rcon_port": 27015,
+                "rcon_password": "prod_secret",
+                "event_channel_id": 123456789,
+                "rcon_breakdown_mode": "transition",
+                "rcon_breakdown_interval": 300,
+            }
+        }
+    }
+
+    with open(servers_yml, "w") as f:
+        yaml.dump(servers_content, f)
+
+    return servers_yml
 
 
 # ======================================================================
-# read_secret tests (from test_config.py)
+# Safe conversion function tests
 # ======================================================================
 
-class TestReadSecret:
-    """Tests for read_secret()."""
 
-    def test_read_secret_from_local_txt(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "TEST_SECRET.txt").write_text("secret_value_txt\n")
-        monkeypatch.chdir(tmp_path)
+class TestSafeInt:
+    """Tests for _safe_int() conversion."""
 
-        result = read_secret("TEST_SECRET")
-        assert result == "secret_value_txt"
+    def test_converts_int(self) -> None:
+        """_safe_int should return int as-is."""
+        result = _safe_int(27015, "rcon_port", 27015)
+        assert result == 27015
 
-    def test_read_secret_from_local_plain(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "TEST_SECRET").write_text("plain_value\n")
-        monkeypatch.chdir(tmp_path)
+    def test_converts_string_int(self) -> None:
+        """_safe_int should convert string to int."""
+        result = _safe_int("8080", "health_check_port", 8080)
+        assert result == 8080
 
-        result = read_secret("TEST_SECRET")
-        assert result == "plain_value"
+    def test_returns_default_for_none(self) -> None:
+        """_safe_int should return default when value is None."""
+        result = _safe_int(None, "field", 42)
+        assert result == 42
 
-    def test_read_secret_prefers_txt_over_plain(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When both .txt and plain exist, .txt should win."""
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "TEST_SECRET.txt").write_text("txt_value\n")
-        (secrets_dir / "TEST_SECRET").write_text("plain_value\n")
-        monkeypatch.chdir(tmp_path)
+    def test_raises_on_invalid_string(self) -> None:
+        """_safe_int should raise ValueError for non-numeric string."""
+        with pytest.raises(ValueError, match="Invalid integer"):
+            _safe_int("not_a_number", "field", 0)
 
-        result = read_secret("TEST_SECRET")
-        assert result == "txt_value"
+    def test_raises_on_invalid_type(self) -> None:
+        """_safe_int should raise ValueError for unsupported type."""
+        with pytest.raises(ValueError, match="Cannot convert"):
+            _safe_int([1, 2, 3], "field", 0)
 
-    def test_read_secret_empty_files_return_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Empty secrets should fall through and ultimately return default."""
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "EMPTY.txt").write_text(" \n")
-        (secrets_dir / "EMPTY").write_text("\t")
-        monkeypatch.chdir(tmp_path)
 
-        result = read_secret("EMPTY", default="fallback")
-        assert result == "fallback"
+class TestSafeFloat:
+    """Tests for _safe_float() conversion."""
 
-    def test_read_secret_docker_secret(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Simulate Docker secret by mocking /run/secrets path."""
-        monkeypatch.chdir(tmp_path)
-        docker_dir = tmp_path / "run" / "secrets"
-        docker_dir.mkdir(parents=True)
-        (docker_dir / "API_KEY").write_text("docker_value\n")
+    def test_converts_float(self) -> None:
+        """_safe_float should return float as-is."""
+        result = _safe_float(3.14, "threshold", 0.0)
+        assert result == 3.14
 
-        def mock_exists(p: Path) -> bool:
-            if str(p).endswith("/run/secrets/API_KEY"):
-                return True
-            return False
+    def test_converts_int_to_float(self) -> None:
+        """_safe_float should convert int to float."""
+        result = _safe_float(42, "threshold", 0.0)
+        assert result == 42.0
 
-        def mock_read_text(p: Path) -> str:
-            if str(p).endswith("/run/secrets/API_KEY"):
-                return "docker_value\n"
-            raise FileNotFoundError
+    def test_converts_string_float(self) -> None:
+        """_safe_float should convert string to float."""
+        result = _safe_float("3.14", "threshold", 0.0)
+        assert result == 3.14
 
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("API_KEY")
+    def test_returns_default_for_none(self) -> None:
+        """_safe_float should return default when value is None."""
+        result = _safe_float(None, "field", 1.5)
+        assert result == 1.5
 
-        assert result == "docker_value"
-
-    def test_read_secret_all_missing_returns_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.chdir(tmp_path)
-        result = read_secret("MISSING", default="default_value")
-        assert result == "default_value"
+    def test_raises_on_invalid_string(self) -> None:
+        """_safe_float should raise ValueError for non-numeric string."""
+        with pytest.raises(ValueError, match="Invalid float"):
+            _safe_float("not_a_float", "field", 0.0)
 
 
 # ======================================================================
-# read_secret targeted tests (from test_config_targeted.py)
+# ServerConfig tests
 # ======================================================================
 
-class TestReadSecretTargeted:
-    """Targeted tests for read_secret() missing/edge paths."""
-
-    def test_read_secret_local_txt_exception_logs_and_falls_back(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Exception reading .secrets/*.txt should not crash and should continue to next sources."""
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        txt_file = secrets_dir / "test_secret.txt"
-        txt_file.write_text("value\n")
-        monkeypatch.chdir(tmp_path)
-
-        def mock_exists(p: Path) -> bool:
-            return str(p) == str(txt_file)
-
-        def mock_read_text(p: Path, *args: Any, **kwargs: Any) -> str:
-            raise PermissionError("denied")
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("test_secret", default="fallback")
-
-        assert result == "fallback"
-
-    def test_read_secret_local_plain_exception_logs_and_falls_back(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Exception reading .secrets/{name} should not crash and should continue to Docker/default."""
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        plain_file = secrets_dir / "test_secret"
-        plain_file.write_text("value\n")
-        monkeypatch.chdir(tmp_path)
-
-        def mock_exists(p: Path) -> bool:
-            return str(p) == str(plain_file)
-
-        def mock_read_text(p: Path, *args: Any, **kwargs: Any) -> str:
-            raise OSError("disk error")
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("test_secret", default=None)
-
-        assert result is None
-
-    def test_read_secret_docker_exception_returns_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Exception reading Docker secret should yield default."""
-        monkeypatch.chdir(tmp_path)
-
-        def mock_exists(p: Path) -> bool:
-            return str(p).endswith("/run/secrets/API_KEY")
-
-        def mock_read_text(p: Path, *args: Any, **kwargs: Any) -> str:
-            raise PermissionError("no access")
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("API_KEY", default="fallback")
-
-        assert result == "fallback"
-
-
-# ======================================================================
-# get_config_value tests
-# ======================================================================
-
-class TestGetConfigValue:
-    """Tests for get_config_value()."""
-
-    def test_get_config_value_secret_beats_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "API_KEY.txt").write_text("secret_api\n")
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("API_KEY", "env_api")
-
-        value = get_config_value("API_KEY")
-        assert value == "secret_api"
-
-    def test_get_config_value_env_when_no_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("SOME_KEY", "env_value")
-        value = get_config_value("SOME_KEY")
-        assert value == "env_value"
-
-    def test_get_config_value_default_when_no_secret_or_env(self) -> None:
-        value = get_config_value("UNKNOWN_KEY", default="fallback")
-        assert value == "fallback"
-
-    def test_get_config_value_required_raises(self) -> None:
-        with pytest.raises(ValueError, match="Required configuration key not found: MISSING"):
-            get_config_value("MISSING", required=True)
-
-
-# ======================================================================
-# parse_webhook_channels / parse_pattern_files tests
-# ======================================================================
-
-class TestParseWebhookChannels:
-    """Tests for parse_webhook_channels()."""
-
-    def test_parse_webhook_channels_valid(self) -> None:
-        s = '{"general": "url1", "alerts": "url2"}'
-        result = parse_webhook_channels(s)
-        assert result == {"general": "url1", "alerts": "url2"}
-
-    def test_parse_webhook_channels_empty_string(self) -> None:
-        assert parse_webhook_channels("") == {}
-
-    def test_parse_webhook_channels_none(self) -> None:
-        assert parse_webhook_channels(None) == {}
-
-    def test_parse_webhook_channels_invalid_json(self) -> None:
-        assert parse_webhook_channels("{invalid json") == {}
-
-    def test_parse_webhook_channels_not_dict(self) -> None:
-        assert parse_webhook_channels('["not", "a", "dict"]') == {}
-
-
-class TestParsePatternFiles:
-    """Tests for parse_pattern_files()."""
-
-    def test_parse_pattern_files_valid(self) -> None:
-        s = '["vanilla.yaml", "custom.yaml"]'
-        result = parse_pattern_files(s)
-        assert result == ["vanilla.yaml", "custom.yaml"]
-
-    def test_parse_pattern_files_empty_string(self) -> None:
-        assert parse_pattern_files("") is None
-
-    def test_parse_pattern_files_none(self) -> None:
-        assert parse_pattern_files(None) is None
-
-    def test_parse_pattern_files_invalid_json(self) -> None:
-        assert parse_pattern_files("[invalid json") is None
-
-    def test_parse_pattern_files_not_list(self) -> None:
-        assert parse_pattern_files('{"not": "a list"}') is None
-
-
-# ======================================================================
-# ServerConfig / servers parsing tests
-# ======================================================================
 
 class TestServerConfig:
-    """Tests for ServerConfig dataclass and validation."""
+    """Tests for ServerConfig dataclass."""
 
-    def test_server_config_valid(self) -> None:
-        cfg = ServerConfig(
-            tag="prod",
+    def test_creates_with_required_fields(self) -> None:
+        """ServerConfig should create with required fields."""
+        config = ServerConfig(
             name="Production",
-            rcon_host="factorio-prod",
-            rcon_port=27015,
-            rcon_password="secret",
-        )
-        assert cfg.display_name == "Production"
-        assert cfg.collect_ups is True
-
-    def test_server_config_with_breakdown_settings(self) -> None:
-        """Phase 6: ServerConfig should support per-server breakdown settings."""
-        cfg = ServerConfig(
             tag="prod",
-            name="Production",
-            rcon_host="factorio-prod",
+            log_path=Path("/var/log/console.log"),
+            rcon_host="prod.example.com",
             rcon_port=27015,
-            rcon_password="secret",
+            rcon_password="secret123",
             event_channel_id=123456789,
-            rcon_breakdown_mode="transition",
-            rcon_breakdown_interval=300,
         )
-        assert cfg.event_channel_id == 123456789
-        assert cfg.rcon_breakdown_mode == "transition"
-        assert cfg.rcon_breakdown_interval == 300
 
-    def test_server_config_display_name_with_description(self) -> None:
-        cfg = ServerConfig(
-            tag="lh",
-            name="Los Hermanos",
-            description="Main map",
-            rcon_host="lh-host",
+        assert config.name == "Production"
+        assert config.tag == "prod"
+        assert config.rcon_host == "prod.example.com"
+        assert config.event_channel_id == 123456789
+        assert config.rcon_breakdown_mode == "transition"
+        assert config.rcon_breakdown_interval == 300
+
+    def test_converts_log_path_string(self) -> None:
+        """ServerConfig should convert string log_path to Path."""
+        config = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path="/tmp/console.log",  # type: ignore
+            rcon_host="localhost",
             rcon_port=27015,
-            rcon_password="secret",
+            rcon_password="pass",
+            event_channel_id=111111111,
         )
-        assert cfg.display_name == "Los Hermanos (Main map)"
 
-    def test_server_config_invalid_empty_tag(self) -> None:
-        with pytest.raises(ValueError, match="Server tag cannot be empty"):
+        assert isinstance(config.log_path, Path)
+        assert str(config.log_path) == "/tmp/console.log"
+
+    def test_validates_invalid_tag(self) -> None:
+        """ServerConfig should reject invalid tag format."""
+        with pytest.raises(ValueError, match="Server tag must be alphanumeric"):
             ServerConfig(
-                tag="",
                 name="Bad",
-                rcon_host="host",
+                tag="Invalid-Tag!",
+                log_path=Path("/tmp/test.log"),
+                rcon_host="localhost",
                 rcon_port=27015,
-                rcon_password="secret",
+                rcon_password="pass",
+                event_channel_id=111111111,
             )
 
-    def test_server_config_invalid_tag_pattern(self) -> None:
-        with pytest.raises(ValueError):
+    def test_validates_invalid_port(self) -> None:
+        """ServerConfig should reject invalid port numbers."""
+        with pytest.raises(ValueError, match="Invalid RCON port"):
             ServerConfig(
-                tag="Invalid_tag",
                 name="Bad",
-                rcon_host="host",
+                tag="bad",
+                log_path=Path("/tmp/test.log"),
+                rcon_host="localhost",
+                rcon_port=99999,
+                rcon_password="pass",
+                event_channel_id=111111111,
+            )
+
+    def test_validates_empty_password(self) -> None:
+        """ServerConfig should reject empty RCON password."""
+        with pytest.raises(ValueError, match="RCON password cannot be empty"):
+            ServerConfig(
+                name="Bad",
+                tag="bad",
+                log_path=Path("/tmp/test.log"),
+                rcon_host="localhost",
                 rcon_port=27015,
-                rcon_password="secret",
+                rcon_password="",
+                event_channel_id=111111111,
             )
 
-    def test_server_config_invalid_port(self) -> None:
-        with pytest.raises(ValueError):
+    def test_validates_breakdown_mode(self) -> None:
+        """ServerConfig should validate rcon_breakdown_mode."""
+        with pytest.raises(ValueError, match="rcon_breakdown_mode must be"):
             ServerConfig(
-                tag="prod",
                 name="Bad",
-                rcon_host="host",
-                rcon_port=0,
-                rcon_password="secret",
+                tag="bad",
+                log_path=Path("/tmp/test.log"),
+                rcon_host="localhost",
+                rcon_port=27015,
+                rcon_password="pass",
+                event_channel_id=111111111,
+                rcon_breakdown_mode="invalid",
             )
 
-
-class TestParseServersFromJson:
-    """Tests for parse_servers_from_json()."""
-
-    def test_parse_servers_from_json_valid(self) -> None:
-        json_str = json.dumps(
-            {
-                "prod": {
-                    "name": "Production",
-                    "rcon_host": "factorio-prod",
-                    "rcon_port": 27015,
-                    "rcon_password": "secret",
-                }
-            }
-        )
-        servers = parse_servers_from_json(json_str)
-        assert servers is not None
-        assert "prod" in servers
-        prod = servers["prod"]
-        assert isinstance(prod, ServerConfig)
-        assert prod.rcon_password == "secret"
-
-    def test_parse_servers_from_json_with_event_channel(self) -> None:
-        """Phase 6: parse_servers_from_json should handle event_channel_id per-server."""
-        json_str = json.dumps(
-            {
-                "prod": {
-                    "name": "Production",
-                    "rcon_host": "factorio-prod",
-                    "rcon_port": 27015,
-                    "rcon_password": "secret",
-                    "event_channel_id": 987654321,
-                    "rcon_breakdown_mode": "transition",
-                    "rcon_breakdown_interval": 300,
-                }
-            }
-        )
-        servers = parse_servers_from_json(json_str)
-        assert servers is not None
-        assert servers["prod"].event_channel_id == 987654321
-        assert servers["prod"].rcon_breakdown_mode == "transition"
-
-    def test_parse_servers_from_json_none(self) -> None:
-        assert parse_servers_from_json(None) is None
-
-    def test_parse_servers_from_json_invalid_json(self) -> None:
-        assert parse_servers_from_json("{invalid") is None
-
-    def test_parse_servers_from_json_missing_password_becomes_empty_string(self) -> None:
-        json_str = json.dumps(
-            {"prod": {"name": "Production", "rcon_host": "host", "rcon_port": 27015}}
-        )
-        servers = parse_servers_from_json(json_str)
-        assert servers is not None
-        assert servers["prod"].rcon_password == ""
-
-
-class TestParseServersFromYaml:
-    """Tests for parse_servers_from_yaml()."""
-
-    def test_parse_servers_from_yaml_file_missing_returns_none(self, tmp_path: Path) -> None:
-        yaml_path = tmp_path / "servers.yml"
-        servers = parse_servers_from_yaml(yaml_path)
-        assert servers is None
-
-    def test_parse_servers_from_yaml_valid(self, tmp_path: Path) -> None:
-        yaml_path = tmp_path / "servers.yml"
-        yaml_path.write_text(
-            "servers:\n"
-            "  prod:\n"
-            "    name: Production\n"
-            "    rcon_host: factorio-prod\n"
-            "    rcon_port: 27015\n"
-            "    rcon_password: secret\n"
-        )
-        servers = parse_servers_from_yaml(yaml_path)
-        assert servers is not None
-        assert "prod" in servers
-        prod = servers["prod"]
-        assert prod.rcon_host == "factorio-prod"
-        assert prod.rcon_password == "secret"
-
-    def test_parse_servers_from_yaml_with_per_server_settings(self, tmp_path: Path) -> None:
-        """Phase 6: YAML should load per-server event_channel_id and breakdown settings."""
-        yaml_path = tmp_path / "servers.yml"
-        yaml_path.write_text(
-            "servers:\n"
-            "  prod:\n"
-            "    name: Production\n"
-            "    rcon_host: factorio-prod\n"
-            "    rcon_port: 27015\n"
-            "    rcon_password: secret\n"
-            "    event_channel_id: 123456789\n"
-            "    rcon_breakdown_mode: transition\n"
-            "    rcon_breakdown_interval: 300\n"
-        )
-        servers = parse_servers_from_yaml(yaml_path)
-        assert servers is not None
-        prod = servers["prod"]
-        assert prod.event_channel_id == 123456789
-        assert prod.rcon_breakdown_mode == "transition"
-        assert prod.rcon_breakdown_interval == 300
-
-    def test_parse_servers_from_yaml_invalid_tag_raises(self, tmp_path: Path) -> None:
-        """Test that invalid server tags raise a ValueError."""
-        yaml_path = tmp_path / "servers.yml"
-        yaml_path.write_text(
-            "servers:\n"
-            " Invalid_tag!:\n"
-            "  name: Bad\n"
-            "  rcon_host: host\n"
-            "  rcon_port: 27015\n"
-            "  rcon_password: secret\n"
-        )
-
-        with pytest.raises(
-            ValueError,
-            match="Invalid tag 'Invalid_tag!': must be lowercase alphanumeric with hyphens only, 1–16 characters",
-        ):
-            parse_servers_from_yaml(yaml_path)
-
-    def test_parse_servers_from_yaml_multiple_servers(self, tmp_path: Path) -> None:
-        """Test parsing multiple servers with different per-server configs."""
-        yaml_path = tmp_path / "servers.yml"
-        yaml_path.write_text(
-            "servers:\n"
-            "  prod:\n"
-            "    name: Production\n"
-            "    rcon_host: factorio-prod\n"
-            "    rcon_port: 27015\n"
-            "    rcon_password: secret1\n"
-            "    event_channel_id: 111111111\n"
-            "    rcon_breakdown_mode: transition\n"
-            "  staging:\n"
-            "    name: Staging\n"
-            "    rcon_host: factorio-stg\n"
-            "    rcon_port: 27015\n"
-            "    rcon_password: secret2\n"
-            "    event_channel_id: 222222222\n"
-            "    rcon_breakdown_mode: interval\n"
-            "    rcon_breakdown_interval: 600\n"
-        )
-        servers = parse_servers_from_yaml(yaml_path)
-
-        assert servers is not None
-        assert len(servers) == 2
-        assert servers["prod"].event_channel_id == 111111111
-        assert servers["prod"].rcon_breakdown_mode == "transition"
-        assert servers["staging"].event_channel_id == 222222222
-        assert servers["staging"].rcon_breakdown_mode == "interval"
+    def test_validates_breakdown_interval(self) -> None:
+        """ServerConfig should validate rcon_breakdown_interval > 0."""
+        with pytest.raises(ValueError, match="rcon_breakdown_interval must be"):
+            ServerConfig(
+                name="Bad",
+                tag="bad",
+                log_path=Path("/tmp/test.log"),
+                rcon_host="localhost",
+                rcon_port=27015,
+                rcon_password="pass",
+                event_channel_id=111111111,
+                rcon_breakdown_interval=-1,
+            )
 
 
 # ======================================================================
-# Config dataclass and is_multi_server
+# Config dataclass tests
 # ======================================================================
+
 
 class TestConfigDataclass:
     """Tests for Config dataclass."""
 
-    def test_config_defaults(self) -> None:
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
+    def test_creates_with_required_fields(self, tmp_path: Path) -> None:
+        """Config should create with required fields."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
         )
-        assert cfg.patterns_dir == Path("patterns")
-        assert cfg.pattern_files is None
-        assert cfg.webhook_channels == {}
-        assert cfg.rcon_enabled is False
-        assert cfg.servers is None
-        assert cfg.is_multi_server is False
 
-    def test_config_multi_server_property(self) -> None:
-        servers: Dict[str, ServerConfig] = {
-            "prod": ServerConfig(
-                tag="prod",
-                name="Production",
-                rcon_host="host",
-                rcon_port=27015,
-                rcon_password="secret",
+        config = Config(
+            discord_bot_token="test_token_xyz",
+            bot_name="TestBot",
+            servers={"test": server},
+        )
+
+        assert config.discord_bot_token == "test_token_xyz"
+        assert config.bot_name == "TestBot"
+        assert "test" in config.servers
+
+    def test_validates_missing_servers(self) -> None:
+        """Config should require servers configuration."""
+        with pytest.raises(ValueError, match="servers configuration is REQUIRED"):
+            Config(
+                discord_bot_token="token",
+                bot_name="Bot",
+                servers=None,
             )
-        }
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
-            servers=servers,
-        )
-        assert cfg.is_multi_server is True
 
-    def test_config_no_global_discord_event_channel_id(self) -> None:
-        """Phase 6: Config should NOT have global discord_event_channel_id."""
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
+    def test_validates_empty_servers(self, tmp_path: Path) -> None:
+        """Config should reject empty servers dict."""
+        with pytest.raises(ValueError, match="servers must be a non-empty dictionary"):
+            Config(
+                discord_bot_token="token",
+                bot_name="Bot",
+                servers={},
+            )
+
+    def test_validates_missing_bot_token(self, tmp_path: Path) -> None:
+        """Config should require Discord bot token."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
         )
-        # discord_event_channel_id should not exist at Config level
-        assert not hasattr(cfg, "discord_event_channel_id") or cfg.discord_event_channel_id is None
+
+        with pytest.raises(ValueError, match="discord_bot_token is REQUIRED"):
+            Config(
+                discord_bot_token="",
+                bot_name="Bot",
+                servers={"test": server},
+            )
+
+    def test_validates_invalid_log_level(self, tmp_path: Path) -> None:
+        """Config should validate log_level."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
+        )
+
+        with pytest.raises(ValueError, match="Invalid log_level"):
+            Config(
+                discord_bot_token="token",
+                bot_name="Bot",
+                servers={"test": server},
+                log_level="invalid_level",
+            )
+
+    def test_validates_invalid_health_check_port(self, tmp_path: Path) -> None:
+        """Config should validate health_check_port."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
+        )
+
+        with pytest.raises(ValueError, match="Invalid health_check_port"):
+            Config(
+                discord_bot_token="token",
+                bot_name="Bot",
+                servers={"test": server},
+                health_check_port=99999,
+            )
 
 
 # ======================================================================
 # load_config tests
 # ======================================================================
 
+
 class TestLoadConfig:
-    """Tests for load_config()."""
+    """Tests for load_config() function."""
 
-    def test_load_config_minimal_webhook(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
-        monkeypatch.setenv("FACTORIO_LOG_PATH", "/factorio/console.log")
+    def test_raises_on_missing_servers_yml(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should raise if servers.yml is missing."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path / "config"))
 
-        cfg = load_config()
-        assert cfg.discord_webhook_url == "https://discord.com/api/webhooks/123/abc"
-        assert cfg.factorio_log_path == Path("/factorio/console.log")
-        assert cfg.rcon_enabled is False
-
-    def test_load_config_bot_token_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DISCORD_BOT_TOKEN", "x" * 70)
-        monkeypatch.setenv("FACTORIO_LOG_PATH", "/factorio/console.log")
-
-        cfg = load_config()
-        assert cfg.discord_webhook_url is None
-        assert cfg.discord_bot_token == "x" * 70
-
-    def test_load_config_missing_discord_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("FACTORIO_LOG_PATH", "/factorio/console.log")
-
-        with pytest.raises(ValueError, match="Either DISCORD_WEBHOOK_URL or DISCORD_BOT_TOKEN"):
+        with pytest.raises(FileNotFoundError, match="servers.yml not found"):
             load_config()
 
-    def test_load_config_missing_log_path_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
+    def test_raises_on_missing_bot_token(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should raise if DISCORD_BOT_TOKEN is missing."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
 
-        with pytest.raises(ValueError, match="FACTORIO_LOG_PATH is required"):
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "test": {
+                    "name": "Test",
+                    "log_path": "console.log",
+                    "rcon_host": "localhost",
+                    "rcon_port": 27015,
+                    "rcon_password": "pass",
+                    "event_channel_id": 123456789,
+                }
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
+
+        with pytest.raises(ValueError, match="DISCORD_BOT_TOKEN environment variable is REQUIRED"):
             load_config()
 
-    def test_load_config_parses_booleans_and_numbers(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
-        monkeypatch.setenv("FACTORIO_LOG_PATH", "/factorio/console.log")
-        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
-        monkeypatch.setenv("LOG_FORMAT", "JSON")
-        monkeypatch.setenv("HEALTH_CHECK_HOST", "0.0.0.0")
-        monkeypatch.setenv("HEALTH_CHECK_PORT", "8080")
-        monkeypatch.setenv("PATTERNS_DIR", "custom_patterns")
-        monkeypatch.setenv("PATTERN_FILES", '["pattern1.yaml"]')
-        monkeypatch.setenv("WEBHOOK_CHANNELS", '{"general": "webhook1"}')
-        monkeypatch.setenv("RCON_ENABLED", "true")
-        monkeypatch.setenv("RCON_HOST", "factorio.local")
-        monkeypatch.setenv("RCON_PORT", "27016")
-        monkeypatch.setenv("RCON_PASSWORD", "rcon_secret")
-        monkeypatch.setenv("STATS_INTERVAL", "600")
-        monkeypatch.setenv("RCON_BREAKDOWN_MODE", "interval")
-        monkeypatch.setenv("RCON_BREAKDOWN_INTERVAL", "120")
+    def test_loads_config_successfully(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should load valid configuration."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
 
-        cfg = load_config()
-        assert cfg.log_level == "debug"
-        assert cfg.log_format == "json"
-        assert cfg.health_check_host == "0.0.0.0"
-        assert cfg.health_check_port == 8080
-        assert cfg.patterns_dir == Path("custom_patterns")
-        assert cfg.pattern_files == ["pattern1.yaml"]
-        assert cfg.webhook_channels == {"general": "webhook1"}
-        assert cfg.rcon_enabled is True
-        assert cfg.rcon_host == "factorio.local"
-        assert cfg.rcon_port == 27016
-        assert cfg.rcon_password == "rcon_secret"
-        assert cfg.stats_interval == 600
-        assert cfg.rcon_breakdown_mode == "interval"
-        assert cfg.rcon_breakdown_interval == 120
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "prod": {
+                    "name": "Production",
+                    "log_path": "console.log",
+                    "rcon_host": "prod.example.com",
+                    "rcon_port": 27015,
+                    "rcon_password": "prod_secret",
+                    "event_channel_id": 123456789,
+                }
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
 
-    def test_load_config_auto_converts_legacy_single_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
-        monkeypatch.setenv("FACTORIO_LOG_PATH", "/factorio/console.log")
-        monkeypatch.setenv("RCON_ENABLED", "true")
-        monkeypatch.setenv("RCON_PASSWORD", "legacy_secret")
-        monkeypatch.setenv("RCON_HOST", "legacy-host")
-        monkeypatch.setenv("RCON_PORT", "27015")
-        monkeypatch.setenv("STATS_INTERVAL", "300")
-        monkeypatch.setenv("RCON_BREAKDOWN_MODE", "transition")
-        monkeypatch.setenv("RCON_BREAKDOWN_INTERVAL", "300")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
+        monkeypatch.setenv("BOT_NAME", "TestBot")
 
-        cfg = load_config()
-        assert cfg.rcon_enabled is True
-        assert cfg.servers is not None
-        assert "primary" in cfg.servers
+        config = load_config()
+
+        assert config.discord_bot_token == "test_token"
+        assert config.bot_name == "TestBot"
+        assert "prod" in config.servers
+        assert config.servers["prod"].name == "Production"
+        assert config.servers["prod"].event_channel_id == 123456789
+
+    def test_loads_defaults_from_env(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should use default values when env vars not set."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "test": {
+                    "name": "Test",
+                    "log_path": "console.log",
+                    "rcon_host": "localhost",
+                    "rcon_port": 27015,
+                    "rcon_password": "pass",
+                    "event_channel_id": 123456789,
+                }
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
+        for var in ["BOT_NAME", "HEALTH_CHECK_HOST", "HEALTH_CHECK_PORT", "LOG_LEVEL", "LOG_FORMAT"]:
+            monkeypatch.delenv(var, raising=False)
+
+        config = load_config()
+
+        assert config.bot_name == "Factorio ISR"  # default
+        assert config.health_check_host == "0.0.0.0"  # default
+        assert config.health_check_port == 8080  # default
+        assert config.log_level == "info"  # default
+        assert config.log_format == "console"  # default
+
+    def test_loads_with_environment_variable_password(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should support ${VAR_NAME} in rcon_password."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "test": {
+                    "name": "Test",
+                    "log_path": "console.log",
+                    "rcon_host": "localhost",
+                    "rcon_port": 27015,
+                    "rcon_password": "${RCON_PASSWORD_ENV}",
+                    "event_channel_id": 123456789,
+                }
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
+        monkeypatch.setenv("RCON_PASSWORD_ENV", "secret_from_env")
+
+        config = load_config()
+
+        assert config.servers["test"].rcon_password == "secret_from_env"
 
 
 # ======================================================================
-# validate_config targeted tests (from test_config_targeted.py)
+# validate_config tests
 # ======================================================================
 
-class TestValidateConfigTargeted:
-    """Targeted tests for validate_config() branches."""
 
-    def test_validate_config_no_discord_configuration_fails(self) -> None:
-        cfg = Config(
-            discord_webhook_url=None,
-            discord_bot_token=None,
-            factorio_log_path=Path("/factorio/console.log"),
-        )
-        assert validate_config(cfg) is False
+class TestValidateConfig:
+    """Tests for validate_config() function."""
 
-    def test_validate_config_webhook_only_succeeds(self) -> None:
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            discord_bot_token=None,
-            factorio_log_path=Path("/factorio/console.log"),
+    def test_validates_valid_config(self, tmp_path: Path) -> None:
+        """validate_config should return True for valid config."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
         )
-        assert validate_config(cfg) is True
 
-    def test_validate_config_bot_token_only_succeeds(self) -> None:
-        cfg = Config(
-            discord_webhook_url=None,
-            discord_bot_token="x" * 70,
-            factorio_log_path=Path("/factorio/console.log"),
+        config = Config(
+            discord_bot_token="token",
+            bot_name="Bot",
+            servers={"test": server},
         )
-        assert validate_config(cfg) is True
 
-    def test_validate_config_both_discord_modes_succeed(self) -> None:
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            discord_bot_token="x" * 70,
-            factorio_log_path=Path("/factorio/console.log"),
-        )
-        assert validate_config(cfg) is True
+        assert validate_config(config) is True
 
-    def test_validate_config_webhook_url_empty_string_fails(self) -> None:
-        cfg = Config(
-            discord_webhook_url="",
-            discord_bot_token=None,
-            factorio_log_path=Path("/factorio/console.log"),
+    def test_rejects_no_servers(self, tmp_path: Path) -> None:
+        """validate_config should reject config with no servers."""
+        # Can't even create Config without servers, so this tests the validation path
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
         )
-        assert validate_config(cfg) is False
 
-    def test_validate_config_bot_token_length_boundaries(self) -> None:
-        cfg_50 = Config(
-            discord_bot_token="x" * 50,
-            factorio_log_path=Path("/factorio/console.log"),
+        config = Config(
+            discord_bot_token="token",
+            bot_name="Bot",
+            servers={"test": server},
         )
-        cfg_49 = Config(
-            discord_bot_token="x" * 49,
-            factorio_log_path=Path("/factorio/console.log"),
-        )
-        assert validate_config(cfg_50) is True
-        assert validate_config(cfg_49) is True  # warns, but passes
 
-    def test_validate_config_rcon_enabled_no_password_single_server_fails(self) -> None:
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
-            rcon_enabled=True,
-            rcon_password=None,
-        )
-        assert cfg.is_multi_server is False
-        assert validate_config(cfg) is False
+        # Manually remove servers to test validation
+        config.servers = None
 
-    def test_validate_config_rcon_disabled_ignores_password(self) -> None:
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
-            rcon_enabled=False,
-            rcon_password="unused",
-        )
-        assert validate_config(cfg) is True
+        # Validation should catch this
+        result = validate_config(config)
+        assert result is False
 
-    def test_validate_config_multi_server_missing_server_password_fails(self) -> None:
-        servers: Dict[str, ServerConfig] = {
-            "prod": ServerConfig(
-                tag="prod",
-                name="Production",
-                rcon_host="host",
-                rcon_port=27015,
-                rcon_password="",  # invalid
-            ),
-            "stg": ServerConfig(
-                tag="stg",
-                name="Staging",
-                rcon_host="host",
-                rcon_port=27015,
-                rcon_password="secret",
-            ),
+    def test_rejects_server_missing_event_channel(self, tmp_path: Path) -> None:
+        """validate_config should reject server with missing event_channel_id."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=0,  # Invalid - must be set
+        )
+
+        config = Config(
+            discord_bot_token="token",
+            bot_name="Bot",
+            servers={"test": server},
+        )
+
+        assert validate_config(config) is False
+
+    def test_rejects_no_bot_token(self, tmp_path: Path) -> None:
+        """validate_config should reject config with no bot token."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
+        )
+
+        config = Config(
+            discord_bot_token="token",
+            bot_name="Bot",
+            servers={"test": server},
+        )
+
+        # Manually remove token to test validation
+        config.discord_bot_token = ""
+
+        assert validate_config(config) is False
+
+    def test_warns_on_missing_patterns_dir(self, tmp_path: Path) -> None:
+        """validate_config should warn but not fail if patterns_dir missing."""
+        server = ServerConfig(
+            name="Test",
+            tag="test",
+            log_path=tmp_path / "console.log",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
+        )
+
+        config = Config(
+            discord_bot_token="token",
+            bot_name="Bot",
+            servers={"test": server},
+            patterns_dir=tmp_path / "nonexistent",  # Doesn't exist
+        )
+
+        # Should not fail, just warn
+        assert validate_config(config) is True
+
+
+# ======================================================================
+# Integration tests
+# ======================================================================
+
+
+class TestIntegration:
+    """Integration tests combining multiple components."""
+
+    def test_full_load_and_validate(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Full integration: load config and validate."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "prod": {
+                    "name": "Production",
+                    "log_path": "console.log",
+                    "rcon_host": "prod.example.com",
+                    "rcon_port": 27015,
+                    "rcon_password": "prod_secret",
+                    "event_channel_id": 111111111,
+                    "rcon_breakdown_mode": "interval",
+                    "rcon_breakdown_interval": 600,
+                },
+                "staging": {
+                    "name": "Staging",
+                    "log_path": "console.log",
+                    "rcon_host": "staging.example.com",
+                    "rcon_port": 27015,
+                    "rcon_password": "staging_secret",
+                    "event_channel_id": 222222222,
+                },
+            }
         }
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
-            servers=servers,
-        )
-        assert cfg.is_multi_server is True
-        assert validate_config(cfg) is False
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
 
-    def test_validate_config_multi_server_all_passwords_present_succeeds(self) -> None:
-        servers: Dict[str, ServerConfig] = {
-            "prod": ServerConfig(
-                tag="prod",
-                name="Production",
-                rcon_host="host",
-                rcon_port=27015,
-                rcon_password="secret",
-            ),
-            "stg": ServerConfig(
-                tag="stg",
-                name="Staging",
-                rcon_host="host",
-                rcon_port=27016,
-                rcon_password="other",
-            ),
-        }
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
-            servers=servers,
-        )
-        assert validate_config(cfg) is True
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "integration_test_token")
+        monkeypatch.setenv("BOT_NAME", "IntegrationBot")
+        monkeypatch.setenv("LOG_LEVEL", "debug")
 
-    def test_validate_config_invalid_log_level_gets_corrected(self) -> None:
-        cfg = Config(
-            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
-            factorio_log_path=Path("/factorio/console.log"),
-            log_level="INVALID",
-        )
-        assert validate_config(cfg) is True
-        assert cfg.log_level == "info"
+        # Load config
+        config = load_config()
+
+        # Validate config
+        assert validate_config(config) is True
+
+        # Check loaded values
+        assert config.bot_name == "IntegrationBot"
+        assert config.log_level == "debug"
+        assert len(config.servers) == 2
+        assert config.servers["prod"].rcon_breakdown_mode == "interval"
+        assert config.servers["prod"].rcon_breakdown_interval == 600
+        assert config.servers["staging"].rcon_breakdown_mode == "transition"  # default
+        assert config.servers["staging"].rcon_breakdown_interval == 300  # default
