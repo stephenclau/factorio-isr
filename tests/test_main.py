@@ -229,13 +229,20 @@ class TestApplicationSetup:
 # ============================================================================
 
 class TestApplicationStart:
-    """Tests for Application.start() phase."""
+    """Tests for Application.start() phase - comprehensive coverage."""
+
+    @pytest.mark.asyncio
+    async def test_start_without_setup_fails(self) -> None:
+        """start() should fail if setup() was not called first."""
+        app = Application()
+        with pytest.raises(AssertionError):
+            await app.start()
 
     @pytest.mark.asyncio
     async def test_start_requires_servers_config(
         self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
     ) -> None:
-        """start() should fail if servers config is empty."""
+        """start() should fail if servers config is empty or None."""
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
@@ -253,11 +260,276 @@ class TestApplicationStart:
                 await app.start()
 
     @pytest.mark.asyncio
-    async def test_start_without_setup_fails(self) -> None:
-        """start() should fail if setup() was not called first."""
-        app = Application()
-        with pytest.raises(AssertionError):
+    async def test_start_health_server_starts(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should start the health check server."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class:
+            
+            app = Application()
+            await app.setup()
+            
+            # Mock health server
+            app.health_server.start = AsyncMock()
+            
+            # Mock Discord interface
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            # Mock ServerManager
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            # Mock log tailer
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
             await app.start()
+            app.health_server.start.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_start_discord_interface_creation(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should create Discord interface via factory."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class:
+            
+            app = Application()
+            await app.setup()
+            
+            # Mock components
+            app.health_server.start = AsyncMock()
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
+            await app.start()
+            mock_factory.assert_called_once_with(mock_config)
+            assert app.discord == mock_discord
+
+    @pytest.mark.asyncio
+    async def test_start_discord_connection_called(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should call discord.connect()."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class:
+            
+            app = Application()
+            await app.setup()
+            
+            app.health_server.start = AsyncMock()
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
+            await app.start()
+            mock_discord.connect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_start_discord_test_connection_skipped_by_default(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should skip test_connection by default (send_test_message=False)."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class:
+            
+            app = Application()
+            await app.setup()
+            
+            app.health_server.start = AsyncMock()
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
+            await app.start()
+            mock_discord.test_connection.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_start_multi_server_mode_called(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should call _start_multi_server_mode()."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class, \
+             patch.object(Application, "_start_multi_server_mode", new_callable=AsyncMock) as mock_multi_start:
+            
+            app = Application()
+            await app.setup()
+            
+            app.health_server.start = AsyncMock()
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
+            await app.start()
+            mock_multi_start.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_start_log_tailer_initialized(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should initialize MultiServerLogTailer with proper config."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class:
+            
+            app = Application()
+            await app.setup()
+            
+            app.health_server.start = AsyncMock()
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
+            await app.start()
+            
+            mock_tailer_class.assert_called_once()
+            call_kwargs = mock_tailer_class.call_args[1]
+            assert call_kwargs["server_configs"] == mock_config.servers
+            assert call_kwargs["line_callback"] == app.handle_log_line
+            assert call_kwargs["poll_interval"] == 0.1
+
+    @pytest.mark.asyncio
+    async def test_start_log_tailer_started(
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+    ) -> None:
+        """start() should call logtailer.start()."""
+        mock_config = Config(
+            discord_bot_token="test_bot_token",
+            bot_name="TestBot",
+            factorio_log_path=temp_log_file,
+            patterns_dir=temp_patterns_dir,
+            servers={"test": mock_server_config},
+        )
+
+        with patch("main.load_config", return_value=mock_config), \
+             patch("main.validate_config", return_value=True), \
+             patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.SERVER_MANAGER_AVAILABLE", True), \
+             patch("main.ServerManager") as mock_server_manager_class:
+            
+            app = Application()
+            await app.setup()
+            
+            app.health_server.start = AsyncMock()
+            mock_discord = MockBotDiscordInterface()
+            mock_factory.return_value = mock_discord
+            
+            mock_server_manager = AsyncMock()
+            mock_server_manager.add_server = AsyncMock()
+            mock_server_manager_class.return_value = mock_server_manager
+            
+            mock_tailer = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
+            
+            await app.start()
+            mock_tailer.start.assert_called_once()
 
 
 # ============================================================================
