@@ -574,7 +574,7 @@ servers:
    - [Configure environment variables](#environment-variables)
    - [Start the application](../README.md#quick-start)
 
-2. **Enable RCON (optional):**
+2. **Enable RCON:**
    - [RCON Setup Guide](RCON_SETUP.md)
    - Configure Factorio server RCON
    - Enable stats collection

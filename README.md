@@ -36,8 +36,19 @@ Real-time Factorio server event monitoring with Discord integration. Stream JOIN
 
 ## 🚀 Quick Start
 ### Use Docker Compose
-update docker-compose.yml.example to your needs
+```bash
+# Clone the repository
+git clone https://github.com/stephenclau/factorio-isr.git
+cd factorio-isr
+
+# Configure Docker Compose
+mv docker-compose.yml.sidecar docker-compose.yml
+
+# update docker-compose.yml to your needs
+
+# Start the service
 docker compose up -d
+```
 
 ## 🎮 Supported Events
 
@@ -48,7 +59,7 @@ docker compose up -d
 - 🖥️ **Server Messages** - `[CHAT] <server>: Server restarting...`
 - 💀 **Deaths** - `PlayerName was killed by a biter`
 
-### Mod Support Ready
+### Mod Support Ready 
 - 🏆 **Milestones** - `[MILESTONE] PlayerName completed: First automation`
 - ✔️ **Tasks** - `[TODO] PlayerName finished task: Build solar farm`
 - 🔬 **Research** - `Automation technology has been researched`
@@ -107,7 +118,7 @@ HEALTH_CHECK_PORT=8080
 # Logging
 LOG_LEVEL=info
 LOG_FORMAT=json
-# Custom bot appearance for discord webhooks only. 
+# Custom bot appearance for discord webhooks only (deprecated). 
 #BOT_NAME=Webhook Botter
 #BOT_AVATAR_URL=
 # RCON Breakdown Embed Configuration
@@ -167,10 +178,11 @@ pytest-watch
 - **[Development](docs/development.md)** - Contributing and local development
 - **[Architecture](docs/architecture.md)** - System design and components
 - **[Roadmap](docs/roadmap.md)** - Future features and timeline
-- **[RCON Setup Guide](docs/RCON_SETUP.md)** - Configure server statistics
+- **[RCON Setup Guide](docs/RCON_SETUP.md)** - Complete server connection reference 
 - **[Usage Examples](docs/EXAMPLES.md)** - Common configuration scenarios
-- **[Multi-Channel Guide](docs/MULTI_CHANNEL.md)** - Route events to different channels
-- **[Pattern Syntax](docs/PATTERNS.md)** - Complete pattern reference
+- **[Event Pattern Syntax](docs/PATTERNS.md)** - Complete event pattern reference
+- **[Mentions Config Syntax](docs/mentions.md)** - Complete mentions reference
+- **[Security Monitor Syntax](docs/secmon.md)** - Complete secmon config reference
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
