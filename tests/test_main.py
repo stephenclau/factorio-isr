@@ -109,16 +109,9 @@ def mock_config(temp_log_file: Path, temp_patterns_dir: Path, mock_server_config
     return Config(
         discord_bot_token="test_bot_token",
         bot_name="TestBot",
-        bot_avatar_url=None,
         factorio_log_path=temp_log_file,
         patterns_dir=temp_patterns_dir,
-        pattern_files=None,
-        health_check_host="0.0.0.0",
-        health_check_port=8080,
-        log_level="info",
-        log_format="console",
         servers={"test": mock_server_config},
-        discord_webhook_url=None,
         send_test_message=False,
     )
 
@@ -178,16 +171,9 @@ class TestApplicationSetup:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -208,16 +194,9 @@ class TestApplicationSetup:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -236,16 +215,9 @@ class TestApplicationSetup:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -271,16 +243,9 @@ class TestApplicationStart:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -299,6 +264,7 @@ class TestApplicationStart:
         with pytest.raises(AssertionError):
             await app.start()
 
+
 # ============================================================================
 # Application._start_multi_server_mode Tests
 # ============================================================================
@@ -314,16 +280,9 @@ class TestStartMultiServerMode:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -341,23 +300,8 @@ class TestStartMultiServerMode:
         self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
     ) -> None:
         """Should raise ValueError when discord_bot_token missing."""
-        mock_config = Config(
-            discord_bot_token="",  # Empty token - will fail at Config init
-            bot_name="TestBot",
-            bot_avatar_url=None,
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
-            servers={"test": mock_server_config},
-            discord_webhook_url=None,
-            send_test_message=False,
-        )
-        # Config validation will reject empty token
-        # So instead test the check in _start_multi_server_mode
+        # Config validation will reject empty token at init time
+        # So test by mocking load_config to raise the error
         with patch("main.load_config") as mock_load:
             mock_load.side_effect = ValueError("discord_bot_token is REQUIRED")
             app = Application()
@@ -372,16 +316,9 @@ class TestStartMultiServerMode:
         mock_config = Config(
             discord_bot_token="test_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -412,16 +349,9 @@ class TestStartMultiServerMode:
         mock_config = Config(
             discord_bot_token="test_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -446,16 +376,9 @@ class TestStartMultiServerMode:
         mock_config = Config(
             discord_bot_token="test_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -510,16 +433,9 @@ class TestApplicationHandleLogLine:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -556,16 +472,9 @@ class TestApplicationHandleLogLine:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -588,16 +497,9 @@ class TestApplicationHandleLogLine:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
@@ -645,16 +547,9 @@ class TestApplicationStop:
         mock_config = Config(
             discord_bot_token="test_bot_token",
             bot_name="TestBot",
-            bot_avatar_url=None,
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
-            pattern_files=None,
-            health_check_host="0.0.0.0",
-            health_check_port=8080,
-            log_level="info",
-            log_format="console",
             servers={"test": mock_server_config},
-            discord_webhook_url=None,
             send_test_message=False,
         )
 
