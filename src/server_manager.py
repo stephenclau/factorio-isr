@@ -28,8 +28,12 @@ from typing import Dict, List, Optional, TYPE_CHECKING, Any
 
 import structlog
 
-from config import ServerConfig
-from rcon_client import RconClient, RconStatsCollector, RconAlertMonitor
+try:
+    from .config import ServerConfig
+    from .rcon_client import RconClient, RconStatsCollector, RconAlertMonitor
+except ImportError:
+    from config import ServerConfig
+    from rcon_client import RconClient, RconStatsCollector, RconAlertMonitor
 
 if TYPE_CHECKING:
     from discord_interface import DiscordInterface  # Use interface, not bot

@@ -37,7 +37,12 @@ import signal
 import re as stdlib_re  # For selective mention sanitization
 import structlog
 
-from security_monitor import SecurityMonitor, Infraction
+# Try/except for both relative and absolute imports
+try:
+    from .security_monitor import SecurityMonitor, Infraction
+except ImportError:
+    from security_monitor import SecurityMonitor, Infraction  # type: ignore
+
 
 # SECURITY: Try to use google-re2 for ReDoS immunity
 try:

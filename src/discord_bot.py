@@ -33,14 +33,15 @@ import structlog
 import yaml  # type: ignore[import]
 
 # Phase 5.1: Rate limiting and embeds
-from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
-from discord_interface import EmbedBuilder
-
 # Import event parser and formatter
 try:
-    from event_parser import FactorioEvent, FactorioEventFormatter
+    from .event_parser import FactorioEvent, FactorioEventFormatter
+    from .utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
+    from .discord_interface import EmbedBuilder
 except ImportError:
     from event_parser import FactorioEvent, FactorioEventFormatter  # type: ignore
+    from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
+    from discord_interface import EmbedBuilder
 
 # Phase 6: Multi-server support
 try:
