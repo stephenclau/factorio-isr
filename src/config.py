@@ -348,7 +348,7 @@ class Config:
     """Dictionary of server tag -> ServerConfig. REQUIRED for multi-server operation."""
 
     # Event parsing configuration
-    patterns_dir: Path = field(default_factory=lambda: Path("app/patterns"))
+    patterns_dir: Path = field(default_factory=lambda: Path("patterns"))
     """Directory containing YAML event pattern files."""
 
     pattern_files: Optional[list[str]] = None
@@ -555,7 +555,7 @@ def load_config() -> Config:
     get_config_value(
         env_var="PATTERNS_DIR",
         default="patterns",
-    ) or "/app/patterns"
+    ) or "patterns"
 )
     
     # Create and return Config object
