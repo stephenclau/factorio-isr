@@ -67,6 +67,8 @@ class DiscordBot(discord.Client):
         token: str,
         bot_name: str = "Factorio ISR",
         *,
+        breakdown_mode: str = "transition",
+        breakdown_interval: int = 300,
         intents: Optional[discord.Intents] = None,
     ):
         """
@@ -75,6 +77,8 @@ class DiscordBot(discord.Client):
         Args:
             token: Discord bot token
             bot_name: Display name for the bot
+            breakdown_mode: RCON breakdown mode ('transition' or 'interval')
+            breakdown_interval: Interval in seconds between RCON breakdown reports
             intents: Discord intents (auto-configured if None)
         """
         # Configure intents
@@ -113,9 +117,9 @@ class DiscordBot(discord.Client):
         # Per-server RCON state for multi-server monitoring
         self.rcon_server_states: Dict[str, Dict[str, Any]] = {}  # {tag: {"previous_status": bool | None, "last_connected": datetime | None}}
 
-        # RCON breakdown scheduling (will be set from server config via _apply_server_breakdown_config())
-        self.rcon_breakdown_mode = "transition"
-        self.rcon_breakdown_interval = 300
+        # RCON breakdown scheduling (initialized from parameters)
+        self.rcon_breakdown_mode = breakdown_mode.lower()
+        self.rcon_breakdown_interval = breakdown_interval
         self._last_rcon_breakdown_sent: Optional[datetime] = None
 
         # Custom mention config from config/mentions.yml
@@ -123,7 +127,7 @@ class DiscordBot(discord.Client):
         self._load_mention_config()
 
         logger.info(
-            "breakdown_config_defaults_set",
+            "breakdown_config_initialized",
             breakdown_mode=self.rcon_breakdown_mode,
             breakdown_interval=self.rcon_breakdown_interval,
         )
