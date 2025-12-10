@@ -28,6 +28,7 @@ sys.path.insert(0, str(project_root / "src"))
 from main import Application, setup_logging  # type: ignore
 from event_parser import EventType, FactorioEvent  # type: ignore
 from config import Config, ServerConfig  # type: ignore
+from discord_interface import BotDiscordInterface  # type: ignore
 
 
 # ============================================================================
@@ -265,7 +266,8 @@ class TestApplicationStart:
              patch("main.DiscordInterfaceFactory.create_interface") as mock_discord_factory, \
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
-             patch("main.MultiServerLogTailer") as mock_tailer_class:
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.BotDiscordInterface", BotDiscordInterface):
             
             # Mock HealthCheckServer
             mock_health_server = AsyncMock()
@@ -273,11 +275,12 @@ class TestApplicationStart:
             mock_health_server.stop = AsyncMock()
             mock_health_class.return_value = mock_health_server
             
-            # Mock Discord bot interface
-            mock_discord = AsyncMock()
+            # Mock Discord bot interface - must be instance of BotDiscordInterface
+            mock_discord = MagicMock(spec=BotDiscordInterface)
             mock_discord.connect = AsyncMock()
             mock_discord.test_connection = AsyncMock(return_value=True)
             mock_discord.bot = MagicMock()
+            mock_discord.bot.set_server_manager = MagicMock()
             mock_discord.disconnect = AsyncMock()
             mock_discord_factory.return_value = mock_discord
 
@@ -601,7 +604,8 @@ class TestApplicationIntegration:
              patch("main.DiscordInterfaceFactory.create_interface") as mock_discord_factory, \
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
-             patch("main.MultiServerLogTailer") as mock_tailer_class:
+             patch("main.MultiServerLogTailer") as mock_tailer_class, \
+             patch("main.BotDiscordInterface", BotDiscordInterface):
             
             # Mock HealthCheckServer
             mock_health_server = AsyncMock()
@@ -609,11 +613,12 @@ class TestApplicationIntegration:
             mock_health_server.stop = AsyncMock()
             mock_health_class.return_value = mock_health_server
             
-            # Mock Discord bot interface
-            mock_discord = AsyncMock()
+            # Mock Discord bot interface - must be instance of BotDiscordInterface
+            mock_discord = MagicMock(spec=BotDiscordInterface)
             mock_discord.connect = AsyncMock()
             mock_discord.disconnect = AsyncMock()
             mock_discord.bot = MagicMock()
+            mock_discord.bot.set_server_manager = MagicMock()
             mock_discord_factory.return_value = mock_discord
 
             # Mock ServerManager
