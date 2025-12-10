@@ -18,13 +18,12 @@ Factorio ISR - Main Entry Point
 
 Real-time Factorio server event monitoring with Discord integration.
 
-Phase 2: Multi-channel routing support.
-
-Phase 3: Optional RCON support for server statistics.
-
-Phase 4: Discord bot mode with slash commands.
-
-Phase 6: Multi-server support with ServerManager (REQUIRED).
+Phase 6: Multi-server architecture with ServerManager (REQUIRED).
+- servers.yml configuration is MANDATORY
+- All servers managed via ServerManager
+- Per-server RCON clients with context
+- Unified Discord interface for all servers
+- MultiServerLogTailer for concurrent log monitoring
 """
 
 from __future__ import annotations
@@ -34,7 +33,7 @@ import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Optional, Any, Union
+from typing import Optional, Any
 
 try:
     from multi_log_tailer import MultiServerLogTailer
@@ -48,16 +47,12 @@ try:
     # Package-style imports (python -m src.main)
     from .config import load_config, validate_config  # type: ignore
     from .health import HealthCheckServer  # type: ignore
-    from .log_tailer import LogTailer  # type: ignore
-    from .discord_client import DiscordClient  # type: ignore
     from .discord_interface import DiscordInterfaceFactory, DiscordInterface  # type: ignore
     from .event_parser import EventParser  # type: ignore
 except ImportError:
     # Flat layout (tests and direct execution)
     from config import load_config, validate_config  # type: ignore
     from health import HealthCheckServer  # type: ignore
-    from log_tailer import LogTailer  # type: ignore
-    from discord_client import DiscordClient  # type: ignore
     from discord_interface import DiscordInterfaceFactory, DiscordInterface  # type: ignore
     from event_parser import EventParser  # type: ignore
 
@@ -127,10 +122,10 @@ class Application:
         """Initialize application components."""
         self.config: Any = None
         self.health_server: Optional[HealthCheckServer] = None
-        self.logtailer: Optional[Union[MultiServerLogTailer, LogTailer]] = None
-        self.discord: Optional[DiscordInterface] = None  # Unified interface
+        self.logtailer: Optional[MultiServerLogTailer] = None
+        self.discord: Optional[DiscordInterface] = None
         self.event_parser: Optional[EventParser] = None
-        self.server_manager: Optional[Any] = None  # ServerManager instance
+        self.server_manager: Optional[Any] = None
         self.shutdown_event: asyncio.Event = asyncio.Event()
 
     async def setup(self) -> None:
@@ -152,13 +147,16 @@ class Application:
         # Configure logging
         setup_logging(self.config.log_level, self.config.log_format)
 
-        # Warn if log file does not yet exist
-        if not self.config.factorio_log_path.exists():
-            logger.warning(
-                "log_file_not_found",
-                path=str(self.config.factorio_log_path),
-                message="Will wait for file to be created",
-            )
+        # Warn if log files do not exist yet
+        if self.config.servers:
+            for tag, server_config in self.config.servers.items():
+                if not server_config.log_path.exists():
+                    logger.warning(
+                        "server_log_file_not_found",
+                        server_tag=tag,
+                        path=str(server_config.log_path),
+                        message="Will wait for file to be created",
+                    )
 
         # Initialize EventParser
         self.event_parser = EventParser(
@@ -183,7 +181,7 @@ class Application:
         logger.info(
             "application_configured",
             health_port=self.config.health_check_port,
-            log_path=str(self.config.factorio_log_path),
+            servers_count=len(self.config.servers) if self.config.servers else 0,
         )
 
     async def start(self) -> None:
@@ -201,7 +199,7 @@ class Application:
             f"{self.config.health_check_port}/health",
         )
 
-        # Initialize Discord interface (webhook or bot mode)
+        # Initialize Discord interface (bot mode only)
         self.discord = DiscordInterfaceFactory.create_interface(self.config)
         assert self.discord is not None
 
@@ -220,58 +218,37 @@ class Application:
         # Event parser must exist from setup
         assert self.event_parser is not None
 
-        # Phase 6: Multi-server mode via ServerManager (REQUIRED)
-        if not getattr(self.config, "is_multi_server", False) or not getattr(
-            self.config, "servers", None
-        ):
+        # Servers config is REQUIRED (no legacy fallback)
+        if not self.config.servers:
             logger.error(
-                "servers_yml_required",
+                "servers_configuration_required",
                 message=(
                     "config/servers.yml configuration is REQUIRED. "
-                    "Legacy RCON_* environment variables are deprecated. "
+                    "Multi-server mode is the only supported architecture. "
                     "Create a config/servers.yml file with at least one server."
                 ),
             )
-
-            raise ValueError("config/servers.yml configuration required")
+            raise ValueError(
+                "servers.yml configuration required - multi-server mode is mandatory"
+            )
 
         # Start multi-server mode (wires Discord bot + per-server RCON + stats)
         await self._start_multi_server_mode()
 
-        # Start multi-server log tailer (in multi-server mode) or single LogTailer (legacy)
-        if self.config.is_multi_server and self.config.servers:
-            # Multi-server mode: use MultiServerLogTailer
-            self.logtailer = MultiServerLogTailer(
-                server_configs=self.config.servers,
-                line_callback=self.handle_log_line,
-                poll_interval=0.1,
-            )
+        # Start multi-server log tailer
+        self.logtailer = MultiServerLogTailer(
+            server_configs=self.config.servers,
+            line_callback=self.handle_log_line,
+            poll_interval=0.1,
+        )
 
-            logger.info(
-                "starting_multi_server_log_tailer",
-                count=len(self.config.servers),
-                servers=list(self.config.servers.keys()),
-            )
+        logger.info(
+            "starting_multi_server_log_tailer",
+            count=len(self.config.servers),
+            servers=list(self.config.servers.keys()),
+        )
 
-            await self.logtailer.start()
-        else:
-            # Legacy single-server mode: use old LogTailer with default tag
-            # Create a wrapper callback that adds 'primary' server tag
-            async def legacy_callback(line: str) -> None:
-                await self.handle_log_line(line, "primary")
-
-            self.logtailer = LogTailer(
-                log_path=self.config.factorio_log_path,
-                line_callback=legacy_callback,
-                poll_interval=0.1,
-            )
-
-            logger.info(
-                "starting_legacy_single_server_log_tailer",
-                log_path=str(self.config.factorio_log_path),
-            )
-
-            await self.logtailer.start()
+        await self.logtailer.start()
 
         logger.info("application_running")
 
@@ -285,7 +262,6 @@ class Application:
                 "server_manager_unavailable",
                 message="ServerManager module not available. Check imports.",
             )
-
             raise ImportError("ServerManager not available")
 
         # Validate bot mode (ServerManager requires bot for commands)
@@ -294,7 +270,6 @@ class Application:
                 "bot_mode_required_for_multi_server",
                 message="Multi-server mode requires Discord bot mode (DISCORD_BOT_TOKEN)",
             )
-
             raise ValueError("Bot mode required for multi-server support")
 
         # Get the bot instance from the interface
@@ -308,15 +283,11 @@ class Application:
                 "bot_interface_required",
                 message="Multi-server mode requires BotDiscordInterface",
             )
-
             raise TypeError("Bot interface required")
 
         bot = self.discord.bot
 
         # Create ServerManager
-        # NOTE: ServerManager is responsible for:
-        # - Creating per-server RconClient instances with context from config/servers.yml
-        # - Passing the unified DiscordInterface to each RconStatsCollector
         self.server_manager = ServerManager(discord_interface=self.discord)
 
         logger.info("server_manager_created")
@@ -327,7 +298,6 @@ class Application:
                 "no_servers_configured",
                 message="config/servers.yml has no servers defined",
             )
-
             raise ValueError("No servers configured in config/servers.yml")
 
         added_servers: list[str] = []
@@ -335,9 +305,6 @@ class Application:
 
         for tag, server_config in self.config.servers.items():
             try:
-                # Let ServerManager construct RconClient with proper context:
-                # server_name / server_tag come from server_config and are
-                # consumed by RconStatsCollector via rcon_client.use_context().
                 await self.server_manager.add_server(server_config)
                 added_servers.append(f"{tag} ({server_config.name})")
 
@@ -383,7 +350,7 @@ class Application:
 
         Args:
             line: Raw log line from console.log
-            server_tag: Which server this line came from
+            server_tag: Which server this line came from (always present, never synthetic)
         """
         if self.event_parser is None:
             logger.warning("handle_log_line_no_parser")
@@ -393,14 +360,14 @@ class Application:
             logger.warning("handle_log_line_no_discord")
             return
 
-        # 🔍 Debug log for line processing
-        logger.debug("processing_log_line", line=line[:100], server_tag=server_tag)
+        logger.debug(
+            "processing_log_line", line=line[:100], server_tag=server_tag
+        )
 
         assert self.event_parser is not None, "Event parser not initialized"
         assert self.discord is not None, "Discord client not initialized"
 
         # Parse the line using EventParser with server_tag parameter
-        # ✅ FIX: Pass server_tag to parse_line() instead of assigning after
         event = self.event_parser.parse_line(line, server_tag=server_tag)
 
         if event is not None:
@@ -437,7 +404,7 @@ class Application:
 
             logger.debug("log_tailer_stopped")
 
-        # Discord interface (unified for both webhook and bot)
+        # Discord interface
         if self.discord is not None:
             try:
                 await self.discord.disconnect()
