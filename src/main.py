@@ -199,7 +199,23 @@ class Application:
             f"{self.config.health_check_port}/health",
         )
 
+        # Servers config is REQUIRED (no legacy fallback)
+        # Check this BEFORE attempting Discord connection
+        if not self.config.servers:
+            logger.error(
+                "servers_configuration_required",
+                message=(
+                    "config/servers.yml configuration is REQUIRED. "
+                    "Multi-server mode is the only supported architecture. "
+                    "Create a config/servers.yml file with at least one server."
+                ),
+            )
+            raise ValueError(
+                "servers.yml configuration required - multi-server mode is mandatory"
+            )
+
         # Initialize Discord interface (bot mode only)
+        # Now safe to do after servers config validation
         self.discord = DiscordInterfaceFactory.create_interface(self.config)
         assert self.discord is not None
 
@@ -216,21 +232,7 @@ class Application:
             logger.info("discord_connected", test_skipped=True)
 
         # Event parser must exist from setup
-        assert self.event_parser is not None
-
-        # Servers config is REQUIRED (no legacy fallback)
-        if not self.config.servers:
-            logger.error(
-                "servers_configuration_required",
-                message=(
-                    "config/servers.yml configuration is REQUIRED. "
-                    "Multi-server mode is the only supported architecture. "
-                    "Create a config/servers.yml file with at least one server."
-                ),
-            )
-            raise ValueError(
-                "servers.yml configuration required - multi-server mode is mandatory"
-            )
+        assert self.event_parser is not None, "Event parser not initialized"
 
         # Start multi-server mode (wires Discord bot + per-server RCON + stats)
         await self._start_multi_server_mode()
