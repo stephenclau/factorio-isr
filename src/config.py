@@ -480,6 +480,15 @@ def load_config() -> Config:
         )
         if secret_password:
             rcon_password = secret_password
+        elif not rcon_password:  # Only fallback if we don't have a password yet
+            generic_password = get_config_value(
+                env_var="RCON_PASSWORD",
+                secret_name="rcon_password",  # reads from /run/secrets/rcon_password
+                required=False,
+            )
+            if generic_password:
+                rcon_password = generic_password
+        
         
         server_config = ServerConfig(
             tag=tag,
