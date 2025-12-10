@@ -201,9 +201,10 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_requires_servers_config(
-        self, temp_log_file: Path, temp_patterns_dir: Path
+        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
     ) -> None:
         """start() should fail if servers config is empty."""
+        # Create a valid config first, then override servers after setup
         mock_config = Config(
             discord_webhook_url=None,
             discord_bot_token="test_bot_token",
@@ -216,7 +217,7 @@ class TestApplicationStart:
             health_check_port=9999,
             log_level="info",
             log_format="console",
-            servers=None,  # Missing servers config
+            servers={"test": mock_server_config},
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -224,8 +225,11 @@ class TestApplicationStart:
             app = Application()
             await app.setup()
 
+            # Override servers to None after setup to test defensive check in start()
+            app.config.servers = None
+            
             # Should fail because servers config is required for multi-server mode
-            with pytest.raises(ValueError, match="servers_yml_required"):
+            with pytest.raises(ValueError, match="servers_yml"):
                 await app.start()
 
     @pytest.mark.asyncio
@@ -260,7 +264,7 @@ class TestApplicationStart:
              patch("main.DiscordInterfaceFactory.create_interface") as mock_discord_factory, \
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
-             patch("discord_interface.BotDiscordInterface") as mock_bot_interface_class:
+             patch("main.MultiServerLogTailer") as mock_tailer_class:
             
             # Mock Discord bot interface
             mock_discord = AsyncMock()
@@ -269,9 +273,6 @@ class TestApplicationStart:
             mock_discord.bot = MagicMock()
             mock_discord.disconnect = AsyncMock()
             mock_discord_factory.return_value = mock_discord
-            
-            # Make isinstance check pass
-            mock_bot_interface_class.return_value = mock_discord
 
             # Mock ServerManager
             mock_server_manager = AsyncMock()
@@ -279,23 +280,19 @@ class TestApplicationStart:
             mock_server_manager.stop_all = AsyncMock()
             mock_server_manager_class.return_value = mock_server_manager
 
-            with patch("main.MultiServerLogTailer") as mock_tailer_class:
-                mock_tailer = AsyncMock()
-                mock_tailer.start = AsyncMock()
-                mock_tailer.stop = AsyncMock()
-                mock_tailer_class.return_value = mock_tailer
+            # Mock MultiServerLogTailer
+            mock_tailer = AsyncMock()
+            mock_tailer.start = AsyncMock()
+            mock_tailer.stop = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
 
-                # Use patch.object on the actual class check
-                with patch("builtins.isinstance") as mock_isinstance:
-                    mock_isinstance.return_value = True
-                    
-                    app = Application()
-                    await app.setup()
-                    await app.start()
+            app = Application()
+            await app.setup()
+            await app.start()
 
-                    # Verify MultiServerLogTailer was created
-                    mock_tailer_class.assert_called_once()
-                    assert app.logtailer is not None
+            # Verify MultiServerLogTailer was created
+            mock_tailer_class.assert_called_once()
+            assert app.logtailer is not None
 
 
 # ============================================================================
@@ -349,12 +346,11 @@ class TestApplicationHandleLogLine:
             app.discord = AsyncMock()
             app.discord.send_event = AsyncMock(return_value=True)
 
-            # Patch frozen dataclass assignment
-            with patch.object(FactorioEvent, '__setattr__', lambda *args: None):
-                await app.handle_log_line("Test line", "prod")
+            # FIX: Verify parse_line was called with server_tag kwarg
+            await app.handle_log_line("Test line", "prod")
 
-            # Verify event was parsed and sent
-            app.event_parser.parse_line.assert_called_once_with("Test line")
+            # Verify event was parsed with server_tag and sent
+            app.event_parser.parse_line.assert_called_once_with("Test line", server_tag="prod")
             app.discord.send_event.assert_called_once()
 
     @pytest.mark.asyncio
@@ -436,9 +432,7 @@ class TestApplicationHandleLogLine:
             app.discord = AsyncMock()
             app.discord.send_event = AsyncMock(return_value=False)  # Send fails
 
-            # Patch to prevent frozen dataclass error
-            with patch.object(FactorioEvent, '__setattr__', lambda *args: None):
-                await app.handle_log_line("Test line", "prod")
+            await app.handle_log_line("Test line", "prod")
 
             app.discord.send_event.assert_called_once()
 
@@ -485,11 +479,10 @@ class TestApplicationHandleLogLine:
             app.discord = AsyncMock()
             app.discord.send_event = AsyncMock(return_value=True)
 
-            with patch.object(FactorioEvent, '__setattr__', lambda *args: None):
-                # Call with different server tags
-                await app.handle_log_line("Test line", "prod")
-                await app.handle_log_line("Test line", "dev")
-                await app.handle_log_line("Test line", "staging")
+            # Call with different server tags
+            await app.handle_log_line("Test line", "prod")
+            await app.handle_log_line("Test line", "dev")
+            await app.handle_log_line("Test line", "staging")
 
             # All should have been sent
             assert app.discord.send_event.call_count == 3
@@ -600,7 +593,7 @@ class TestApplicationIntegration:
              patch("main.DiscordInterfaceFactory.create_interface") as mock_discord_factory, \
              patch("main.ServerManager") as mock_server_manager_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
-             patch("discord_interface.BotDiscordInterface"):
+             patch("main.MultiServerLogTailer") as mock_tailer_class:
             
             # Mock Discord bot interface
             mock_discord = AsyncMock()
@@ -615,29 +608,27 @@ class TestApplicationIntegration:
             mock_server_manager.stop_all = AsyncMock()
             mock_server_manager_class.return_value = mock_server_manager
 
-            with patch("main.MultiServerLogTailer") as mock_tailer_class:
-                mock_tailer = AsyncMock()
-                mock_tailer.start = AsyncMock()
-                mock_tailer.stop = AsyncMock()
-                mock_tailer_class.return_value = mock_tailer
+            # Mock MultiServerLogTailer
+            mock_tailer = AsyncMock()
+            mock_tailer.start = AsyncMock()
+            mock_tailer.stop = AsyncMock()
+            mock_tailer_class.return_value = mock_tailer
 
-                app = Application()
+            app = Application()
 
-                # Simulate shutdown signal after brief delay
-                async def trigger_shutdown() -> None:
-                    await asyncio.sleep(0.1)
-                    app.shutdown_event.set()
+            # Simulate shutdown signal after brief delay
+            async def trigger_shutdown() -> None:
+                await asyncio.sleep(0.1)
+                app.shutdown_event.set()
 
-                shutdown_task = asyncio.create_task(trigger_shutdown())
+            shutdown_task = asyncio.create_task(trigger_shutdown())
 
-                # Mock isinstance check globally
-                with patch("builtins.isinstance", return_value=True):
-                    try:
-                        await app.run()
-                    except Exception:
-                        pass
-                    finally:
-                        await shutdown_task
+            try:
+                await app.run()
+            except Exception:
+                pass
+            finally:
+                await shutdown_task
 
 
 if __name__ == "__main__":
