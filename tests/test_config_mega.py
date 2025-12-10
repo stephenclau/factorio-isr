@@ -472,7 +472,7 @@ class TestConfigDataclass:
 
     def test_validates_empty_servers(self, tmp_path: Path) -> None:
         """Config should reject empty servers dict."""
-        with pytest.raises(ValueError, match="servers must be a non-empty dictionary"):
+        with pytest.raises(ValueError, match="servers configuration is REQUIRED. Multi-server mode requires servers.yml with at least one server."):
             Config(
                 discord_bot_token="token",
                 bot_name="Bot",
@@ -581,7 +581,7 @@ class TestLoadConfig:
         monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 
-        with pytest.raises(ValueError, match="DISCORD_BOT_TOKEN environment variable is REQUIRED"):
+        with pytest.raises(ValueError, match="Required configuration value not found for 'DISCORD_BOT_TOKEN'. Checked: Docker secret 'discord_bot_token', environment variable 'DISCORD_BOT_TOKEN'"):
             load_config()
 
     def test_loads_config_successfully(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
