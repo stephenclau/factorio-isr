@@ -112,7 +112,6 @@ def mock_config(temp_log_file: Path, temp_patterns_dir: Path, mock_server_config
         factorio_log_path=temp_log_file,
         patterns_dir=temp_patterns_dir,
         servers={"test": mock_server_config},
-        send_test_message=False,
     )
 
 
@@ -174,7 +173,6 @@ class TestApplicationSetup:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -197,7 +195,6 @@ class TestApplicationSetup:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -218,7 +215,6 @@ class TestApplicationSetup:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -246,7 +242,6 @@ class TestApplicationStart:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -283,7 +278,6 @@ class TestStartMultiServerMode:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -319,7 +313,6 @@ class TestStartMultiServerMode:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -352,7 +345,6 @@ class TestStartMultiServerMode:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -379,7 +371,6 @@ class TestStartMultiServerMode:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -436,7 +427,6 @@ class TestApplicationHandleLogLine:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -475,7 +465,6 @@ class TestApplicationHandleLogLine:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -500,7 +489,6 @@ class TestApplicationHandleLogLine:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
@@ -550,7 +538,6 @@ class TestApplicationStop:
             factorio_log_path=temp_log_file,
             patterns_dir=temp_patterns_dir,
             servers={"test": mock_server_config},
-            send_test_message=False,
         )
 
         with patch("main.load_config", return_value=mock_config), \
