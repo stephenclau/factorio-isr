@@ -448,7 +448,7 @@ def load_config() -> Config:
         yaml.YAMLError: If servers.yml invalid YAML
     """
     # Get config directory (defaults to app/config for Docker deployment)
-    config_dir = os.getenv("CONFIG_DIR", "app/config")
+    config_dir = os.getenv("CONFIG_DIR", "config")
     servers_yml_path = Path(config_dir) / "servers.yml"
     
     if not servers_yml_path.exists():
@@ -554,8 +554,8 @@ def load_config() -> Config:
     patterns_dir = Path(
     get_config_value(
         env_var="PATTERNS_DIR",
-        default="app/patterns",
-    ) or "app/patterns"
+        default="patterns",
+    ) or "/app/patterns"
 )
     
     # Create and return Config object
