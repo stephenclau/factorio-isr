@@ -331,6 +331,11 @@ class Application:
 
         logger.info("server_manager_wired_to_bot")
 
+        # Apply per-server breakdown configuration to the bot
+        bot._apply_server_breakdown_config()
+
+        logger.info("server_breakdown_config_applied_to_bot")
+
         # Report summary
         logger.info(
             "multi_server_mode_initialized",
