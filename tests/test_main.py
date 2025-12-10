@@ -247,7 +247,7 @@ class TestApplicationStart:
             app.config.servers = None
             
             # Should fail because servers config is required for multi-server mode
-            with pytest.raises(ValueError, match="servers_yml"):
+            with pytest.raises(ValueError, match="servers.yml configuration required - multi-server mode is mandatory"):
                 await app.start()
 
     @pytest.mark.asyncio
