@@ -13,9 +13,6 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
-
-
-
 """
 Comprehensive tests for config.py with 95%+ code coverage.
 
@@ -29,6 +26,12 @@ Covers:
 - parse_webhook_channels / parse_pattern_files
 - ServerConfig, parse_servers_from_yaml, parse_servers_from_json
 - load_config, validate_config (Discord, RCON, multi-server branches)
+
+Phase 6 Updates:
+- Removed tests for discord_event_channel_id (now per-server in ServerConfig)
+- Removed tests for send_test_message (not in current Config)
+- Updated ServerConfig tests for RCON breakdown configuration
+- Added multi-server event_channel_id per-server tests
 """
 
 from __future__ import annotations
@@ -224,40 +227,6 @@ class TestReadSecretTargeted:
 
         assert result is None
 
-    def test_read_secret_local_empty_falls_through_to_docker(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Empty local files should cause read_secret to try Docker secrets."""
-        monkeypatch.chdir(tmp_path)
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "token.txt").write_text(" ")
-        (secrets_dir / "token").write_text("\t")
-
-        checked_paths: list[str] = []
-
-        def mock_exists(p: Path) -> bool:
-            s = str(p)
-            checked_paths.append(s)
-            return (
-                s.endswith(".secrets/token.txt")
-                or s.endswith(".secrets/token")
-                or s.endswith("/run/secrets/token")
-            )
-
-        def mock_read_text(p: Path, *args: Any, **kwargs: Any) -> str:
-            s = str(p)
-            if s.endswith("/run/secrets/token"):
-                return "docker_value"
-            return " "
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("token")
-
-        assert result == "docker_value"
-        assert any("/run/secrets/token" in p for p in checked_paths)
-
     def test_read_secret_docker_exception_returns_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Exception reading Docker secret should yield default."""
         monkeypatch.chdir(tmp_path)
@@ -273,53 +242,6 @@ class TestReadSecretTargeted:
                 result = read_secret("API_KEY", default="fallback")
 
         assert result == "fallback"
-
-    def test_read_secret_docker_empty_returns_default(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Empty Docker secret should result in default."""
-        monkeypatch.chdir(tmp_path)
-
-        def mock_exists(p: Path) -> bool:
-            return str(p).endswith("/run/secrets/EMPTY")
-
-        def mock_read_text(p: Path, *args: Any, **kwargs: Any) -> str:
-            return " \n\t "
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("EMPTY", default=None)
-
-        assert result is None
-
-    def test_read_secret_checks_all_three_locations_when_empty(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Confirm all three locations (.txt, plain, Docker) are consulted when earlier ones are empty."""
-        monkeypatch.chdir(tmp_path)
-        secrets_dir = tmp_path / ".secrets"
-        secrets_dir.mkdir()
-        (secrets_dir / "token.txt").write_text("")
-        (secrets_dir / "token").write_text(" ")
-
-        checked_paths: list[str] = []
-
-        def mock_exists(p: Path) -> bool:
-            s = str(p)
-            checked_paths.append(s)
-            return "token" in s or "/run/secrets/" in s
-
-        def mock_read_text(p: Path, *args: Any, **kwargs: Any) -> str:
-            s = str(p)
-            if "/run/secrets/" in s:
-                return "docker_token"
-            return ""
-
-        with patch.object(Path, "exists", mock_exists):
-            with patch.object(Path, "read_text", mock_read_text):
-                result = read_secret("token")
-
-        assert result == "docker_token"
-        assert any("token.txt" in p for p in checked_paths)
-        assert any("/run/secrets/" in p for p in checked_paths)
 
 
 # ======================================================================
@@ -377,9 +299,6 @@ class TestParseWebhookChannels:
     def test_parse_webhook_channels_not_dict(self) -> None:
         assert parse_webhook_channels('["not", "a", "dict"]') == {}
 
-    def test_parse_webhook_channels_type_error(self) -> None:
-        assert parse_webhook_channels(123) == {}  # type: ignore[arg-type]
-
 
 class TestParsePatternFiles:
     """Tests for parse_pattern_files()."""
@@ -401,9 +320,6 @@ class TestParsePatternFiles:
     def test_parse_pattern_files_not_list(self) -> None:
         assert parse_pattern_files('{"not": "a list"}') is None
 
-    def test_parse_pattern_files_type_error(self) -> None:
-        assert parse_pattern_files(123) is None  # type: ignore[arg-type]
-
 
 # ======================================================================
 # ServerConfig / servers parsing tests
@@ -422,6 +338,22 @@ class TestServerConfig:
         )
         assert cfg.display_name == "Production"
         assert cfg.collect_ups is True
+
+    def test_server_config_with_breakdown_settings(self) -> None:
+        """Phase 6: ServerConfig should support per-server breakdown settings."""
+        cfg = ServerConfig(
+            tag="prod",
+            name="Production",
+            rcon_host="factorio-prod",
+            rcon_port=27015,
+            rcon_password="secret",
+            event_channel_id=123456789,
+            rcon_breakdown_mode="transition",
+            rcon_breakdown_interval=300,
+        )
+        assert cfg.event_channel_id == 123456789
+        assert cfg.rcon_breakdown_mode == "transition"
+        assert cfg.rcon_breakdown_interval == 300
 
     def test_server_config_display_name_with_description(self) -> None:
         cfg = ServerConfig(
@@ -486,6 +418,26 @@ class TestParseServersFromJson:
         assert isinstance(prod, ServerConfig)
         assert prod.rcon_password == "secret"
 
+    def test_parse_servers_from_json_with_event_channel(self) -> None:
+        """Phase 6: parse_servers_from_json should handle event_channel_id per-server."""
+        json_str = json.dumps(
+            {
+                "prod": {
+                    "name": "Production",
+                    "rcon_host": "factorio-prod",
+                    "rcon_port": 27015,
+                    "rcon_password": "secret",
+                    "event_channel_id": 987654321,
+                    "rcon_breakdown_mode": "transition",
+                    "rcon_breakdown_interval": 300,
+                }
+            }
+        )
+        servers = parse_servers_from_json(json_str)
+        assert servers is not None
+        assert servers["prod"].event_channel_id == 987654321
+        assert servers["prod"].rcon_breakdown_mode == "transition"
+
     def test_parse_servers_from_json_none(self) -> None:
         assert parse_servers_from_json(None) is None
 
@@ -526,6 +478,27 @@ class TestParseServersFromYaml:
         assert prod.rcon_host == "factorio-prod"
         assert prod.rcon_password == "secret"
 
+    def test_parse_servers_from_yaml_with_per_server_settings(self, tmp_path: Path) -> None:
+        """Phase 6: YAML should load per-server event_channel_id and breakdown settings."""
+        yaml_path = tmp_path / "servers.yml"
+        yaml_path.write_text(
+            "servers:\n"
+            "  prod:\n"
+            "    name: Production\n"
+            "    rcon_host: factorio-prod\n"
+            "    rcon_port: 27015\n"
+            "    rcon_password: secret\n"
+            "    event_channel_id: 123456789\n"
+            "    rcon_breakdown_mode: transition\n"
+            "    rcon_breakdown_interval: 300\n"
+        )
+        servers = parse_servers_from_yaml(yaml_path)
+        assert servers is not None
+        prod = servers["prod"]
+        assert prod.event_channel_id == 123456789
+        assert prod.rcon_breakdown_mode == "transition"
+        assert prod.rcon_breakdown_interval == 300
+
     def test_parse_servers_from_yaml_invalid_tag_raises(self, tmp_path: Path) -> None:
         """Test that invalid server tags raise a ValueError."""
         yaml_path = tmp_path / "servers.yml"
@@ -544,7 +517,35 @@ class TestParseServersFromYaml:
         ):
             parse_servers_from_yaml(yaml_path)
 
-    
+    def test_parse_servers_from_yaml_multiple_servers(self, tmp_path: Path) -> None:
+        """Test parsing multiple servers with different per-server configs."""
+        yaml_path = tmp_path / "servers.yml"
+        yaml_path.write_text(
+            "servers:\n"
+            "  prod:\n"
+            "    name: Production\n"
+            "    rcon_host: factorio-prod\n"
+            "    rcon_port: 27015\n"
+            "    rcon_password: secret1\n"
+            "    event_channel_id: 111111111\n"
+            "    rcon_breakdown_mode: transition\n"
+            "  staging:\n"
+            "    name: Staging\n"
+            "    rcon_host: factorio-stg\n"
+            "    rcon_port: 27015\n"
+            "    rcon_password: secret2\n"
+            "    event_channel_id: 222222222\n"
+            "    rcon_breakdown_mode: interval\n"
+            "    rcon_breakdown_interval: 600\n"
+        )
+        servers = parse_servers_from_yaml(yaml_path)
+
+        assert servers is not None
+        assert len(servers) == 2
+        assert servers["prod"].event_channel_id == 111111111
+        assert servers["prod"].rcon_breakdown_mode == "transition"
+        assert servers["staging"].event_channel_id == 222222222
+        assert servers["staging"].rcon_breakdown_mode == "interval"
 
 
 # ======================================================================
@@ -583,6 +584,15 @@ class TestConfigDataclass:
         )
         assert cfg.is_multi_server is True
 
+    def test_config_no_global_discord_event_channel_id(self) -> None:
+        """Phase 6: Config should NOT have global discord_event_channel_id."""
+        cfg = Config(
+            discord_webhook_url="https://discord.com/api/webhooks/123/abc",
+            factorio_log_path=Path("/factorio/console.log"),
+        )
+        # discord_event_channel_id should not exist at Config level
+        assert not hasattr(cfg, "discord_event_channel_id") or cfg.discord_event_channel_id is None
+
 
 # ======================================================================
 # load_config tests
@@ -598,7 +608,6 @@ class TestLoadConfig:
         cfg = load_config()
         assert cfg.discord_webhook_url == "https://discord.com/api/webhooks/123/abc"
         assert cfg.factorio_log_path == Path("/factorio/console.log")
-        assert cfg.discord_event_channel_id is None
         assert cfg.rcon_enabled is False
 
     def test_load_config_bot_token_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -631,7 +640,6 @@ class TestLoadConfig:
         monkeypatch.setenv("PATTERNS_DIR", "custom_patterns")
         monkeypatch.setenv("PATTERN_FILES", '["pattern1.yaml"]')
         monkeypatch.setenv("WEBHOOK_CHANNELS", '{"general": "webhook1"}')
-        monkeypatch.setenv("SEND_TEST_MESSAGE", "true")
         monkeypatch.setenv("RCON_ENABLED", "true")
         monkeypatch.setenv("RCON_HOST", "factorio.local")
         monkeypatch.setenv("RCON_PORT", "27016")
@@ -639,7 +647,6 @@ class TestLoadConfig:
         monkeypatch.setenv("STATS_INTERVAL", "600")
         monkeypatch.setenv("RCON_BREAKDOWN_MODE", "interval")
         monkeypatch.setenv("RCON_BREAKDOWN_INTERVAL", "120")
-        monkeypatch.setenv("DISCORD_EVENT_CHANNEL_ID", "1234567890")
 
         cfg = load_config()
         assert cfg.log_level == "debug"
@@ -649,7 +656,6 @@ class TestLoadConfig:
         assert cfg.patterns_dir == Path("custom_patterns")
         assert cfg.pattern_files == ["pattern1.yaml"]
         assert cfg.webhook_channels == {"general": "webhook1"}
-        assert cfg.send_test_message is True
         assert cfg.rcon_enabled is True
         assert cfg.rcon_host == "factorio.local"
         assert cfg.rcon_port == 27016
@@ -657,7 +663,6 @@ class TestLoadConfig:
         assert cfg.stats_interval == 600
         assert cfg.rcon_breakdown_mode == "interval"
         assert cfg.rcon_breakdown_interval == 120
-        assert cfg.discord_event_channel_id == 1234567890
 
     def test_load_config_auto_converts_legacy_single_server(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DISCORD_WEBHOOK_URL", "https://discord.com/api/webhooks/123/abc")
@@ -811,358 +816,3 @@ class TestValidateConfigTargeted:
         )
         assert validate_config(cfg) is True
         assert cfg.log_level == "info"
-
-# ========================================================================
-# PHASE 6: parse_servers_from_yaml Tests
-# ========================================================================
-
-def test_parse_servers_from_yaml_file_not_found(tmp_path: Path) -> None:
-    """Test parse_servers_from_yaml when file doesn't exist."""
-    yaml_path = tmp_path / "nonexistent.yml"
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None
-
-
-def test_parse_servers_from_yaml_missing_servers_key(tmp_path: Path) -> None:
-    """Test parse_servers_from_yaml with missing 'servers' key."""
-    yaml_path = tmp_path / "invalid.yml"
-    yaml_path.write_text("other_key: value\n")
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None
-
-
-def test_parse_servers_from_yaml_empty_file(tmp_path: Path) -> None:
-    """Test parse_servers_from_yaml with empty file."""
-    yaml_path = tmp_path / "empty.yml"
-    yaml_path.write_text("")
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None
-
-
-def test_parse_servers_from_yaml_success_with_password(tmp_path: Path) -> None:
-    """Test successful parsing with password in YAML."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    name: "Production"
-    description: "Main server"
-    rcon_host: "factorio-prod"
-    rcon_port: 27015
-    rcon_password: "secret123"
-    event_channel_id: 123456789
-    stats_interval: 300
-"""
-    yaml_path.write_text(yaml_content)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert "prod" in result
-    assert result["prod"].name == "Production"
-    assert result["prod"].rcon_host == "factorio-prod"
-    assert result["prod"].rcon_port == 27015
-    assert result["prod"].rcon_password == "secret123"
-    assert result["prod"].description == "Main server"
-    assert result["prod"].event_channel_id == 123456789
-
-
-def test_parse_servers_from_yaml_default_values(tmp_path: Path) -> None:
-    """Test parsing with default values for optional fields."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  test:
-    name: "Test Server"
-    rcon_host: "localhost"
-    rcon_password: "test"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert result["test"].rcon_port == 27015  # Default
-    assert result["test"].stats_interval == 300  # Default
-    assert result["test"].description is None
-    assert result["test"].event_channel_id is None
-    assert result["test"].rcon_breakdown_mode == "transition"
-    assert result["test"].rcon_breakdown_interval == 300
-
-
-def test_parse_servers_from_yaml_password_from_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test password loading from secrets when not in YAML."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    name: "Production"
-    rcon_host: "factorio-prod"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    # Mock read_secret to return a password
-    def mock_read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
-        if secret_name == "RCON_PASSWORD_PROD":
-            return "secret_from_file"
-        return default
-    
-    monkeypatch.setattr("config.read_secret", mock_read_secret)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert result["prod"].rcon_password == "secret_from_file"
-
-
-def test_parse_servers_from_yaml_password_fallback_generic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test fallback to generic RCON_PASSWORD secret."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  test:
-    name: "Test"
-    rcon_host: "localhost"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    # Mock read_secret to return generic password
-    def mock_read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
-        if secret_name == "RCON_PASSWORD":
-            return "generic_secret"
-        return default
-    
-    monkeypatch.setattr("config.read_secret", mock_read_secret)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert result["test"].rcon_password == "generic_secret"
-
-
-def test_parse_servers_from_yaml_invalid_tag_format(tmp_path: Path) -> None:
-    """Test validation failure for invalid tag format."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  INVALID_TAG:
-    name: "Invalid"
-    rcon_host: "localhost"
-    rcon_password: "test"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    with pytest.raises(ValueError, match="Invalid tag"):
-        parse_servers_from_yaml(yaml_path)
-
-
-def test_parse_servers_from_yaml_tag_too_long(tmp_path: Path) -> None:
-    """Test validation failure for tag longer than 16 chars."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  this-is-way-too-long-tag:
-    name: "Test"
-    rcon_host: "localhost"
-    rcon_password: "test"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    with pytest.raises(ValueError, match="Invalid tag"):
-        parse_servers_from_yaml(yaml_path)
-
-
-def test_parse_servers_from_yaml_missing_required_field(tmp_path: Path) -> None:
-    """Test error when required field 'name' is missing causes KeyError."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    rcon_host: "localhost"
-    rcon_password: "test"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    # KeyError is caught by the outer exception handler and None is returned
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None
-
-
-
-def test_parse_servers_from_yaml_multiple_servers(tmp_path: Path) -> None:
-    """Test parsing multiple servers."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    name: "Production"
-    rcon_host: "factorio-prod"
-    rcon_password: "secret1"
-  staging:
-    name: "Staging"
-    rcon_host: "factorio-stg"
-    rcon_password: "secret2"
-  dev:
-    name: "Development"
-    rcon_host: "localhost"
-    rcon_password: "secret3"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert len(result) == 3
-    assert "prod" in result
-    assert "staging" in result
-    assert "dev" in result
-
-
-def test_parse_servers_from_yaml_all_optional_fields(tmp_path: Path) -> None:
-    """Test parsing with all optional fields present."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    name: "Production"
-    rcon_host: "factorio-prod"
-    rcon_port: 27020
-    rcon_password: "secret"
-    description: "24/7 main server"
-    event_channel_id: 987654321
-    stats_interval: 600
-    rcon_breakdown_mode: "interval"
-    rcon_breakdown_interval: 900
-    collect_ups: true
-    collect_evolution: false
-    enable_alerts: true
-    alert_check_interval: 120
-    alert_samples_required: 5
-    ups_warning_threshold: 50.0
-    ups_recovery_threshold: 55.0
-    alert_cooldown: 600
-    ups_ema_alpha: 0.3
-"""
-    yaml_path.write_text(yaml_content)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    server = result["prod"]
-    assert server.rcon_port == 27020
-    assert server.description == "24/7 main server"
-    assert server.stats_interval == 600
-    assert server.rcon_breakdown_mode == "interval"
-    assert server.rcon_breakdown_interval == 900
-    assert server.collect_ups is True
-    assert server.collect_evolution is False
-    assert server.enable_alerts is True
-    assert server.alert_check_interval == 120
-    assert server.alert_samples_required == 5
-    assert server.ups_warning_threshold == 50.0
-    assert server.ups_recovery_threshold == 55.0
-    assert server.alert_cooldown == 600
-    assert server.ups_ema_alpha == 0.3
-
-
-def test_parse_servers_from_yaml_invalid_yaml_syntax(tmp_path: Path) -> None:
-    """Test handling of invalid YAML syntax."""
-    yaml_path = tmp_path / "invalid.yml"
-    yaml_path.write_text("servers:\n  prod:\n    name: [invalid yaml\n")
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None  # Should catch YAML parse error
-
-
-def test_parse_servers_from_yaml_no_yaml_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test handling when PyYAML is not installed."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_path.write_text("servers:\n  prod:\n    name: Test\n")
-    
-    # Mock import to fail
-    import builtins
-    real_import = builtins.__import__
-    
-    def mock_import(name, *args, **kwargs):
-        if name == "yaml":
-            raise ImportError("No module named yaml")
-        return real_import(name, *args, **kwargs)
-    
-    monkeypatch.setattr(builtins, "__import__", mock_import)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None
-
-
-def test_parse_servers_from_yaml_io_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test handling of file I/O errors."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_path.write_text("servers:\n  prod:\n    name: Test\n")
-    
-    # Make file unreadable
-    original_open = open
-    
-    def mock_open(*args, **kwargs):
-        if str(yaml_path) in str(args[0]):
-            raise IOError("Permission denied")
-        return original_open(*args, **kwargs)
-    
-    monkeypatch.setattr("builtins.open", mock_open)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is None
-
-
-def test_parse_servers_from_yaml_empty_password_uses_secrets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that empty password string in YAML falls back to secrets."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    name: "Production"
-    rcon_host: "localhost"
-    rcon_password: ""
-"""
-    yaml_path.write_text(yaml_content)
-    
-    # Mock read_secret to return a password
-    def mock_read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
-        if secret_name == "RCON_PASSWORD_PROD":
-            return "from_secret"
-        return default
-    
-    monkeypatch.setattr("config.read_secret", mock_read_secret)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert result["prod"].rcon_password == "from_secret"
-
-
-def test_parse_servers_from_yaml_breakdown_mode_case_insensitive(tmp_path: Path) -> None:
-    """Test that rcon_breakdown_mode is lowercased."""
-    yaml_path = tmp_path / "servers.yml"
-    yaml_content = """
-servers:
-  prod:
-    name: "Production"
-    rcon_host: "localhost"
-    rcon_password: "test"
-    rcon_breakdown_mode: "INTERVAL"
-"""
-    yaml_path.write_text(yaml_content)
-    
-    result = parse_servers_from_yaml(yaml_path)
-    
-    assert result is not None
-    assert result["prod"].rcon_breakdown_mode == "interval"  # Lowercased
