@@ -16,15 +16,15 @@
 """
 Comprehensive tests for config.py with 95%+ code coverage.
 
-Covers Phase 6 Multi-Server Architecture:
+Covers Phase 6 Multi-Server Architecture with Docker Secrets:
 - Config dataclass with servers.yml requirement
 - ServerConfig per-server configuration
 - load_config() from environment + servers.yml
 - validate_config() checks
+- get_config_value() for secure secret handling
+- _read_docker_secret() for Docker/K8s secret mounts
 - Safe type conversion functions
-
-Note: get_config_value was removed in refactor - config now loads
-directly from environment variables and YAML files.
+- Environment variable expansion in config values
 """
 
 from __future__ import annotations
@@ -43,8 +43,11 @@ from config import (
     ServerConfig,
     load_config,
     validate_config,
+    get_config_value,
+    _read_docker_secret,
     _safe_int,
     _safe_float,
+    _expand_env_vars,
 )
 
 
@@ -68,6 +71,8 @@ def isolate_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None
         "PATTERNS_",
         "PATTERN_",
         "CONFIG_",
+        "RCON_",
+        "DEBUG",
     ]
     for key in list(os.environ.keys()):
         if any(key.startswith(p) for p in prefixes):
@@ -101,6 +106,156 @@ def temp_servers_yml(tmp_path: Path) -> Path:
         yaml.dump(servers_content, f)
 
     return servers_yml
+
+
+# ======================================================================
+# Docker Secrets Tests
+# ======================================================================
+
+
+class TestReadDockerSecret:
+    """Tests for _read_docker_secret() function."""
+
+    def test_reads_docker_secret_file(self, tmp_path: Path) -> None:
+        """_read_docker_secret should read from /run/secrets/* location."""
+        secrets_dir = tmp_path / "run" / "secrets"
+        secrets_dir.mkdir(parents=True)
+        
+        secret_file = secrets_dir / "test_secret"
+        secret_file.write_text("secret_value_xyz")
+        
+        with patch("config.Path") as mock_path:
+            # Mock Path to return our test location
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.read_text.return_value = "secret_value_xyz"
+            
+            result = _read_docker_secret("test_secret")
+            assert result == "secret_value_xyz"
+
+    def test_strips_whitespace_from_secret(self, tmp_path: Path) -> None:
+        """_read_docker_secret should strip whitespace from secret content."""
+        with patch("config.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.read_text.return_value = "  secret_value  \n"
+            
+            result = _read_docker_secret("test_secret")
+            assert result == "secret_value"
+
+    def test_returns_none_for_missing_secret(self) -> None:
+        """_read_docker_secret should return None if secret file not found."""
+        with patch("config.Path") as mock_path:
+            mock_path.return_value.exists.return_value = False
+            
+            result = _read_docker_secret("nonexistent_secret")
+            assert result is None
+
+    def test_handles_io_error_gracefully(self) -> None:
+        """_read_docker_secret should return None on IO error."""
+        with patch("config.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.read_text.side_effect = IOError("Permission denied")
+            
+            result = _read_docker_secret("test_secret")
+            assert result is None
+
+
+class TestGetConfigValue:
+    """Tests for get_config_value() function."""
+
+    def test_gets_value_from_docker_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_config_value should prefer Docker secret over environment variable."""
+        monkeypatch.setenv("DISCORD_TOKEN", "env_value")
+        
+        with patch("config._read_docker_secret") as mock_secret:
+            mock_secret.return_value = "secret_value"
+            
+            result = get_config_value(
+                env_var="DISCORD_TOKEN",
+                secret_name="discord_token",
+            )
+            assert result == "secret_value"
+            mock_secret.assert_called_once_with("discord_token")
+
+    def test_fallback_to_env_when_no_secret(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_config_value should fall back to env var when secret not found."""
+        monkeypatch.setenv("BOT_TOKEN", "env_value")
+        
+        with patch("config._read_docker_secret") as mock_secret:
+            mock_secret.return_value = None
+            
+            result = get_config_value(
+                env_var="BOT_TOKEN",
+                secret_name="bot_token",
+            )
+            assert result == "env_value"
+
+    def test_uses_default_when_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_config_value should use default when not found in secret or env."""
+        with patch("config._read_docker_secret") as mock_secret:
+            mock_secret.return_value = None
+            monkeypatch.delenv("MISSING_VAR", raising=False)
+            
+            result = get_config_value(
+                env_var="MISSING_VAR",
+                secret_name="missing_var",
+                default="default_value",
+            )
+            assert result == "default_value"
+
+    def test_raises_when_required_and_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_config_value should raise ValueError when required=True and value missing."""
+        with patch("config._read_docker_secret") as mock_secret:
+            mock_secret.return_value = None
+            monkeypatch.delenv("REQUIRED_VAR", raising=False)
+            
+            with pytest.raises(ValueError, match="Required configuration value not found"):
+                get_config_value(
+                    env_var="REQUIRED_VAR",
+                    secret_name="required_var",
+                    required=True,
+                )
+
+    def test_derives_secret_name_from_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_config_value should derive secret_name from env_var if not provided."""
+        monkeypatch.setenv("MY_TOKEN", "env_value")
+        
+        with patch("config._read_docker_secret") as mock_secret:
+            mock_secret.return_value = None
+            
+            result = get_config_value(env_var="MY_TOKEN")
+            mock_secret.assert_called_once_with("my_token")  # Lowercased
+            assert result == "env_value"
+
+
+class TestExpandEnvVars:
+    """Tests for _expand_env_vars() function."""
+
+    def test_expands_env_var_in_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_expand_env_vars should expand ${VAR_NAME} syntax."""
+        monkeypatch.setenv("SECRET_PASSWORD", "super_secret")
+        
+        result = _expand_env_vars("password_is_${SECRET_PASSWORD}")
+        assert result == "password_is_super_secret"
+
+    def test_handles_missing_env_var(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_expand_env_vars should fall back to original if variable not found."""
+        monkeypatch.delenv("MISSING", raising=False)
+        
+        result = _expand_env_vars("value_${MISSING}_here")
+        assert result == "value_${MISSING}_here"
+
+    def test_handles_multiple_expansions(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_expand_env_vars should handle multiple variable expansions."""
+        monkeypatch.setenv("HOST", "prod.example.com")
+        monkeypatch.setenv("PORT", "27015")
+        
+        result = _expand_env_vars("rcon://${HOST}:${PORT}")
+        assert result == "rcon://prod.example.com:27015"
+
+    def test_handles_non_string_input(self) -> None:
+        """_expand_env_vars should return non-string input unchanged."""
+        result = _expand_env_vars(12345)  # type: ignore
+        assert result == 12345
 
 
 # ======================================================================
@@ -463,6 +618,74 @@ class TestLoadConfig:
         assert config.servers["prod"].name == "Production"
         assert config.servers["prod"].event_channel_id == 123456789
 
+    def test_loads_from_docker_secret(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should read RCON password from Docker secret if available."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "prod": {
+                    "name": "Production",
+                    "log_path": "console.log",
+                    "rcon_host": "localhost",
+                    "rcon_port": 27015,
+                    "rcon_password": "default_pass",
+                    "event_channel_id": 123456789,
+                }
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
+
+        with patch("config.get_config_value") as mock_get:
+            def side_effect(**kwargs: Any) -> Optional[str]:
+                if kwargs.get("env_var") == "DISCORD_BOT_TOKEN":
+                    return "test_token"
+                if kwargs.get("env_var") == "RCON_PASSWORD_PROD":
+                    return "secret_from_docker"  # Simulating Docker secret
+                return kwargs.get("default")
+            
+            mock_get.side_effect = side_effect
+            config = load_config()
+            
+            assert config.servers["prod"].rcon_password == "secret_from_docker"
+
+    def test_expands_env_vars_in_password(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should expand ${VAR_NAME} in rcon_password."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "prod": {
+                    "name": "Production",
+                    "log_path": "console.log",
+                    "rcon_host": "localhost",
+                    "rcon_port": 27015,
+                    "rcon_password": "prefix_${RCON_SECRET}_suffix",
+                    "event_channel_id": 123456789,
+                }
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
+        monkeypatch.setenv("RCON_SECRET", "expanded_value")
+
+        config = load_config()
+
+        assert config.servers["prod"].rcon_password == "prefix_expanded_value_suffix"
+
     def test_loads_defaults_from_env(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """load_config should use default values when env vars not set."""
         config_dir = tmp_path / "config"
@@ -498,36 +721,6 @@ class TestLoadConfig:
         assert config.log_level == "info"  # default
         assert config.log_format == "console"  # default
 
-    def test_loads_with_environment_variable_password(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        """load_config should support ${VAR_NAME} in rcon_password."""
-        config_dir = tmp_path / "config"
-        config_dir.mkdir()
-
-        servers_yml = config_dir / "servers.yml"
-        servers_content = {
-            "servers": {
-                "test": {
-                    "name": "Test",
-                    "log_path": "console.log",
-                    "rcon_host": "localhost",
-                    "rcon_port": 27015,
-                    "rcon_password": "${RCON_PASSWORD_ENV}",
-                    "event_channel_id": 123456789,
-                }
-            }
-        }
-        with open(servers_yml, "w") as f:
-            yaml.dump(servers_content, f)
-
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
-        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
-        monkeypatch.setenv("RCON_PASSWORD_ENV", "secret_from_env")
-
-        config = load_config()
-
-        assert config.servers["test"].rcon_password == "secret_from_env"
-
 
 # ======================================================================
 # validate_config tests
@@ -559,7 +752,6 @@ class TestValidateConfig:
 
     def test_rejects_no_servers(self, tmp_path: Path) -> None:
         """validate_config should reject config with no servers."""
-        # Can't even create Config without servers, so this tests the validation path
         server = ServerConfig(
             name="Test",
             tag="test",
