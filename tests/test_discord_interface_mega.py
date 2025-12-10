@@ -427,7 +427,6 @@ def bot_config() -> MagicMock:
     cfg.discord_bot_token = "BOT_TOKEN_123"
     cfg.discord_webhook_url = None
     cfg.bot_name = "TestBot"
-    cfg.discord_event_channel_id = 123456789
     cfg.rcon_breakdown_mode = "transition"
     cfg.rcon_breakdown_interval = 300
     return cfg
@@ -452,25 +451,12 @@ def empty_config() -> MagicMock:
     return cfg
 
 
-@pytest.fixture
-def bot_config_no_channel() -> MagicMock:
-    cfg = MagicMock()
-    cfg.discord_bot_token = "BOT_TOKEN"
-    cfg.discord_webhook_url = None
-    cfg.bot_name = "TestBot"
-    cfg.discord_event_channel_id = None
-    cfg.rcon_breakdown_mode = "transition"
-    cfg.rcon_breakdown_interval = 300
-    return cfg
-
-
 class TestFactoryBotCreation:
     """Factory creation of bot interfaces."""
 
     def test_create_bot_interface(self, bot_config: MagicMock) -> None:
         with patch("discord_bot.DiscordBot") as mock_bot_class:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_class.return_value = bot_instance
 
             interface = DiscordInterfaceFactory.create_interface(bot_config)
@@ -482,23 +468,10 @@ class TestFactoryBotCreation:
             breakdown_mode=bot_config.rcon_breakdown_mode,
             breakdown_interval=bot_config.rcon_breakdown_interval,
         )
-        bot_instance.set_event_channel.assert_called_once_with(123456789)
-
-    def test_create_bot_interface_no_channel(self, bot_config_no_channel: MagicMock) -> None:
-        with patch("discord_bot.DiscordBot") as mock_bot_class:
-            bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
-            mock_bot_class.return_value = bot_instance
-
-            interface = DiscordInterfaceFactory.create_interface(bot_config_no_channel)
-
-        assert isinstance(interface, BotDiscordInterface)
-        bot_instance.set_event_channel.assert_not_called()
 
     def test_bot_interface_has_required_attributes(self, bot_config: MagicMock) -> None:
         with patch("discord_bot.DiscordBot") as mock_bot_class:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_class.return_value = bot_instance
 
             interface = DiscordInterfaceFactory.create_interface(bot_config)
@@ -553,7 +526,6 @@ class TestFactoryInterfaceTypes:
     def test_bot_interface_is_discord_interface(self, bot_config: MagicMock) -> None:
         with patch("discord_bot.DiscordBot") as mock_bot_class:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_class.return_value = bot_instance
 
             interface = DiscordInterfaceFactory.create_interface(bot_config)
@@ -593,13 +565,11 @@ class TestFactoryEdgeCases:
         cfg.discord_bot_token = "TOKEN"
         cfg.discord_webhook_url = None
         cfg.bot_name = None
-        cfg.discord_event_channel_id = None
         cfg.rcon_breakdown_mode = "transition"
         cfg.rcon_breakdown_interval = 300
 
         with patch("discord_bot.DiscordBot") as mock_bot_class:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_class.return_value = bot_instance
 
             interface = DiscordInterfaceFactory.create_interface(cfg)
@@ -608,39 +578,17 @@ class TestFactoryEdgeCases:
         kwargs = mock_bot_class.call_args.kwargs
         assert kwargs["bot_name"] is None
 
-    def test_zero_channel_id(self) -> None:
-        cfg = MagicMock()
-        cfg.discord_bot_token = "TOKEN"
-        cfg.discord_webhook_url = None
-        cfg.bot_name = "ZeroBot"
-        cfg.discord_event_channel_id = 0
-        cfg.rcon_breakdown_mode = "transition"
-        cfg.rcon_breakdown_interval = 300
-
-        with patch("discord_bot.DiscordBot") as mock_bot_class:
-            bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
-            mock_bot_class.return_value = bot_instance
-
-            interface = DiscordInterfaceFactory.create_interface(cfg)
-
-        assert isinstance(interface, BotDiscordInterface)
-        # Implementation treats falsy values as "no channel"
-        bot_instance.set_event_channel.assert_not_called()
-
     def test_very_long_token(self) -> None:
         token = "X" * 1000
         cfg = MagicMock()
         cfg.discord_bot_token = token
         cfg.discord_webhook_url = None
         cfg.bot_name = "LongTokenBot"
-        cfg.discord_event_channel_id = 123
         cfg.rcon_breakdown_mode = "transition"
         cfg.rcon_breakdown_interval = 300
 
         with patch("discord_bot.DiscordBot") as mock_bot_class:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_class.return_value = bot_instance
 
             interface = DiscordInterfaceFactory.create_interface(cfg)
@@ -1117,46 +1065,6 @@ class TestBotInterfaceRuntimeErrors:
 class TestFactoryImportFallbacks:
     """Test DiscordInterfaceFactory import fallback logic."""
 
-    # def test_import_discord_bot_fallback_to_importlib(self, monkeypatch: Any) -> None:
-    #     """_import_discord_bot should fall back to importlib when direct import fails."""
-    #     from discord_interface import DiscordInterfaceFactory
-        
-    #     # Mock the imports to force fallback
-    #     import sys
-    #     original_import = __builtins__.__import__
-        
-    #     def mock_import(name, *args, **kwargs):
-    #         if name == "discord_bot":
-    #             raise ImportError("Forced failure")
-    #         return original_import(name, *args, **kwargs)
-        
-    #     with patch("builtins.__import__", side_effect=mock_import):
-    #         with patch.object(DiscordInterfaceFactory, "_import_with_importlib") as mock_importlib:
-    #             mock_importlib.return_value = type("DiscordBot", (), {})
-                
-    #             result = DiscordInterfaceFactory._import_discord_bot()
-                
-    #             mock_importlib.assert_called_once_with("discord_bot", "DiscordBot")
-
-    # def test_import_discord_client_fallback_to_importlib(self, monkeypatch: Any) -> None:
-    #     """_import_discord_client should fall back to importlib when direct import fails."""
-    #     from discord_interface import DiscordInterfaceFactory
-        
-    #     original_import = __builtins__.__import__
-        
-    #     def mock_import(name, *args, **kwargs):
-    #         if name == "discord_client":
-    #             raise ImportError("Forced failure")
-    #         return original_import(name, *args, **kwargs)
-        
-    #     with patch("builtins.__import__", side_effect=mock_import):
-    #         with patch.object(DiscordInterfaceFactory, "_import_with_importlib") as mock_importlib:
-    #             mock_importlib.return_value = type("DiscordClient", (), {})
-                
-    #             result = DiscordInterfaceFactory._import_discord_client()
-                
-    #             mock_importlib.assert_called_once_with("discord_client", "DiscordClient")
-
     def test_import_with_importlib_no_spec(self, monkeypatch: Any) -> None:
         """_import_with_importlib should raise ImportError when spec is None."""
         from discord_interface import DiscordInterfaceFactory
@@ -1177,48 +1085,36 @@ class TestFactoryImportFallbacks:
             with pytest.raises(ImportError, match="Could not load"):
                 DiscordInterfaceFactory._import_with_importlib("test_module", "TestClass")
 
-    # def test_import_with_importlib_missing_class_attribute(self, monkeypatch: Any) -> None:
-    #     """_import_with_importlib should raise AttributeError when class doesn't exist in module."""
-    #     from discord_interface import DiscordInterfaceFactory
-    #     import importlib.util
-        
-    #     # Create a real module without the target class
-    #     fake_spec = MagicMock()
-    #     fake_spec.loader = MagicMock()
-    #     fake_module = MagicMock()
-        
-    #     with patch("importlib.util.spec_from_file_location", return_value=fake_spec):
-    #         with patch("importlib.util.module_from_spec", return_value=fake_module):
-    #             # Make getattr raise AttributeError
-    #             with patch("builtins.getattr", side_effect=AttributeError("No such class")):
-    #                 with pytest.raises(AttributeError):
-    #                     DiscordInterfaceFactory._import_with_importlib("test_module", "MissingClass")
+    def test_import_with_importlib_no_current_path(self, monkeypatch: Any) -> None:
+        from discord_interface import DiscordInterfaceFactory
+        import sys
 
-    # def test_import_with_importlib_logs_sys_path_addition(self, monkeypatch: Any) -> None:
-    #     """_import_with_importlib should log when adding to sys.path."""
-    #     from discord_interface import DiscordInterfaceFactory
-    #     import sys
-        
-    #     # This test just ensures the sys.path modification branch is hit
-    #     # We can't easily test the logger.debug call, but we can verify the path logic
-        
-    #     fake_spec = MagicMock()
-    #     fake_spec.loader = MagicMock()
-    #     fake_module = type("FakeModule", (), {"TestClass": type("TestClass", (), {})})()
-        
-    #     with patch("importlib.util.spec_from_file_location", return_value=fake_spec):
-    #         with patch("importlib.util.module_from_spec", return_value=fake_module):
-    #             with patch("builtins.getattr", return_value=type("TestClass", (), {})):
-    #                 # Force sys.path manipulation by ensuring src_dir not in sys.path
-    #                 original_path = sys.path.copy()
-    #                 sys.path = ["/some/other/path"]
-                    
-    #                 try:
-    #                     result = DiscordInterfaceFactory._import_with_importlib("test", "TestClass")
-    #                     # Just verify it completes without error
-    #                     assert result is not None
-    #                 finally:
-    #                     sys.path = original_path
+        # Fake module with no __file__
+        current_module = MagicMock()
+        monkeypatch.setitem(sys.modules, "discord_interface", current_module)
+        setattr(current_module, "__name__", "discord_interface")
+        setattr(current_module, "__file__", None)
+
+        with pytest.raises(ImportError, match="Could not determine module path"):
+            DiscordInterfaceFactory._import_with_importlib("mod", "Cls")
+
+    def test_import_with_importlib_success_path(self, monkeypatch: Any) -> None:
+        from discord_interface import DiscordInterfaceFactory
+        import importlib.util
+
+        fake_spec = MagicMock()
+        fake_spec.loader = MagicMock()
+
+        fake_module = type(
+            "FakeModule",
+            (),
+            {"MyClass": type("MyClass", (), {})}
+        )()
+
+        with patch("importlib.util.spec_from_file_location", return_value=fake_spec):
+            with patch("importlib.util.module_from_spec", return_value=fake_module):
+                result = DiscordInterfaceFactory._import_with_importlib("mod", "MyClass")
+        assert result is not None
 
 
 class TestFactoryCreateInterfaceErrors:
@@ -1229,6 +1125,9 @@ class TestFactoryCreateInterfaceErrors:
         cfg = MagicMock()
         cfg.discord_bot_token = "TOKEN"
         cfg.discord_webhook_url = None
+        cfg.bot_name = "Bot"
+        cfg.rcon_breakdown_mode = "transition"
+        cfg.rcon_breakdown_interval = 300
         
         from discord_interface import DiscordInterfaceFactory
         
@@ -1255,13 +1154,11 @@ class TestFactoryCreateInterfaceErrors:
         cfg.discord_bot_token = "TOKEN"
         cfg.discord_webhook_url = None
         cfg.bot_name = "TestBot"
-        cfg.discord_event_channel_id = 123
         cfg.rcon_breakdown_mode = None
         cfg.rcon_breakdown_interval = None
         
         with patch("discord_bot.DiscordBot") as mock_bot_class:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_class.return_value = bot_instance
             
             from discord_interface import DiscordInterfaceFactory
@@ -1312,8 +1209,8 @@ class TestDiscordInterfaceBase:
         dummy = Dummy()
         result = await dummy.send_embed(MagicMock())
         assert result is False
-        
-        
+
+
 class TestEmbedBuilderEdges:
     """Targeted tests for EmbedBuilder branches."""
 
@@ -1535,13 +1432,11 @@ class TestFactoryErrorBranches:
         cfg.discord_bot_token = "TOKEN"
         cfg.discord_webhook_url = None
         cfg.bot_name = "Bot"
-        cfg.discord_event_channel_id = 123
         cfg.rcon_breakdown_mode = None
         cfg.rcon_breakdown_interval = None
 
         with patch("discord_bot.DiscordBot") as mock_bot_cls:
             bot_instance = MagicMock()
-            bot_instance.set_event_channel = MagicMock()
             mock_bot_cls.return_value = bot_instance
 
             interface = DiscordInterfaceFactory.create_interface(cfg)
@@ -1595,28 +1490,6 @@ class TestBotInterfaceSendEmbedRemaining:
 
         result = await bot_interface.send_embed(MagicMock())
         assert result is False
-
-# class TestFactoryImportBotClientFallback:
-    # def test_import_discord_bot_uses_importlib_on_import_error(self) -> None:
-    #     from discord_interface import DiscordInterfaceFactory
-
-    #     with patch("discord_interface.DiscordInterfaceFactory._import_with_importlib") as mock_fallback:
-    #         mock_fallback.return_value = MagicMock()
-    #         with patch("discord_interface.discord_bot", create=True):
-    #             # Force ImportError via mocking the direct import inside helper
-    #             with patch("discord_interface.DiscordInterfaceFactory._import_discord_bot.__globals__", new={}):
-    #                 # Call the helper; we only care that fallback is used
-    #                 DiscordInterfaceFactory._import_discord_bot()
-    #         mock_fallback.assert_called_once_with("discord_bot", "DiscordBot")
-
-    # def test_import_discord_client_uses_importlib_on_import_error(self) -> None:
-    #     from discord_interface import DiscordInterfaceFactory
-
-    #     with patch("discord_interface.DiscordInterfaceFactory._import_with_importlib") as mock_fallback:
-    #         mock_fallback.return_value = MagicMock()
-    #         with patch("discord_interface.DiscordInterfaceFactory._import_discord_client.__globals__", new={}):
-    #             DiscordInterfaceFactory._import_discord_client()
-    #         mock_fallback.assert_called_once_with("discord_client", "DiscordClient")
 
 class TestImportWithImportlibBranches:
     def test_import_with_importlib_no_current_path(self, monkeypatch: Any) -> None:
