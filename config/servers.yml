@@ -1,9 +1,6 @@
 # Factorio ISR Patterns - AGPL-3.0 or Commercial
 # Copyright (c) 2025 Stephen C Lau
 
-
-
-
 # Factorio ISR - Multi-Server Configuration
 # Place this file in your project root directory
 #
@@ -15,14 +12,15 @@
 
 servers:
   # Production server - main 24/7 gameplay
-  tag:
-    name: ""
-    description: ""
-    rcon_host: # Docker container name or IP e.g. localhost, 812.180.18.1, 192.168.1.220, factorio-container-name-from-docker-compose.yml
+  prod:
+    name: "Factorio Default"
+    description: "prod"
+    rcon_host: 172.20.48.220 # Docker container name or IP e.g. localhost, 812.180.18.1, 192.168.1.220, factorio-container-name-from-docker-compose.yml
     rcon_port: 27015                # RCON port
     rcon_password:  #you can hardcode it here, but i recommend secrets
-    event_channel_id:   # Discord channel ID for events for THIS server.
+    event_channel_id: 1443838551019094048  # Discord channel ID for events for THIS server.
     stats_interval: 300             # Post stat card every 5 minutes
+    log_path: ./logs/prod/console.log  # NEW: Per-server log path
     # Performance monitoring (NEW)
     collect_ups: true
     collect_evolution: true

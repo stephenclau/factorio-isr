@@ -1,22 +1,20 @@
 # Copyright (c) 2025 Stephen Clau
-#
-# This file is part of Factorio ISR.
-#
-# Factorio ISR is dual-licensed:
-#
-# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
-#    See LICENSE file for full terms
-#
-# 2. Commercial License
-#    For proprietary use without AGPL requirements
-#    Contact: licensing@laudiversified.com
-#
-# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
+# This file is part of Factorio ISR.
+
+# Factorio ISR is dual-licensed:
+
+# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
+# See LICENSE file for full terms
+
+# 2. Commercial License
+# For proprietary use without AGPL requirements
+# Contact: licensing@laudiversified.com
+
+# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
 """
 Configuration management for Factorio ISR.
-
 """
 
 import os
@@ -26,11 +24,9 @@ from pathlib import Path
 from typing import Optional, List, Dict
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
-
 import structlog
 
 logger = structlog.get_logger()
-
 
 def read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str]:
     """
@@ -42,7 +38,7 @@ def read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str
     3. `/run/secrets/{secret_name}` (Docker secrets)
 
     Returns:
-        Secret value as string, or None if not found
+    Secret value as string, or None if not found
     """
     # Local dev (.txt extension)
     local_txt = Path(".secrets") / f"{secret_name}.txt"
@@ -98,7 +94,6 @@ def read_secret(secret_name: str, default: Optional[str] = None) -> Optional[str
 
     return default
 
-
 def get_config_value(
     key: str,
     default: Optional[str] = None,
@@ -127,7 +122,6 @@ def get_config_value(
 
     return value
 
-
 @dataclass
 class ServerConfig:
     """
@@ -141,6 +135,7 @@ class ServerConfig:
     description: Optional[str] = None
     event_channel_id: Optional[int] = None
     stats_interval: int = 300
+    log_path: Optional[Path] = None  # NEW: Per-server log file path (e.g., /logs/server/console.log)
 
     # RCON breakdown embed settings per server
     rcon_breakdown_mode: str = "transition"  # "transition" or "interval"
@@ -158,7 +153,7 @@ class ServerConfig:
     ups_recovery_threshold: float = 58.0  # Recovery when UPS >= 58
     alert_cooldown: int = 300  # 5 min between repeat alerts
     ups_ema_alpha: float = 0.2  # EMA smoothing factor for UPS
-    
+
     def __post_init__(self) -> None:
         """
         Validate tag format on initialization.
@@ -170,7 +165,7 @@ class ServerConfig:
         if not re.match(r"^[a-z0-9-]{1,16}$", self.tag):
             raise ValueError(
                 f"Invalid tag {self.tag}: must be lowercase alphanumeric with "
-                "hyphens only, 1-16 characters (e.g., 'prod', 'los-hermanos')"
+                "hyphens only, 1-16 characters (e.g., 'prod', 'stg')"
             )
 
         if not self.name:
@@ -188,27 +183,27 @@ class ServerConfig:
             return f"{self.name} ({self.description})"
         return self.name
 
-
 def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]]:
     """
     Parse servers from YAML file with secrets support.
 
     Expected format:
-        servers:
-          prod:
-            name: "Production"
-            description: "Main 24/7 server"
-            rcon_host: "factorio-prod"
-            rcon_port: 27015
-            rcon_password: "secret123"  # Optional - falls back to secrets
-            event_channel_id: 123456789
-            stats_interval: 300
+    servers:
+      prod:
+        name: "Production"
+        description: "Main 24/7 server"
+        rcon_host: "factorio-prod"
+        rcon_port: 27015
+        rcon_password: "secret123"  # Optional - falls back to secrets
+        event_channel_id: 123456789
+        stats_interval: 300
+        log_path: "/opt/factorio/script-output/prod/console.log"
 
     Args:
-        yaml_path: Path to YAML configuration file
+    yaml_path: Path to YAML configuration file
 
     Returns:
-        Dictionary of tag -> ServerConfig or None if file doesn't exist or parse fails.
+    Dictionary of tag -> ServerConfig or None if file doesn't exist or parse fails.
     """
     if not yaml_path.exists():
         logger.debug("yaml_file_not_found", path=str(yaml_path))
@@ -266,11 +261,11 @@ def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]
                     rcon_port=server_data.get("rcon_port", 27015),
                     rcon_password=rcon_password_value,
                     description=server_data.get("description"),
+                    log_path=Path(server_data.get("log_path", f"/app/logs/{tag}/console.log")),
                     event_channel_id=server_data.get("event_channel_id"),
                     stats_interval=server_data.get("stats_interval", 300),
                     rcon_breakdown_mode=server_data.get("rcon_breakdown_mode", "transition").lower(),
                     rcon_breakdown_interval=int(server_data.get("rcon_breakdown_interval", 300)),
-                    
                     # Metrics and alert configuration
                     collect_ups=server_data.get("collect_ups", True),
                     collect_evolution=server_data.get("collect_evolution", True),
@@ -281,7 +276,6 @@ def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]
                     ups_recovery_threshold=float(server_data.get("ups_recovery_threshold", 58.0)),
                     alert_cooldown=int(server_data.get("alert_cooldown", 300)),
                     ups_ema_alpha=float(server_data.get("ups_ema_alpha", 0.2)),
-                    
                 )
 
             except Exception as e:
@@ -314,26 +308,25 @@ def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]
         logger.error("failed_to_parse_servers_yaml", path=str(yaml_path), error=str(e))
         return None
 
-
 def parse_servers_from_json(json_str: Optional[str]) -> Optional[Dict[str, ServerConfig]]:
     """
     Parse servers from JSON environment variable.
 
     Expected format:
     {
-        "prod": {
-            "name": "Production",
-            "rcon_host": "factorio-prod",
-            "rcon_port": 27015,
-            "rcon_password": "secret123"
-        }
+      "prod": {
+        "name": "Production",
+        "rcon_host": "factorio-prod",
+        "rcon_port": 27015,
+        "rcon_password": "secret123"
+      }
     }
 
     Args:
-        json_str: JSON string with server configurations
+    json_str: JSON string with server configurations
 
     Returns:
-        Dictionary of tag -> ServerConfig or None if parsing fails or input is None.
+    Dictionary of tag -> ServerConfig or None if parsing fails or input is None.
     """
     if not json_str:
         return None
@@ -378,7 +371,6 @@ def parse_servers_from_json(json_str: Optional[str]) -> Optional[Dict[str, Serve
         logger.error("failed_to_parse_servers_json", error=str(e))
         return None
 
-
 def parse_webhook_channels(channels_str: Optional[str]) -> Dict[str, str]:
     """
     Parse webhook channels from JSON string.
@@ -394,7 +386,6 @@ def parse_webhook_channels(channels_str: Optional[str]) -> Dict[str, str]:
     except (json.JSONDecodeError, TypeError):
         return {}
 
-
 def parse_pattern_files(files_str: Optional[str]) -> Optional[List[str]]:
     """
     Parse pattern files from JSON string.
@@ -409,7 +400,6 @@ def parse_pattern_files(files_str: Optional[str]) -> Optional[List[str]]:
         return files
     except (json.JSONDecodeError, TypeError):
         return None
-
 
 @dataclass
 class Config:
@@ -464,7 +454,6 @@ class Config:
         Check if multi-server mode is enabled.
         """
         return self.servers is not None and len(self.servers) > 0
-
 
 def load_config() -> Config:
     """
@@ -570,16 +559,15 @@ def load_config() -> Config:
         servers=servers,  # Multi-server support
     )
 
-
 def validate_config(config: Config) -> bool:
     """
     Validate configuration values.
 
     Args:
-        config: Config object to validate
+    config: Config object to validate
 
     Returns:
-        True if valid, False otherwise.
+    True if valid, False otherwise.
     """
     # Validate Discord configuration
     if config.discord_webhook_url is not None:

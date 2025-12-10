@@ -1,16 +1,16 @@
 # Copyright (c) 2025 Stephen Clau
-#
+
 # This file is part of Factorio ISR.
-#
+
 # Factorio ISR is dual-licensed:
-#
+
 # 1. GNU Affero General Public License v3.0 (AGPL-3.0)
-#    See LICENSE file for full terms
-#
+# See LICENSE file for full terms
+
 # 2. Commercial License
-#    For proprietary use without AGPL requirements
-#    Contact: licensing@laudiversified.com
-#
+# For proprietary use without AGPL requirements
+# Contact: licensing@laudiversified.com
+
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
 """
@@ -29,6 +29,7 @@ SECURITY HARDENING (Runtime Defenses):
 """
 
 from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -42,7 +43,6 @@ try:
     from .security_monitor import SecurityMonitor, Infraction
 except ImportError:
     from security_monitor import SecurityMonitor, Infraction  # type: ignore
-
 
 # SECURITY: Try to use google-re2 for ReDoS immunity
 try:
@@ -115,6 +115,7 @@ class FactorioEvent:
     # - mentions: list[str]
     # - mention_type: "user" | "group" | "mixed"
     metadata: Dict[str, Any] = field(default_factory=dict)
+    server_tag: Optional[str] = None  # NEW: Which server did this event come from?
 
 
 # Type alias for compiled pattern storage
@@ -128,8 +129,8 @@ class EventParser:
         self,
         patterns_dir: Path = Path("patterns"),
         pattern_files: Optional[List[str]] = None,
-        security_monitor: Optional[SecurityMonitor] = None, 
-        security_channel: Optional[str] = None,  
+        security_monitor: Optional[SecurityMonitor] = None,
+        security_channel: Optional[str] = None,
     ) -> None:
         """
         Initialize event parser with pattern loader.
@@ -143,13 +144,11 @@ class EventParser:
 
         self.pattern_loader = PatternLoader(patterns_dir)
         self.compiled_patterns: CompiledPatternMap = {}
-        
         self.security_monitor = security_monitor or SecurityMonitor()
         self.security_channel = security_channel or "security-alerts"
 
         count = self.pattern_loader.load_patterns(pattern_files)
         logger.info("event_parser_initialized", patterns_loaded=count)
-
         self._compile_patterns()
 
     def _compile_patterns(self) -> None:
@@ -233,6 +232,7 @@ class EventParser:
                 timeout_seconds=REGEX_TIMEOUT_SECONDS
             )
             return None
+
         except AttributeError:
             # signal.alarm not available (Windows)
             logger.debug("signal_alarm_unavailable", using_untimed_regex=True)
@@ -241,6 +241,7 @@ class EventParser:
             except Exception as exc:
                 logger.warning("regex_search_failed", pattern=pattern_name, error=str(exc))
                 return None
+
         except Exception as exc:
             logger.error(
                 "unexpected_regex_error",
@@ -250,12 +251,13 @@ class EventParser:
             )
             return None
 
-    def parse_line(self, line: str) -> Optional[FactorioEvent]:
+    def parse_line(self, line: str, server_tag: Optional[str] = None) -> Optional[FactorioEvent]:
         """
         Parse a single log line into a FactorioEvent.
 
         Args:
             line: Raw log line from console.log.
+            server_tag: Which server this line came from (optional, for multi-server routing).
 
         Returns:
             FactorioEvent if line matches a pattern, None otherwise.
@@ -280,8 +282,9 @@ class EventParser:
 
         for pattern_name, (compiled_regex, pattern_config) in self.compiled_patterns.items():
             match = self._safe_regex_search(compiled_regex, line, pattern_name)
+
             if match:
-                event = self._create_event(line, match, pattern_config)
+                event = self._create_event(line, match, pattern_config, server_tag)
                 break
 
         if not event:
@@ -302,39 +305,11 @@ class EventParser:
                     text=event.message,
                     player_name=event.player_name,
                 )
+
                 if infraction:
                     return self._create_security_alert_event(event, infraction)
 
-        return event    
-            
-        # Try each pattern in (priority) order as supplied by PatternLoader.
-        for pattern_name, (compiled_regex, pattern_config) in self.compiled_patterns.items():
-            match = self._safe_regex_search(compiled_regex, line, pattern_name)
-            if match:
-                return self._create_event(line, match, pattern_config)
-            
-                if event and event.player_name:
-                    # Check if player is banned
-                    if self.security_monitor.is_banned(event.player_name):
-                        logger.warning(
-                            "blocked_event_from_banned_player",
-                            player=event.player_name,
-                            type=event.event_type.value,
-                        )
-                        return None  # Silently drop events from banned players
-
-                    # Check for malicious patterns in message
-                    if event.message:
-                        infraction = self.security_monitor.check_malicious_pattern(
-                            text=event.message,
-                            player_name=event.player_name,
-                        )
-
-                        if infraction:
-                            # Create security alert event
-                            return self._create_security_alert_event(event, infraction)
-
-        return None
+        return event
 
     def _create_security_alert_event(
         self,
@@ -356,7 +331,7 @@ class EventParser:
             f"🚨 **SECURITY ALERT** 🚨",
             f"**Player:** {infraction.player_name}",
             f"**Severity:** {infraction.severity.upper()}",
-            f"**Type:** {infraction.metadata.get("description")}",
+            f"**Type:** {infraction.metadata.get('description')}",
             f"**Matched:** `{infraction.metadata.get('match', 'N/A')}`",
             f"**Action:** {'BANNED' if infraction.auto_banned else 'LOGGED'}",
             f"**Time:** {infraction.timestamp.strftime('%Y-%m-%d %H:%M:%S')}",
@@ -379,6 +354,7 @@ class EventParser:
                 "severity": infraction.severity,
                 "auto_banned": infraction.auto_banned,
             },
+            server_tag=original_event.server_tag,
         )
 
     def check_rate_limit_for_event(
@@ -399,7 +375,6 @@ class EventParser:
 
         # Determine action type from event metadata
         action_type = "chat_message"  # Default
-
         if event.metadata.get("mentions"):
             mention_type = event.metadata.get("mention_type", "user")
             if mention_type == "group":
@@ -411,8 +386,6 @@ class EventParser:
             action_type=action_type,
             player_name=event.player_name,
         )
-
-
 
     def _extract_mentions(self, message: Optional[str]) -> List[str]:
         """
@@ -458,8 +431,10 @@ class EventParser:
 
         if has_groups and has_users:
             return "mixed"
+
         if has_groups:
             return "group"
+
         return "user"
 
     def _sanitize_player_name(self, player_name: str) -> str:
@@ -539,14 +514,17 @@ class EventParser:
         line: str,
         match: re.Match[str],
         pattern: EventPattern,
+        server_tag: Optional[str] = None,
     ) -> FactorioEvent:
         """
         Create a FactorioEvent from a regex match with channel routing and mention detection.
         """
         if not isinstance(line, str):
             raise AssertionError("line must be str")
+
         if not isinstance(match, re.Match):
             raise AssertionError("match must be re.Match")
+
         if not isinstance(pattern, EventPattern):
             raise AssertionError("pattern must be EventPattern")
 
@@ -574,6 +552,7 @@ class EventParser:
                 message = None
 
         event_type = self._map_event_type(pattern.event_type)
+
         formatted_message = self._format_message(
             pattern.message_template,
             player_name,
@@ -611,6 +590,7 @@ class EventParser:
             emoji=pattern.emoji,
             formatted_message=formatted_message,
             metadata=metadata,
+            server_tag=server_tag,  # NEW: Attach server context
         )
 
         logger.debug(
@@ -619,6 +599,7 @@ class EventParser:
             player=player_name,
             pattern=pattern.name,
             channel=pattern.channel,
+            server_tag=server_tag,
         )
 
         return event

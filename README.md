@@ -37,12 +37,23 @@ Real-time Factorio server event monitoring with Discord integration. Stream JOIN
 ## 🚀 Quick Start
 ### Use Docker Compose
 ```bash
+# Create nonroot user on your host
+sudo useradd -m -s /bin/bash someuser
+
+# Add user to Docker group
+sudo usermod -aG docker someuser
+
+# Grab the UID/ID
+id someuser
+
 # Clone the repository
 git clone https://github.com/stephenclau/factorio-isr.git
 cd factorio-isr
 
 # Configure Docker Compose
-mv docker-compose.yml.sidecar docker-compose.yml
+mv docker-compose.yml.sidecar /path/to/your/working/dir/docker-compose.yml
+mv /config/ to /path/to/your/working/dir
+mv /patterns/ to /path/to/your/working/dir
 
 # update docker-compose.yml to your needs
 
