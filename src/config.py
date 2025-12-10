@@ -5,11 +5,11 @@
 # Factorio ISR is dual-licensed:
 
 # 1. GNU Affero General Public License v3.0 (AGPL-3.0)
-# See LICENSE file for full terms
+#    See LICENSE file for full terms
 
 # 2. Commercial License
-# For proprietary use without AGPL requirements
-# Contact: licensing@laudiversified.com
+#    For proprietary use without AGPL requirements
+#    Contact: licensing@laudiversified.com
 
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
@@ -21,6 +21,7 @@ Multi-server architecture:
 - Discord bot token is REQUIRED (bot mode only)
 - Per-server event channels and RCON endpoints
 - Unified pattern loading across all servers
+- Docker secrets support: reads from /run/secrets/* and env vars
 """
 
 from dataclasses import dataclass, field
@@ -31,6 +32,111 @@ import yaml
 import structlog
 
 logger = structlog.get_logger()
+
+
+def _read_docker_secret(secret_name: str) -> Optional[str]:
+    """
+    Read a secret from Docker secrets location.
+    
+    Docker Swarm/Kubernetes mounts secrets at /run/secrets/{secret_name}.
+    Falls back to environment variable if secret file not found.
+    
+    Args:
+        secret_name: Name of the secret (e.g., 'discord_token')
+        
+    Returns:
+        Secret value or None if not found
+    """
+    secret_path = Path(f"/run/secrets/{secret_name}")
+    
+    if secret_path.exists():
+        try:
+            return secret_path.read_text().strip()
+        except (IOError, OSError) as e:
+            logger.warning("docker_secret_read_error", secret=secret_name, error=str(e))
+            return None
+    
+    return None
+
+
+def get_config_value(
+    env_var: str,
+    secret_name: Optional[str] = None,
+    required: bool = False,
+    default: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Get configuration value from environment variables or Docker secrets.
+    
+    Tries in order:
+    1. Docker secret file at /run/secrets/{secret_name}
+    2. Environment variable {env_var}
+    3. Default value if provided
+    4. Raise error if required and not found
+    
+    This pattern enables:
+    - Secure secret passing in Docker/Kubernetes
+    - Standard environment variable fallback
+    - Type-safe defaults
+    - Clear error reporting for missing required values
+    
+    Example usage:
+        token = get_config_value(
+            env_var="DISCORD_BOT_TOKEN",
+            secret_name="discord_bot_token",
+            required=True,
+        )
+        rcon_password = get_config_value(
+            env_var="RCON_PASSWORD",
+            secret_name="rcon_password",  # reads from /run/secrets/rcon_password
+            required=True,
+        )
+        debug_mode = get_config_value(
+            env_var="DEBUG",
+            default="false",
+        )
+    
+    Args:
+        env_var: Environment variable name (e.g., 'DISCORD_BOT_TOKEN')
+        secret_name: Docker secret name (e.g., 'discord_token'). If not provided, uses env_var lowercased
+        required: If True, raises ValueError when value not found
+        default: Default value if not found in env or secrets
+        
+    Returns:
+        Configuration value from secret, env var, or default
+        
+    Raises:
+        ValueError: If required=True and value not found
+    """
+    # Use secret_name from parameter or derive from env_var
+    if secret_name is None:
+        secret_name = env_var.lower()
+    
+    # Try Docker secret first
+    secret_value = _read_docker_secret(secret_name)
+    if secret_value is not None:
+        logger.debug("config_value_loaded_from_secret", source="docker_secret", var=env_var)
+        return secret_value
+    
+    # Try environment variable
+    env_value = os.getenv(env_var)
+    if env_value is not None:
+        logger.debug("config_value_loaded_from_env", source="environment", var=env_var)
+        return env_value
+    
+    # Use default if provided
+    if default is not None:
+        logger.debug("config_value_loaded_from_default", source="default", var=env_var)
+        return default
+    
+    # Raise error if required
+    if required:
+        raise ValueError(
+            f"Required configuration value not found for '{env_var}'. "
+            f"Checked: Docker secret '{secret_name}', environment variable '{env_var}'"
+        )
+    
+    return None
 
 
 def _safe_int(value: Any, field_name: str, default: int) -> int:
@@ -188,287 +294,248 @@ class Config:
 
     # Health check configuration
     health_check_host: str = "0.0.0.0"
-    """Health check server bind address."""
+    """Host to bind health check server to. Default: 0.0.0.0"""
 
     health_check_port: int = 8080
-    """Health check server port."""
+    """Port to bind health check server to. Default: 8080"""
 
     # Logging configuration
     log_level: str = "info"
-    """Logging level: debug, info, warning, error, critical."""
+    """Logging level: debug, info, warning, error. Default: info"""
 
     log_format: str = "console"
-    """Logging format: 'console' or 'json'."""
-
-    # Optional test mode
-    send_test_message: bool = False
-    """Send test message on Discord connect (for validation)."""
+    """Logging format: console or json. Default: console"""
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
-        # Convert log_path to Path if needed
-        if isinstance(self.factorio_log_path, str):
-            self.factorio_log_path = Path(self.factorio_log_path)
-
-        # Convert patterns_dir to Path if needed
-        if isinstance(self.patterns_dir, str):
-            self.patterns_dir = Path(self.patterns_dir)
-
-        # Validate servers config is present
-        if not self.servers:
-            raise ValueError("servers configuration is REQUIRED - multi-server mode is mandatory")
-
-        if not isinstance(self.servers, dict) or len(self.servers) == 0:
-            raise ValueError("servers must be a non-empty dictionary")
-
-        # Validate each server config
-        for tag, server_config in self.servers.items():
-            if not isinstance(server_config, ServerConfig):
-                raise ValueError(f"servers['{tag}'] must be ServerConfig instance")
-
-            if server_config.tag != tag:
-                raise ValueError(
-                    f"Server tag mismatch: key '{tag}' vs config.tag '{server_config.tag}'"
-                )
-
-        # Validate Discord bot token
         if not self.discord_bot_token:
-            raise ValueError("discord_bot_token is REQUIRED (bot mode only)")
+            raise ValueError("discord_bot_token is REQUIRED")
 
-        # Warn if webhook URL is provided (legacy)
-        if self.discord_webhook_url:
-            logger.warning(
-                "webhook_mode_deprecated",
-                message="Webhook mode is deprecated - use discord_bot_token for bot mode",
+        if self.servers is None or not self.servers:
+            raise ValueError(
+                "servers configuration is REQUIRED. "
+                "Multi-server mode requires servers.yml with at least one server."
             )
 
-        # Validate logging settings
-        valid_levels = {"debug", "info", "warning", "error", "critical"}
-        if self.log_level.lower() not in valid_levels:
-            raise ValueError(f"Invalid log_level: {self.log_level}")
+        if not isinstance(self.servers, dict):
+            raise ValueError(
+                f"servers must be a non-empty dictionary, got {type(self.servers).__name__}"
+            )
 
+        # Validate log level
+        valid_levels = {"debug", "info", "warning", "error"}
+        if self.log_level.lower() not in valid_levels:
+            raise ValueError(
+                f"Invalid log_level '{self.log_level}'. Must be one of: {', '.join(valid_levels)}"
+            )
+
+        # Validate health check port
+        if not 1 <= self.health_check_port <= 65535:
+            raise ValueError(
+                f"Invalid health_check_port: {self.health_check_port}. Must be 1-65535"
+            )
+
+        # Validate log format
         valid_formats = {"console", "json"}
         if self.log_format.lower() not in valid_formats:
-            raise ValueError(f"Invalid log_format: {self.log_format}")
+            raise ValueError(
+                f"Invalid log_format '{self.log_format}'. Must be one of: {', '.join(valid_formats)}"
+            )
 
-        # Validate health check settings
-        if not 1 <= self.health_check_port <= 65535:
-            raise ValueError(f"Invalid health_check_port: {self.health_check_port}")
 
-        logger.info(
-            "config_validated",
-            servers_count=len(self.servers),
-            patterns_dir=str(self.patterns_dir),
-            log_level=self.log_level,
-        )
+def _expand_env_vars(value: str) -> str:
+    """
+    Expand environment variables in a string.
+    
+    Supports ${VAR_NAME} syntax.
+    Falls back to original string if variable not found.
+    
+    Args:
+        value: String potentially containing ${VAR_NAME} references
+        
+    Returns:
+        String with environment variables expanded
+    """
+    if not isinstance(value, str):
+        return value
+    
+    import re
+    
+    def replace_var(match: Any) -> str:
+        var_name = match.group(1)
+        return os.getenv(var_name, match.group(0))  # Fall back to original if not found
+    
+    return re.sub(r'\$\{([^}]+)\}', replace_var, value)
 
 
 def load_config() -> Config:
     """
-    Load configuration from environment and servers.yml.
-
-    Environment variables:
-    - DISCORD_BOT_TOKEN: Discord bot token (required)
-    - BOT_NAME: Discord bot display name (default: "Factorio ISR")
-    - BOT_AVATAR_URL: Discord bot avatar URL (optional)
-    - FACTORIO_LOG_PATH: Legacy single server log path (deprecated)
-    - PATTERNS_DIR: Event patterns directory (default: config/patterns)
-    - PATTERN_FILES: Comma-separated pattern filenames to load (optional)
-    - HEALTH_CHECK_HOST: Health check bind address (default: 0.0.0.0)
-    - HEALTH_CHECK_PORT: Health check port (default: 8080)
-    - LOG_LEVEL: Logging level (default: info)
-    - LOG_FORMAT: Logging format (default: console)
-    - SEND_TEST_MESSAGE: Send test Discord message (default: false)
-    - CONFIG_DIR: Configuration directory (default: config)
-
-    servers.yml location: CONFIG_DIR/servers.yml
-
+    Load configuration from environment variables and servers.yml.
+    
+    Priority order for each config value:
+    1. Environment variable (or Docker secret for passwords)
+    2. servers.yml YAML file
+    3. Hardcoded defaults
+    
     Returns:
-        Config instance with all settings loaded and validated.
-
+        Fully populated Config object with validation
+        
     Raises:
-        ValueError: If required configuration is missing or invalid.
-        FileNotFoundError: If servers.yml does not exist.
+        FileNotFoundError: If servers.yml not found
+        ValueError: If required config values missing
+        yaml.YAMLError: If servers.yml invalid YAML
     """
-    config_dir = Path(os.getenv("CONFIG_DIR", "config"))
-    servers_yml = config_dir / "servers.yml"
-
-    logger.info("loading_config", config_dir=str(config_dir))
-
-    # Load servers.yml (REQUIRED)
-    if not servers_yml.exists():
+    # Get config directory (defaults to current working directory)
+    config_dir = os.getenv("CONFIG_DIR", ".")
+    servers_yml_path = Path(config_dir) / "servers.yml"
+    
+    if not servers_yml_path.exists():
         raise FileNotFoundError(
-            f"servers.yml not found at {servers_yml}. "
-            "Multi-server configuration is REQUIRED. "
-            f"Create {servers_yml} with at least one server definition."
+            f"servers.yml not found at {servers_yml_path}. "
+            f"Multi-server mode requires servers configuration."
         )
-
-    try:
-        with open(servers_yml, "r") as f:
-            servers_data = yaml.safe_load(f)
-
-        if not servers_data or "servers" not in servers_data:
-            raise ValueError("servers.yml must contain 'servers' section")
-
-        servers_dict: Dict[str, ServerConfig] = {}
-
-        for tag, server_def in servers_data["servers"].items():
-            if not isinstance(server_def, dict):
-                raise ValueError(f"servers.{tag} must be a dictionary")
-
-            # Convert log_path to absolute if relative
-            log_path = Path(server_def.get("log_path", "console.log"))
-            if not log_path.is_absolute():
-                log_path = config_dir / log_path
-
-            # Convert env vars in RCON password (support ${VAR_NAME})
-            rcon_password = server_def.get("rcon_password", "")
-            if isinstance(rcon_password, str) and rcon_password.startswith("${") and rcon_password.endswith("}"):
-                env_var = rcon_password[2:-1]
-                rcon_password = os.getenv(env_var, "")
-                if not rcon_password:
-                    raise ValueError(
-                        f"servers.{tag}: rcon_password references ${env_var} but it's not set"
-                    )
-
-            # FIX: Use safe conversion functions for all int fields
-            servers_dict[tag] = ServerConfig(
-                name=server_def.get("name", tag),
-                tag=tag,
-                log_path=log_path,
-                rcon_host=server_def.get("rcon_host", "localhost"),
-                rcon_port=_safe_int(server_def.get("rcon_port"), "rcon_port", 27015),
-                rcon_password=rcon_password,
-                event_channel_id=_safe_int(server_def.get("event_channel_id"), "event_channel_id", 0),
-                rcon_breakdown_mode=server_def.get("rcon_breakdown_mode", "transition").lower(),
-                rcon_breakdown_interval=_safe_int(server_def.get("rcon_breakdown_interval"), "rcon_breakdown_interval", 300),
-            )
-
-        logger.info(
-            "servers_yml_loaded",
-            servers_count=len(servers_dict),
-            servers=list(servers_dict.keys()),
+    
+    # Load servers configuration from YAML
+    with open(servers_yml_path) as f:
+        servers_data = yaml.safe_load(f)
+    
+    if not servers_data or "servers" not in servers_data:
+        raise ValueError("servers.yml must contain 'servers' key with server definitions")
+    
+    # Parse servers into ServerConfig objects
+    servers: Dict[str, ServerConfig] = {}
+    
+    for tag, server_data in servers_data["servers"].items():
+        # Expand environment variables in rcon_password
+        rcon_password = server_data.get("rcon_password", "")
+        rcon_password = _expand_env_vars(rcon_password)
+        
+        # Read from Docker secret if available
+        secret_password = get_config_value(
+            env_var=f"RCON_PASSWORD_{tag.upper()}",
+            secret_name=f"rcon_password_{tag}",
+            required=False,
         )
-
-    except yaml.YAMLError as e:
-        raise ValueError(f"servers.yml parse error: {e}")
-    except Exception as e:
-        raise ValueError(f"Failed to load servers.yml: {e}")
-
-    # Load from environment
-    discord_bot_token = os.getenv("DISCORD_BOT_TOKEN")
-    if not discord_bot_token:
-        raise ValueError(
-            "DISCORD_BOT_TOKEN environment variable is REQUIRED (bot mode only)"
+        if secret_password:
+            rcon_password = secret_password
+        
+        server_config = ServerConfig(
+            name=server_data.get("name", tag),
+            tag=tag,
+            log_path=Path(server_data.get("log_path", "console.log")),
+            rcon_host=server_data.get("rcon_host", "localhost"),
+            rcon_port=_safe_int(server_data.get("rcon_port", 27015), f"Server {tag} rcon_port", 27015),
+            rcon_password=rcon_password,
+            event_channel_id=int(server_data.get("event_channel_id", 0)),
+            rcon_breakdown_mode=server_data.get("rcon_breakdown_mode", "transition"),
+            rcon_breakdown_interval=_safe_int(
+                server_data.get("rcon_breakdown_interval", 300),
+                f"Server {tag} rcon_breakdown_interval",
+                300,
+            ),
         )
-
-    bot_name = os.getenv("BOT_NAME", "Factorio ISR")
-    bot_avatar_url = os.getenv("BOT_AVATAR_URL")
-
-    factorio_log_path = Path(
-        os.getenv("FACTORIO_LOG_PATH", "/tmp/console.log")
+        servers[tag] = server_config
+    
+    # Load Discord bot token from secrets/env
+    discord_bot_token = get_config_value(
+        env_var="DISCORD_BOT_TOKEN",
+        secret_name="discord_bot_token",
+        required=True,
     )
-
-    patterns_dir = Path(os.getenv("PATTERNS_DIR", str(config_dir / "patterns")))
-
-    pattern_files_str = os.getenv("PATTERN_FILES")
-    pattern_files = (
-        [f.strip() for f in pattern_files_str.split(",")]
-        if pattern_files_str
-        else None
+    
+    # Load other config from environment with defaults
+    bot_name = get_config_value(
+        env_var="BOT_NAME",
+        default="Factorio ISR",
     )
-
-    health_check_host = os.getenv("HEALTH_CHECK_HOST", "0.0.0.0")
-    health_check_port_str = os.getenv("HEALTH_CHECK_PORT", "8080")
-
-    log_level = os.getenv("LOG_LEVEL", "info")
-    log_format = os.getenv("LOG_FORMAT", "console")
-
-    send_test_message = os.getenv("SEND_TEST_MESSAGE", "false").lower() in (
-        "true",
-        "1",
-        "yes",
+    
+    bot_avatar_url = get_config_value(
+        env_var="BOT_AVATAR_URL",
+        default=None,
     )
-
-    # FIX: Use safe conversion for port
-    health_check_port = _safe_int(health_check_port_str, "health_check_port", 8080)
-
-    logger.info(
-        "config_loaded_from_env",
-        bot_name=bot_name,
-        health_check_port=health_check_port,
-        log_level=log_level,
+    
+    health_check_host = get_config_value(
+        env_var="HEALTH_CHECK_HOST",
+        default="0.0.0.0",
     )
-
-    # Create and validate Config
+    
+    health_check_port = _safe_int(
+        get_config_value(
+            env_var="HEALTH_CHECK_PORT",
+            default="8080",
+        ),
+        "health_check_port",
+        8080,
+    )
+    
+    log_level = get_config_value(
+        env_var="LOG_LEVEL",
+        default="info",
+    )
+    
+    log_format = get_config_value(
+        env_var="LOG_FORMAT",
+        default="console",
+    )
+    
+    patterns_dir = Path(
+        get_config_value(
+            env_var="PATTERNS_DIR",
+            default="config/patterns",
+        )
+    )
+    
+    # Create and return Config object
     config = Config(
-        discord_bot_token=discord_bot_token,
-        bot_name=bot_name,
+        discord_bot_token=discord_bot_token or "",
+        bot_name=bot_name or "Factorio ISR",
         bot_avatar_url=bot_avatar_url,
-        factorio_log_path=factorio_log_path,
-        servers=servers_dict,
-        patterns_dir=patterns_dir,
-        pattern_files=pattern_files,
-        health_check_host=health_check_host,
+        servers=servers if servers else None,
+        health_check_host=health_check_host or "0.0.0.0",
         health_check_port=health_check_port,
-        log_level=log_level,
-        log_format=log_format,
-        send_test_message=send_test_message,
+        log_level=log_level or "info",
+        log_format=log_format or "console",
+        patterns_dir=patterns_dir,
     )
-
+    
     return config
 
 
 def validate_config(config: Config) -> bool:
     """
-    Validate configuration consistency.
-
+    Validate a Config object for completeness.
+    
     Args:
-        config: Config instance to validate
-
+        config: Config object to validate
+        
     Returns:
-        True if config is valid, False otherwise.
+        True if config is valid, False otherwise
     """
     try:
-        # Check servers are non-empty
-        if not config.servers or len(config.servers) == 0:
-            logger.error("config_validation_failed", reason="no_servers_configured")
-            return False
-
-        # Check each server has required fields
-        for tag, server_config in config.servers.items():
-            if not server_config.rcon_host or not server_config.rcon_port:
-                logger.error(
-                    "config_validation_failed",
-                    reason=f"server_{tag}_missing_rcon",
-                )
-                return False
-
-            if not server_config.event_channel_id:
-                logger.error(
-                    "config_validation_failed",
-                    reason=f"server_{tag}_missing_event_channel_id",
-                )
-                return False
-
-        # Check Discord bot token
+        # Try to access config in __post_init__ validation happens during Config creation
         if not config.discord_bot_token:
-            logger.error(
-                "config_validation_failed", reason="missing_discord_bot_token"
-            )
+            logger.error("config_validation_failed_no_token")
             return False
-
-        # Check patterns directory exists
+        
+        if not config.servers:
+            logger.error("config_validation_failed_no_servers")
+            return False
+        
+        # Validate each server has event_channel_id set
+        for tag, server in config.servers.items():
+            if not server.event_channel_id or server.event_channel_id == 0:
+                logger.error("config_validation_failed_no_event_channel", server=tag)
+                return False
+        
+        # Warn if patterns dir missing (but don't fail)
         if not config.patterns_dir.exists():
             logger.warning(
-                "patterns_directory_not_found",
-                path=str(config.patterns_dir),
+                "config_patterns_dir_missing",
+                patterns_dir=str(config.patterns_dir),
             )
-            # Don't fail - patterns will be loaded empty or created on demand
-
-        logger.info("config_validation_passed")
+        
         return True
-
+    
     except Exception as e:
-        logger.error("config_validation_error", error=str(e), exc_info=True)
+        logger.error("config_validation_error", error=str(e))
         return False
