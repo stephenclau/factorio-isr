@@ -468,27 +468,28 @@ def load_config() -> Config:
     servers: Dict[str, ServerConfig] = {}
     
     for tag, server_data in servers_data["servers"].items():
+        
         # Expand environment variables in rcon_password
         rcon_password = server_data.get("rcon_password", "")
         rcon_password = _expand_env_vars(rcon_password)
         
-        # Read from Docker secret if available
-        secret_password = get_config_value(
-            env_var=f"RCON_PASSWORD_{tag.upper()}",
-            secret_name=f"rcon_password_{tag}",
-            required=False,
-        )
-        if secret_password:
-            rcon_password = secret_password
-        elif not rcon_password:  # Only fallback if we don't have a password yet
-            generic_password = get_config_value(
-                env_var="RCON_PASSWORD",
-                secret_name="rcon_password",  # reads from /run/secrets/rcon_password
-                required=False,
-            )
-            if generic_password:
-                rcon_password = generic_password
-        
+        # If password is missing or empty in YAML, try secrets
+        if not rcon_password:
+                # Try server-specific secret first: RCON_PASSWORD_{TAG}
+                secret_name = f"RCON_PASSWORD_{tag.upper()}"
+                rcon_password = _read_docker_secret(secret_name)
+
+                # Fall back to generic RCON_PASSWORD
+                if not rcon_password:
+                    rcon_password = _read_docker_secret("RCON_PASSWORD")
+
+                if rcon_password:
+                    logger.info(
+                    "rcon_password_loaded_from_secrets",
+                    tag=tag,
+                    secret_name=secret_name if _read_docker_secret(secret_name) else "RCON_PASSWORD",
+                )                
+        rcon_password_value = rcon_password or ""
         
         server_config = ServerConfig(
             tag=tag,
@@ -496,7 +497,7 @@ def load_config() -> Config:
             log_path=Path(server_data.get("log_path", "console.log")) if server_data.get("log_path") else None,
             rcon_host=server_data.get("rcon_host", "localhost"),
             rcon_port=_safe_int(server_data.get("rcon_port", 27015), f"Server {tag} rcon_port", 27015),
-            rcon_password=rcon_password,
+            rcon_password=rcon_password_value,
             description=server_data.get("description"),
             event_channel_id=server_data.get("event_channel_id"),
             stats_interval=_safe_int(server_data.get("stats_interval", 300), f"Server {tag} stats_interval", 300),
