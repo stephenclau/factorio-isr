@@ -447,8 +447,8 @@ def load_config() -> Config:
         ValueError: If required config values missing
         yaml.YAMLError: If servers.yml invalid YAML
     """
-    # Get config directory (defaults to current working directory)
-    config_dir = os.getenv("CONFIG_DIR", ".")
+    # Get config directory (defaults to /config for Docker deployment)
+    config_dir = os.getenv("CONFIG_DIR", "/config")
     servers_yml_path = Path(config_dir) / "servers.yml"
     
     if not servers_yml_path.exists():
