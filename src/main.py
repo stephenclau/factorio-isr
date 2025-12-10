@@ -219,6 +219,11 @@ class Application:
         self.discord = DiscordInterfaceFactory.create_interface(self.config)
         assert self.discord is not None
 
+        # Setup ServerManager and wire to bot BEFORE Discord connects
+        # This ensures connection notification can access server channels
+        await self._setup_multi_server_manager()
+
+        # NOW connect Discord (connection notification will have server_manager available)
         await self.discord.connect()
 
         # Optional: Test connection (skip for production to avoid test messages)
@@ -234,8 +239,8 @@ class Application:
         # Event parser must exist from setup
         assert self.event_parser is not None, "Event parser not initialized"
 
-        # Start multi-server mode (wires Discord bot + per-server RCON + stats)
-        await self._start_multi_server_mode()
+        # Start RCON clients and stats collectors
+        await self._start_multi_server_components()
 
         # Start multi-server log tailer
         self.logtailer = MultiServerLogTailer(
@@ -254,8 +259,13 @@ class Application:
 
         logger.info("application_running")
 
-    async def _start_multi_server_mode(self) -> None:
-        """Initialize ServerManager and add all configured servers."""
+    async def _setup_multi_server_manager(self) -> None:
+        """
+        Initialize ServerManager and wire to Discord bot.
+        
+        This is called BEFORE Discord connects to ensure the bot
+        has server_manager available for connection notifications.
+        """
         assert self.config is not None
         assert self.discord is not None
 
@@ -292,15 +302,36 @@ class Application:
         # Create ServerManager
         self.server_manager = ServerManager(discord_interface=self.discord)
 
-        logger.info("server_manager_created")
+        logger.info("server_manager_initialized")
 
-        # Add all servers from config
+        # Validate servers exist
         if not self.config.servers:
             logger.error(
                 "no_servers_configured",
                 message="config/servers.yml has no servers defined",
             )
             raise ValueError("No servers configured in config/servers.yml")
+
+        # Wire ServerManager to bot BEFORE connecting
+        # This allows connection notification to access server channels
+        bot.set_server_manager(self.server_manager)
+
+        logger.info("server_manager_wired_to_bot")
+
+        # Apply per-server breakdown configuration to the bot
+        bot._apply_server_breakdown_config()
+
+        logger.info("server_breakdown_config_applied_to_bot")
+
+    async def _start_multi_server_components(self) -> None:
+        """
+        Add servers to ServerManager and start RCON clients.
+        
+        This is called AFTER Discord connects to start the actual
+        RCON connections and stats collection.
+        """
+        assert self.config is not None
+        assert self.server_manager is not None
 
         added_servers: list[str] = []
         failed_servers: list[str] = []
@@ -311,7 +342,7 @@ class Application:
                 added_servers.append(f"{tag} ({server_config.name})")
 
                 logger.info(
-                    "server_added_to_manager",
+                    "adding_server",
                     tag=tag,
                     name=server_config.name,
                     host=server_config.rcon_host,
@@ -328,19 +359,9 @@ class Application:
                     exc_info=True,
                 )
 
-        # Wire ServerManager to bot so commands and presence can reach it
-        bot.set_server_manager(self.server_manager)
-
-        logger.info("server_manager_wired_to_bot")
-
-        # Apply per-server breakdown configuration to the bot
-        bot._apply_server_breakdown_config()
-
-        logger.info("server_breakdown_config_applied_to_bot")
-
         # Report summary
         logger.info(
-            "multi_server_mode_initialized",
+            "multi_server_components_started",
             total_configured=len(self.config.servers),
             added=len(added_servers),
             failed=len(failed_servers),
