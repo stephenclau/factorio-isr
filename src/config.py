@@ -203,14 +203,11 @@ def _safe_float(value: Any, field_name: str, default: float) -> float:
 class ServerConfig:
     """Per-server configuration."""
 
-    name: str
-    """Server friendly name (e.g., 'Production', 'Staging')."""
-
     tag: str
     """Server tag for routing (e.g., 'prod', 'dev'). Must be unique across servers.yml."""
 
-    log_path: Path
-    """Path to Factorio console.log file for this server."""
+    name: str
+    """Server friendly name (e.g., 'Production', 'Staging')."""
 
     rcon_host: str
     """RCON host address."""
@@ -221,8 +218,18 @@ class ServerConfig:
     rcon_password: str
     """RCON password."""
 
-    event_channel_id: int
+    # Optional fields with defaults
+    description: Optional[str] = None
+    """Optional server description."""
+
+    log_path: Optional[Path] = None
+    """Path to Factorio console.log file for this server."""
+
+    event_channel_id: Optional[int] = None
     """Discord channel ID for game events (joins, chats, deaths, etc.)."""
+
+    stats_interval: int = 300
+    """Interval in seconds between stats collection. Default: 300s (5 min)."""
 
     rcon_breakdown_mode: str = "transition"
     """RCON status reporting mode: 'transition' (on state change) or 'interval' (periodic)."""
@@ -230,9 +237,38 @@ class ServerConfig:
     rcon_breakdown_interval: int = 300
     """Interval in seconds between RCON breakdown reports (for 'interval' mode). Default: 300s (5 min)."""
 
+    # Metrics collection flags
+    collect_ups: bool = True
+    """Collect UPS metrics. Default: True."""
+
+    collect_evolution: bool = True
+    """Collect evolution metrics. Default: True."""
+
+    # Alert configuration
+    enable_alerts: bool = True
+    """Enable UPS alerts. Default: True."""
+
+    alert_check_interval: int = 60
+    """Interval in seconds between alert checks. Default: 60s."""
+
+    alert_samples_required: int = 3
+    """Number of consecutive bad samples required before alerting. Default: 3."""
+
+    ups_warning_threshold: float = 55.0
+    """UPS threshold for alert. Default: 55.0."""
+
+    ups_recovery_threshold: float = 58.0
+    """UPS threshold for recovery. Default: 58.0."""
+
+    alert_cooldown: int = 300
+    """Cooldown in seconds between repeat alerts. Default: 300s (5 min)."""
+
+    ups_ema_alpha: float = 0.2
+    """EMA smoothing factor for UPS. Default: 0.2."""
+
     def __post_init__(self) -> None:
         """Validate server config after initialization."""
-        if not isinstance(self.log_path, Path):
+        if not isinstance(self.log_path, (Path, type(None))):
             self.log_path = Path(self.log_path)
 
         if not self.tag or not self.tag.replace("_", "").isalnum():
@@ -258,6 +294,32 @@ class ServerConfig:
                 f"Server {self.tag}: rcon_breakdown_interval must be > 0, "
                 f"got {self.rcon_breakdown_interval}"
             )
+
+        # Validate alert config
+        if self.enable_alerts:
+            if self.alert_check_interval <= 0:
+                raise ValueError(
+                    f"Server {self.tag}: alert_check_interval must be > 0, "
+                    f"got {self.alert_check_interval}"
+                )
+            
+            if self.alert_samples_required <= 0:
+                raise ValueError(
+                    f"Server {self.tag}: alert_samples_required must be > 0, "
+                    f"got {self.alert_samples_required}"
+                )
+            
+            if self.ups_warning_threshold <= 0:
+                raise ValueError(
+                    f"Server {self.tag}: ups_warning_threshold must be > 0, "
+                    f"got {self.ups_warning_threshold}"
+                )
+            
+            if self.ups_recovery_threshold <= 0:
+                raise ValueError(
+                    f"Server {self.tag}: ups_recovery_threshold must be > 0, "
+                    f"got {self.ups_recovery_threshold}"
+                )
 
 
 @dataclass
@@ -420,19 +482,30 @@ def load_config() -> Config:
             rcon_password = secret_password
         
         server_config = ServerConfig(
-            name=server_data.get("name", tag),
             tag=tag,
-            log_path=Path(server_data.get("log_path", "console.log")),
+            name=server_data.get("name", tag),
+            log_path=Path(server_data.get("log_path", "console.log")) if server_data.get("log_path") else None,
             rcon_host=server_data.get("rcon_host", "localhost"),
             rcon_port=_safe_int(server_data.get("rcon_port", 27015), f"Server {tag} rcon_port", 27015),
             rcon_password=rcon_password,
-            event_channel_id=int(server_data.get("event_channel_id", 0)),
+            description=server_data.get("description"),
+            event_channel_id=server_data.get("event_channel_id"),
+            stats_interval=_safe_int(server_data.get("stats_interval", 300), f"Server {tag} stats_interval", 300),
             rcon_breakdown_mode=server_data.get("rcon_breakdown_mode", "transition"),
             rcon_breakdown_interval=_safe_int(
                 server_data.get("rcon_breakdown_interval", 300),
                 f"Server {tag} rcon_breakdown_interval",
                 300,
             ),
+            collect_ups=server_data.get("collect_ups", True),
+            collect_evolution=server_data.get("collect_evolution", True),
+            enable_alerts=server_data.get("enable_alerts", True),
+            alert_check_interval=_safe_int(server_data.get("alert_check_interval", 60), f"Server {tag} alert_check_interval", 60),
+            alert_samples_required=_safe_int(server_data.get("alert_samples_required", 3), f"Server {tag} alert_samples_required", 3),
+            ups_warning_threshold=_safe_float(server_data.get("ups_warning_threshold", 55.0), f"Server {tag} ups_warning_threshold", 55.0),
+            ups_recovery_threshold=_safe_float(server_data.get("ups_recovery_threshold", 58.0), f"Server {tag} ups_recovery_threshold", 58.0),
+            alert_cooldown=_safe_int(server_data.get("alert_cooldown", 300), f"Server {tag} alert_cooldown", 300),
+            ups_ema_alpha=_safe_float(server_data.get("ups_ema_alpha", 0.2), f"Server {tag} ups_ema_alpha", 0.2),
         )
         servers[tag] = server_config
     
