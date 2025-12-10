@@ -1703,7 +1703,7 @@ class DiscordBot(discord.Client):
 
             try:
                 escaped_msg = message.replace('"', '\\"')
-                resp = await rcon_client.execute(f'/sc game.print("{escaped_msg}")')
+                resp = await rcon_client.execute(f'/sc game.print("[color=pink]{escaped_msg}[/color]")')
                 embed = EmbedBuilder.info_embed(
                     title="📢 Broadcast Sent",
                     message=f"Message: _{message}_\n\nAll online players have been notified.",
