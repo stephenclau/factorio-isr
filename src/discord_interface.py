@@ -526,8 +526,6 @@ class DiscordInterfaceFactory:
             bot = DiscordBot(
                 token=config.discord_bot_token,
                 bot_name=config.bot_name,
-                breakdown_mode=config.rcon_breakdown_mode,
-                breakdown_interval=config.rcon_breakdown_interval,
             )
 
             if config.discord_event_channel_id:
