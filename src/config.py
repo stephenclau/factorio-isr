@@ -348,7 +348,7 @@ class Config:
     """Dictionary of server tag -> ServerConfig. REQUIRED for multi-server operation."""
 
     # Event parsing configuration
-    patterns_dir: Path = field(default_factory=lambda: Path("config/patterns"))
+    patterns_dir: Path = field(default_factory=lambda: Path("app/patterns"))
     """Directory containing YAML event pattern files."""
 
     pattern_files: Optional[list[str]] = None
@@ -447,8 +447,8 @@ def load_config() -> Config:
         ValueError: If required config values missing
         yaml.YAMLError: If servers.yml invalid YAML
     """
-    # Get config directory (defaults to /config for Docker deployment)
-    config_dir = os.getenv("CONFIG_DIR", "/config")
+    # Get config directory (defaults to app/config for Docker deployment)
+    config_dir = os.getenv("CONFIG_DIR", "app/config")
     servers_yml_path = Path(config_dir) / "servers.yml"
     
     if not servers_yml_path.exists():
