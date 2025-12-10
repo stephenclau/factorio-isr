@@ -118,6 +118,12 @@ class ServerConfig:
     event_channel_id: int
     """Discord channel ID for game events (joins, chats, deaths, etc.)."""
 
+    rcon_breakdown_mode: str = "transition"
+    """RCON status reporting mode: 'transition' (on state change) or 'interval' (periodic)."""
+
+    rcon_breakdown_interval: int = 300
+    """Interval in seconds between RCON breakdown reports (for 'interval' mode). Default: 300s (5 min)."""
+
     def __post_init__(self) -> None:
         """Validate server config after initialization."""
         if not isinstance(self.log_path, Path):
@@ -133,6 +139,19 @@ class ServerConfig:
 
         if not self.rcon_password:
             raise ValueError(f"Server {self.tag}: RCON password cannot be empty")
+
+        # Validate breakdown mode
+        if self.rcon_breakdown_mode.lower() not in ("transition", "interval"):
+            raise ValueError(
+                f"Server {self.tag}: rcon_breakdown_mode must be 'transition' or 'interval', "
+                f"got '{self.rcon_breakdown_mode}'"
+            )
+
+        if self.rcon_breakdown_interval <= 0:
+            raise ValueError(
+                f"Server {self.tag}: rcon_breakdown_interval must be > 0, "
+                f"got {self.rcon_breakdown_interval}"
+            )
 
 
 @dataclass
@@ -321,6 +340,8 @@ def load_config() -> Config:
                 rcon_port=_safe_int(server_def.get("rcon_port"), "rcon_port", 27015),
                 rcon_password=rcon_password,
                 event_channel_id=_safe_int(server_def.get("event_channel_id"), "event_channel_id", 0),
+                rcon_breakdown_mode=server_def.get("rcon_breakdown_mode", "transition").lower(),
+                rcon_breakdown_interval=_safe_int(server_def.get("rcon_breakdown_interval"), "rcon_breakdown_interval", 300),
             )
 
         logger.info(
