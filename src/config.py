@@ -521,8 +521,8 @@ def load_config() -> Config:
     
     # Load Discord bot token from secrets/env
     discord_bot_token = get_config_value(
+        secret_name="DISCORD_BOT_TOKEN",
         env_var="DISCORD_BOT_TOKEN",
-        secret_name="discord_bot_token",
         required=True,
     )
     
