@@ -100,9 +100,12 @@ class ServerManager:
 
             # Create stats collector if channel configured
             if config.event_channel_id:
+                # Create a per-server interface bound to this server's channel
+                server_interface = self.discord_interface.use_channel(config.event_channel_id)
+                
                 collector = RconStatsCollector(
                     rcon_client=client,
-                    discord_client=self.discord_interface,
+                    discord_client=server_interface,  # Channel-bound interface!
                     interval=config.stats_interval,
                     collect_ups=getattr(config, 'collect_ups', True),
                     collect_evolution=getattr(config, 'collect_evolution', True),
@@ -114,6 +117,7 @@ class ServerManager:
                 logger.info(
                     "stats_collector_started",
                     tag=config.tag,
+                    channel_id=config.event_channel_id,
                     interval=config.stats_interval,
                     ups_enabled=getattr(config, 'collect_ups', True),
                     evolution_enabled=getattr(config, 'collect_evolution', True),
@@ -121,9 +125,15 @@ class ServerManager:
 
             # Create alert monitor if enabled
             if getattr(config, 'enable_alerts', True):
+                # Create a per-server interface bound to this server's channel
+                if config.event_channel_id:
+                    alert_interface = self.discord_interface.use_channel(config.event_channel_id)
+                else:
+                    alert_interface = self.discord_interface
+                
                 alert_monitor = RconAlertMonitor(
                     rcon_client=client,
-                    discord_client=self.discord_interface,
+                    discord_client=alert_interface,  # Channel-bound interface!
                     check_interval=getattr(config, 'alert_check_interval', 60),
                     samples_before_alert=getattr(config, 'alert_samples_required', 3),
                     ups_warning_threshold=getattr(config, 'ups_warning_threshold', 55.0),
@@ -137,6 +147,7 @@ class ServerManager:
                 logger.info(
                     "alert_monitor_started",
                     tag=config.tag,
+                    channel_id=config.event_channel_id if config.event_channel_id else "global",
                     check_interval=getattr(config, 'alert_check_interval', 60),
                     threshold=getattr(config, 'ups_warning_threshold', 55.0),
                 )
