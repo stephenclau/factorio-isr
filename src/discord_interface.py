@@ -512,7 +512,7 @@ class DiscordInterfaceFactory:
             ValueError: If neither webhook nor bot is configured
         """
         if config.discord_bot_token:
-            logger.info("creating_bot_interface", phase="5.1")
+            logger.info("creating_bot_interface", phase="6.0-multi-server")
 
             try:
                 # Import using extracted method (now testable!)
@@ -528,13 +528,10 @@ class DiscordInterfaceFactory:
                 bot_name=config.bot_name,
             )
 
-            if config.discord_event_channel_id:
-                bot.set_event_channel(config.discord_event_channel_id)
-            else:
-                logger.warning(
-                    "bot_mode_no_channel",
-                    message="DISCORD_EVENT_CHANNEL_ID not set. Events won't be sent.",
-                )
+            logger.info(
+                "bot_created_without_global_channel",
+                message="Event channels are configured per-server in servers.yml"
+            )
 
             return BotDiscordInterface(bot)
 
