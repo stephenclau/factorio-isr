@@ -68,8 +68,6 @@ class DiscordBot(discord.Client):
         bot_name: str = "Factorio ISR",
         *,
         intents: Optional[discord.Intents] = None,
-        breakdown_mode: str = "transition",
-        breakdown_interval: int = 300,
     ):
         """
         Initialize Discord bot.
@@ -115,9 +113,9 @@ class DiscordBot(discord.Client):
         # Per-server RCON state for multi-server monitoring
         self.rcon_server_states: Dict[str, Dict[str, Any]] = {}  # {tag: {"previous_status": bool | None, "last_connected": datetime | None}}
 
-        # RCON breakdown scheduling
-        self.rcon_breakdown_mode = breakdown_mode.lower()
-        self.rcon_breakdown_interval = breakdown_interval
+        # RCON breakdown scheduling (will be set from server config via _apply_server_breakdown_config())
+        self.rcon_breakdown_mode = "transition"
+        self.rcon_breakdown_interval = 300
         self._last_rcon_breakdown_sent: Optional[datetime] = None
 
         # Custom mention config from config/mentions.yml
@@ -125,10 +123,9 @@ class DiscordBot(discord.Client):
         self._load_mention_config()
 
         logger.info(
-            "breakdown_config_received",
-            breakdown_mode_param=breakdown_mode,
-            breakdown_mode_stored=self.rcon_breakdown_mode,
-            breakdown_interval=breakdown_interval,
+            "breakdown_config_defaults_set",
+            breakdown_mode=self.rcon_breakdown_mode,
+            breakdown_interval=self.rcon_breakdown_interval,
         )
 
         logger.info("discord_bot_initialized", bot_name=bot_name, phase="6.0-multi-server")
@@ -178,6 +175,46 @@ class DiscordBot(discord.Client):
             "mention_config_loaded",
             path=config_path,
             groups=len(self._mention_group_keywords),
+        )
+
+    def _apply_server_breakdown_config(self) -> None:
+        """
+        Apply per-server breakdown configuration to the bot.
+        
+        Reads RCON breakdown settings from the first configured server
+        in ServerManager and applies them globally. This is called after
+        set_server_manager() to load per-server settings from ServerConfig.
+        
+        Per-server defaults are applied from config.py:
+        - rcon_breakdown_mode: "transition" or "interval" (default: "transition")
+        - rcon_breakdown_interval: int seconds (default: 300s / 5 minutes)
+        """
+        if not self.server_manager:
+            logger.warning(
+                "_apply_server_breakdown_config called without server_manager"
+            )
+            return
+
+        servers = self.server_manager.list_servers()
+        if not servers:
+            logger.warning(
+                "_apply_server_breakdown_config called with no servers"
+            )
+            return
+
+        # Get first server's config
+        first_server = next(iter(servers.values()))
+
+        # Apply its breakdown settings
+        self.rcon_breakdown_mode = first_server.rcon_breakdown_mode.lower()
+        self.rcon_breakdown_interval = first_server.rcon_breakdown_interval
+
+        logger.info(
+            "server_breakdown_config_applied",
+            server_name=first_server.name,
+            server_tag=first_server.tag,
+            mode=self.rcon_breakdown_mode,
+            interval=self.rcon_breakdown_interval,
         )
 
     # ========================================================================
