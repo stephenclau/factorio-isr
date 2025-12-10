@@ -271,9 +271,9 @@ class ServerConfig:
         if not isinstance(self.log_path, (Path, type(None))):
             self.log_path = Path(self.log_path)
 
-        if not self.tag or not self.tag.replace("_", "").isalnum():
+        if not self.tag or not self.tag.replace("_", "").replace("-", "").isalnum():
             raise ValueError(
-                f"Server tag must be alphanumeric (with underscores): {self.tag}"
+                f"Server tag must be alphanumeric with underscores and hyphens: {self.tag}"
             )
 
         if not 1 <= self.rcon_port <= 65535:
