@@ -23,14 +23,6 @@ Multi-server architecture:
 - Unified pattern loading across all servers
 """
 
-<<<<<<< HEAD
-=======
-import os
-import re
-import json
-from pathlib import Path
-from typing import Optional, List, Dict, Any
->>>>>>> d8d7040ab6caf932702f51634541a25c295836d4
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -101,64 +93,6 @@ def _safe_float(value: Any, field_name: str, default: float) -> float:
     raise ValueError(f"Cannot convert {field_name} to float: {type(value).__name__}")
 
 
-def _safe_int(value: Any, field_name: str, default: int) -> int:
-    """
-    Safely convert value to int with proper type checking.
-    
-    Args:
-        value: Value to convert (can be None, int, or str)
-        field_name: Field name for error messages
-        default: Default value if None
-        
-    Returns:
-        Converted int value
-        
-    Raises:
-        ValueError: If conversion fails
-    """
-    if value is None:
-        return default
-    
-    if isinstance(value, int):
-        return value
-    
-    if isinstance(value, str):
-        try:
-            return int(value)
-        except ValueError:
-            raise ValueError(f"Invalid integer for {field_name}: {value}")
-    
-    raise ValueError(f"Cannot convert {field_name} to int: {type(value).__name__}")
-
-def _safe_float(value: Any, field_name: str, default: float) -> float:
-    """
-    Safely convert value to float with proper type checking.
-    
-    Args:
-        value: Value to convert (can be None, float, int, or str)
-        field_name: Field name for error messages
-        default: Default value if None
-        
-    Returns:
-        Converted float value
-        
-    Raises:
-        ValueError: If conversion fails
-    """
-    if value is None:
-        return default
-    
-    if isinstance(value, (int, float)):
-        return float(value)
-    
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            raise ValueError(f"Invalid float for {field_name}: {value}")
-    
-    raise ValueError(f"Cannot convert {field_name} to float: {type(value).__name__}")
-
 @dataclass
 class ServerConfig:
     """Per-server configuration."""
@@ -200,238 +134,6 @@ class ServerConfig:
         if not self.rcon_password:
             raise ValueError(f"Server {self.tag}: RCON password cannot be empty")
 
-<<<<<<< HEAD
-=======
-    @property
-    def display_name(self) -> str:
-        """
-        Get display name with optional description.
-        """
-        if self.description:
-            return f"{self.name} ({self.description})"
-        return self.name
-
-def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]]:
-    """
-    Parse servers from YAML file with secrets support.
-
-    Expected format:
-    servers:
-      prod:
-        name: "Production"
-        description: "Main 24/7 server"
-        rcon_host: "factorio-prod"
-        rcon_port: 27015
-        rcon_password: "secret123"  # Optional - falls back to secrets
-        event_channel_id: 123456789
-        stats_interval: 300
-        log_path: "/opt/factorio/script-output/prod/console.log"
-
-    Args:
-    yaml_path: Path to YAML configuration file
-
-    Returns:
-    Dictionary of tag -> ServerConfig or None if file doesn't exist or parse fails.
-    """
-    if not yaml_path.exists():
-        logger.debug("yaml_file_not_found", path=str(yaml_path))
-        return None
-
-    try:
-        import yaml
-
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-
-        if not data or "servers" not in data:
-            logger.warning("yaml_missing_servers_key", path=str(yaml_path))
-            return None
-
-        servers: Dict[str, ServerConfig] = {}
-
-        for tag, server_data in data["servers"].items():
-            try:
-                # Enforce tag naming rules
-                if not re.match(r"^[a-z0-9-]{1,16}$", tag):
-                    raise ValueError(
-                        f"Invalid tag '{tag}': must be lowercase alphanumeric "
-                        "with hyphens only, 1–16 characters"
-                    )
-
-                # Get RCON password with fallback to secrets
-                rcon_password = server_data.get("rcon_password")
-
-                # If password is missing or empty in YAML, try secrets
-                if not rcon_password:
-                    # Try server-specific secret first: RCON_PASSWORD_{TAG}
-                    secret_name = f"RCON_PASSWORD_{tag.upper()}"
-                    rcon_password = read_secret(secret_name)
-
-                    # Fall back to generic RCON_PASSWORD
-                    if not rcon_password:
-                        rcon_password = read_secret("RCON_PASSWORD")
-
-                    if rcon_password:
-                        logger.info(
-                            "rcon_password_loaded_from_secrets",
-                            tag=tag,
-                            secret_name=secret_name if read_secret(secret_name) else "RCON_PASSWORD",
-                        )
-
-                # Coerce to empty string if still None to satisfy type checker;
-                # validation later ensures servers require passwords in multi-server mode.
-                rcon_password_value = rcon_password or ""
-
-                # ✅ FIX: Use safe conversion functions for all int/float fields
-                servers[tag] = ServerConfig(
-                    tag=tag,
-                    name=server_data["name"],
-                    rcon_host=server_data["rcon_host"],
-                    rcon_port=_safe_int(server_data.get("rcon_port"), "rcon_port", 27015),
-                    rcon_password=rcon_password_value,
-                    description=server_data.get("description"),
-                    log_path=Path(server_data.get("log_path", f"/app/logs/{tag}/console.log")),
-                    event_channel_id=_safe_int(server_data.get("event_channel_id"), "event_channel_id", 0) or None,
-                    stats_interval=_safe_int(server_data.get("stats_interval"), "stats_interval", 300),
-                    rcon_breakdown_mode=str(server_data.get("rcon_breakdown_mode", "transition")).lower(),
-                    rcon_breakdown_interval=_safe_int(server_data.get("rcon_breakdown_interval"), "rcon_breakdown_interval", 300),
-                    # Metrics and alert configuration
-                    collect_ups=bool(server_data.get("collect_ups", True)),
-                    collect_evolution=bool(server_data.get("collect_evolution", True)),
-                    enable_alerts=bool(server_data.get("enable_alerts", True)),
-                    alert_check_interval=_safe_int(server_data.get("alert_check_interval"), "alert_check_interval", 60),
-                    alert_samples_required=_safe_int(server_data.get("alert_samples_required"), "alert_samples_required", 3),
-                    ups_warning_threshold=_safe_float(server_data.get("ups_warning_threshold"), "ups_warning_threshold", 55.0),
-                    ups_recovery_threshold=_safe_float(server_data.get("ups_recovery_threshold"), "ups_recovery_threshold", 58.0),
-                    alert_cooldown=_safe_int(server_data.get("alert_cooldown"), "alert_cooldown", 300),
-                    ups_ema_alpha=_safe_float(server_data.get("ups_ema_alpha"), "ups_ema_alpha", 0.2),
-                )
-
-            except Exception as e:
-                logger.error(
-                    "failed_to_parse_server_config",
-                    tag=tag,
-                    error=str(e),
-                    path=str(yaml_path),
-                )
-                raise
-
-        logger.info("servers_loaded_from_yaml", count=len(servers), path=str(yaml_path))
-        return servers
-
-    except ImportError:
-        logger.error(
-            "yaml_library_not_available",
-            message="Install PyYAML: pip install pyyaml",
-            path=str(yaml_path),
-        )
-        return None
-
-    except ValueError as e:
-        # Re-raise validation errors (invalid tags, missing fields, etc.)
-        logger.error("server_validation_failed", path=str(yaml_path), error=str(e))
-        raise
-
-    except Exception as e:
-        # Catch other errors (YAML syntax, I/O, etc.) and return None
-        logger.error("failed_to_parse_servers_yaml", path=str(yaml_path), error=str(e))
-        return None
-
-def parse_servers_from_json(json_str: Optional[str]) -> Optional[Dict[str, ServerConfig]]:
-    """
-    Parse servers from JSON environment variable.
-
-    Expected format:
-    {
-      "prod": {
-        "name": "Production",
-        "rcon_host": "factorio-prod",
-        "rcon_port": 27015,
-        "rcon_password": "secret123"
-      }
-    }
-
-    Args:
-    json_str: JSON string with server configurations
-
-    Returns:
-    Dictionary of tag -> ServerConfig or None if parsing fails or input is None.
-    """
-    if not json_str:
-        return None
-
-    try:
-        data = json.loads(json_str)
-        servers: Dict[str, ServerConfig] = {}
-
-        for tag, server_data in data.items():
-            rcon_password_value = server_data.get("rcon_password") or ""
-
-            # ✅ FIX: Use safe conversion functions for all int/float fields
-            servers[tag] = ServerConfig(
-                tag=tag,
-                name=server_data["name"],
-                rcon_host=server_data["rcon_host"],
-                rcon_port=_safe_int(server_data.get("rcon_port"), "rcon_port", 27015),
-                rcon_password=rcon_password_value,
-                description=server_data.get("description"),
-                event_channel_id=_safe_int(server_data.get("event_channel_id"), "event_channel_id", 0) or None,
-                stats_interval=_safe_int(server_data.get("stats_interval"), "stats_interval", 300),
-                rcon_breakdown_mode=str(server_data.get("rcon_breakdown_mode", "transition")).lower(),
-                rcon_breakdown_interval=_safe_int(server_data.get("rcon_breakdown_interval"), "rcon_breakdown_interval", 300),
-                # Metrics and alert configuration
-                collect_ups=bool(server_data.get("collect_ups", True)),
-                collect_evolution=bool(server_data.get("collect_evolution", True)),
-                enable_alerts=bool(server_data.get("enable_alerts", True)),
-                alert_check_interval=_safe_int(server_data.get("alert_check_interval"), "alert_check_interval", 60),
-                alert_samples_required=_safe_int(server_data.get("alert_samples_required"), "alert_samples_required", 3),
-                ups_warning_threshold=_safe_float(server_data.get("ups_warning_threshold"), "ups_warning_threshold", 55.0),
-                ups_recovery_threshold=_safe_float(server_data.get("ups_recovery_threshold"), "ups_recovery_threshold", 58.0),
-                alert_cooldown=_safe_int(server_data.get("alert_cooldown"), "alert_cooldown", 300),
-                ups_ema_alpha=_safe_float(server_data.get("ups_ema_alpha"), "ups_ema_alpha", 0.2),
-            )
-
-        logger.info("servers_loaded_from_json", count=len(servers))
-        return servers
-
-    except json.JSONDecodeError as e:
-        logger.error("invalid_json_in_servers_config", error=str(e))
-        return None
-
-    except Exception as e:
-        logger.error("failed_to_parse_servers_json", error=str(e))
-        return None
-
-def parse_webhook_channels(channels_str: Optional[str]) -> Dict[str, str]:
-    """
-    Parse webhook channels from JSON string.
-    """
-    if not channels_str:
-        return {}
-
-    try:
-        channels = json.loads(channels_str)
-        if not isinstance(channels, dict):
-            return {}
-        return channels
-    except (json.JSONDecodeError, TypeError):
-        return {}
-
-def parse_pattern_files(files_str: Optional[str]) -> Optional[List[str]]:
-    """
-    Parse pattern files from JSON string.
-    """
-    if not files_str:
-        return None
-
-    try:
-        files = json.loads(files_str)
-        if not isinstance(files, list):
-            return None
-        return files
-    except (json.JSONDecodeError, TypeError):
-        return None
->>>>>>> d8d7040ab6caf932702f51634541a25c295836d4
 
 @dataclass
 class Config:
@@ -586,18 +288,8 @@ def load_config() -> Config:
         with open(servers_yml, "r") as f:
             servers_data = yaml.safe_load(f)
 
-<<<<<<< HEAD
         if not servers_data or "servers" not in servers_data:
             raise ValueError("servers.yml must contain 'servers' section")
-=======
-    # Optional fields with defaults
-    bot_name = get_config_value("BOT_NAME") or "Factorio ISR"
-    log_level = (get_config_value("LOG_LEVEL") or "info").lower()
-    log_format = (get_config_value("LOG_FORMAT") or "console").lower()
-    health_check_host = get_config_value("HEALTH_CHECK_HOST") or "0.0.0.0"
-    health_check_port_str = get_config_value("HEALTH_CHECK_PORT") or "8080"
-    patterns_dir_str = get_config_value("PATTERNS_DIR") or "patterns"
->>>>>>> d8d7040ab6caf932702f51634541a25c295836d4
 
         servers_dict: Dict[str, ServerConfig] = {}
 
@@ -610,7 +302,6 @@ def load_config() -> Config:
             if not log_path.is_absolute():
                 log_path = config_dir / log_path
 
-<<<<<<< HEAD
             # Convert env vars in RCON password (support ${VAR_NAME})
             rcon_password = server_def.get("rcon_password", "")
             if isinstance(rcon_password, str) and rcon_password.startswith("${") and rcon_password.endswith("}"):
@@ -620,14 +311,8 @@ def load_config() -> Config:
                     raise ValueError(
                         f"servers.{tag}: rcon_password references ${env_var} but it's not set"
                     )
-=======
-    # Parse complex fields
-    webhook_channels_str = get_config_value("WEBHOOK_CHANNELS") or "{}"
-    channel_id_str = get_config_value("DISCORD_EVENT_CHANNEL_ID")
-    event_channel_id = _safe_int(channel_id_str, "DISCORD_EVENT_CHANNEL_ID", 0) or None
->>>>>>> d8d7040ab6caf932702f51634541a25c295836d4
 
-            # ✅ FIX: Use safe conversion functions for all int fields
+            # FIX: Use safe conversion functions for all int fields
             servers_dict[tag] = ServerConfig(
                 name=server_def.get("name", tag),
                 tag=tag,
@@ -649,34 +334,12 @@ def load_config() -> Config:
     except Exception as e:
         raise ValueError(f"Failed to load servers.yml: {e}")
 
-<<<<<<< HEAD
     # Load from environment
     discord_bot_token = os.getenv("DISCORD_BOT_TOKEN")
     if not discord_bot_token:
         raise ValueError(
             "DISCORD_BOT_TOKEN environment variable is REQUIRED (bot mode only)"
         )
-=======
-    # Priority 3: Auto-convert legacy single-server config to multi-server
-    if servers is None and rcon_enabled_str.lower() == "true":
-        rcon_password = get_config_value("RCON_PASSWORD")
-        if rcon_password:
-            logger.info("auto_converting_legacy_single_server_to_multi_server")
-            servers = {
-                "primary": ServerConfig(
-                    tag="primary",
-                    name="Primary Server",
-                    description="Legacy single-server configuration",
-                    rcon_host=rcon_host,
-                    rcon_port=_safe_int(rcon_port_str, "rcon_port", 27015),
-                    rcon_password=rcon_password,
-                    event_channel_id=event_channel_id,
-                    stats_interval=_safe_int(stats_interval_str, "stats_interval", 300),
-                    rcon_breakdown_mode=breakdown_mode.lower(),
-                    rcon_breakdown_interval=_safe_int(breakdown_interval_str, "rcon_breakdown_interval", 300),
-                )
-            }
->>>>>>> d8d7040ab6caf932702f51634541a25c295836d4
 
     bot_name = os.getenv("BOT_NAME", "Factorio ISR")
     bot_avatar_url = os.getenv("BOT_AVATAR_URL")
@@ -706,7 +369,7 @@ def load_config() -> Config:
         "yes",
     )
 
-    # ✅ FIX: Use safe conversion for port
+    # FIX: Use safe conversion for port
     health_check_port = _safe_int(health_check_port_str, "health_check_port", 8080)
 
     logger.info(
@@ -729,24 +392,7 @@ def load_config() -> Config:
         health_check_port=health_check_port,
         log_level=log_level,
         log_format=log_format,
-<<<<<<< HEAD
         send_test_message=send_test_message,
-=======
-        health_check_host=health_check_host,
-        health_check_port=_safe_int(health_check_port_str, "health_check_port", 8080),
-        patterns_dir=Path(patterns_dir_str),
-        pattern_files=parse_pattern_files(get_config_value("PATTERN_FILES")),
-        webhook_channels=parse_webhook_channels(webhook_channels_str),
-        send_test_message=send_test_str.lower() == "true",
-        rcon_enabled=rcon_enabled_str.lower() == "true",
-        rcon_host=rcon_host,
-        rcon_port=_safe_int(rcon_port_str, "rcon_port", 27015),
-        rcon_password=get_config_value("RCON_PASSWORD"),
-        stats_interval=_safe_int(stats_interval_str, "stats_interval", 300),
-        rcon_breakdown_mode=breakdown_mode.lower(),
-        rcon_breakdown_interval=_safe_int(breakdown_interval_str, "rcon_breakdown_interval", 300),
-        servers=servers,  # Multi-server support
->>>>>>> d8d7040ab6caf932702f51634541a25c295836d4
     )
 
     return config
