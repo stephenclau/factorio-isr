@@ -552,11 +552,11 @@ def load_config() -> Config:
     )
     
     patterns_dir = Path(
-        get_config_value(
-            env_var="PATTERNS_DIR",
-            default="app/patterns",
-        )
-    )
+    get_config_value(
+        env_var="PATTERNS_DIR",
+        default="app/patterns",
+    ) or "app/patterns"
+)
     
     # Create and return Config object
     config = Config(
