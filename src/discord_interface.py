@@ -26,8 +26,6 @@ from typing import Optional, TYPE_CHECKING, Any
 from unittest.mock import MagicMock, Mock, patch
 import asyncio
 import structlog
-import pytest
-import pytest_asyncio
 import sys
 
 
