@@ -21,7 +21,7 @@ import os
 import re
 import json
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 from dataclasses import dataclass, field
 from dotenv import load_dotenv
 import structlog
@@ -121,6 +121,64 @@ def get_config_value(
         raise ValueError(f"Required configuration key not found: {key}")
 
     return value
+
+def _safe_int(value: Any, field_name: str, default: int) -> int:
+    """
+    Safely convert value to int with proper type checking.
+    
+    Args:
+        value: Value to convert (can be None, int, or str)
+        field_name: Field name for error messages
+        default: Default value if None
+        
+    Returns:
+        Converted int value
+        
+    Raises:
+        ValueError: If conversion fails
+    """
+    if value is None:
+        return default
+    
+    if isinstance(value, int):
+        return value
+    
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            raise ValueError(f"Invalid integer for {field_name}: {value}")
+    
+    raise ValueError(f"Cannot convert {field_name} to int: {type(value).__name__}")
+
+def _safe_float(value: Any, field_name: str, default: float) -> float:
+    """
+    Safely convert value to float with proper type checking.
+    
+    Args:
+        value: Value to convert (can be None, float, int, or str)
+        field_name: Field name for error messages
+        default: Default value if None
+        
+    Returns:
+        Converted float value
+        
+    Raises:
+        ValueError: If conversion fails
+    """
+    if value is None:
+        return default
+    
+    if isinstance(value, (int, float)):
+        return float(value)
+    
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            raise ValueError(f"Invalid float for {field_name}: {value}")
+    
+    raise ValueError(f"Cannot convert {field_name} to float: {type(value).__name__}")
 
 @dataclass
 class ServerConfig:
@@ -254,28 +312,29 @@ def parse_servers_from_yaml(yaml_path: Path) -> Optional[Dict[str, ServerConfig]
                 # validation later ensures servers require passwords in multi-server mode.
                 rcon_password_value = rcon_password or ""
 
+                # ✅ FIX: Use safe conversion functions for all int/float fields
                 servers[tag] = ServerConfig(
                     tag=tag,
                     name=server_data["name"],
                     rcon_host=server_data["rcon_host"],
-                    rcon_port=server_data.get("rcon_port", 27015),
+                    rcon_port=_safe_int(server_data.get("rcon_port"), "rcon_port", 27015),
                     rcon_password=rcon_password_value,
                     description=server_data.get("description"),
                     log_path=Path(server_data.get("log_path", f"/app/logs/{tag}/console.log")),
-                    event_channel_id=server_data.get("event_channel_id"),
-                    stats_interval=server_data.get("stats_interval", 300),
-                    rcon_breakdown_mode=server_data.get("rcon_breakdown_mode", "transition").lower(),
-                    rcon_breakdown_interval=int(server_data.get("rcon_breakdown_interval", 300)),
+                    event_channel_id=_safe_int(server_data.get("event_channel_id"), "event_channel_id", 0) or None,
+                    stats_interval=_safe_int(server_data.get("stats_interval"), "stats_interval", 300),
+                    rcon_breakdown_mode=str(server_data.get("rcon_breakdown_mode", "transition")).lower(),
+                    rcon_breakdown_interval=_safe_int(server_data.get("rcon_breakdown_interval"), "rcon_breakdown_interval", 300),
                     # Metrics and alert configuration
-                    collect_ups=server_data.get("collect_ups", True),
-                    collect_evolution=server_data.get("collect_evolution", True),
-                    enable_alerts=server_data.get("enable_alerts", True),
-                    alert_check_interval=int(server_data.get("alert_check_interval", 60)),
-                    alert_samples_required=int(server_data.get("alert_samples_required", 3)),
-                    ups_warning_threshold=float(server_data.get("ups_warning_threshold", 55.0)),
-                    ups_recovery_threshold=float(server_data.get("ups_recovery_threshold", 58.0)),
-                    alert_cooldown=int(server_data.get("alert_cooldown", 300)),
-                    ups_ema_alpha=float(server_data.get("ups_ema_alpha", 0.2)),
+                    collect_ups=bool(server_data.get("collect_ups", True)),
+                    collect_evolution=bool(server_data.get("collect_evolution", True)),
+                    enable_alerts=bool(server_data.get("enable_alerts", True)),
+                    alert_check_interval=_safe_int(server_data.get("alert_check_interval"), "alert_check_interval", 60),
+                    alert_samples_required=_safe_int(server_data.get("alert_samples_required"), "alert_samples_required", 3),
+                    ups_warning_threshold=_safe_float(server_data.get("ups_warning_threshold"), "ups_warning_threshold", 55.0),
+                    ups_recovery_threshold=_safe_float(server_data.get("ups_recovery_threshold"), "ups_recovery_threshold", 58.0),
+                    alert_cooldown=_safe_int(server_data.get("alert_cooldown"), "alert_cooldown", 300),
+                    ups_ema_alpha=_safe_float(server_data.get("ups_ema_alpha"), "ups_ema_alpha", 0.2),
                 )
 
             except Exception as e:
@@ -338,26 +397,28 @@ def parse_servers_from_json(json_str: Optional[str]) -> Optional[Dict[str, Serve
         for tag, server_data in data.items():
             rcon_password_value = server_data.get("rcon_password") or ""
 
+            # ✅ FIX: Use safe conversion functions for all int/float fields
             servers[tag] = ServerConfig(
                 tag=tag,
                 name=server_data["name"],
                 rcon_host=server_data["rcon_host"],
-                rcon_port=server_data.get("rcon_port", 27015),
+                rcon_port=_safe_int(server_data.get("rcon_port"), "rcon_port", 27015),
                 rcon_password=rcon_password_value,
                 description=server_data.get("description"),
-                event_channel_id=server_data.get("event_channel_id"),
-                stats_interval=server_data.get("stats_interval", 300),
-                rcon_breakdown_mode=server_data.get("rcon_breakdown_mode", "transition").lower(),
-                rcon_breakdown_interval=int(server_data.get("rcon_breakdown_interval", 300)),
+                event_channel_id=_safe_int(server_data.get("event_channel_id"), "event_channel_id", 0) or None,
+                stats_interval=_safe_int(server_data.get("stats_interval"), "stats_interval", 300),
+                rcon_breakdown_mode=str(server_data.get("rcon_breakdown_mode", "transition")).lower(),
+                rcon_breakdown_interval=_safe_int(server_data.get("rcon_breakdown_interval"), "rcon_breakdown_interval", 300),
                 # Metrics and alert configuration
-                collect_ups=server_data.get("collect_ups", True),
-                collect_evolution=server_data.get("collect_evolution", True),
-                enable_alerts=server_data.get("enable_alerts", True),
-                alert_check_interval=int(server_data.get("alert_check_interval", 60)),
-                alert_samples_required=int(server_data.get("alert_samples_required", 3)),
-                ups_warning_threshold=float(server_data.get("ups_warning_threshold", 55.0)),
-                ups_recovery_threshold=float(server_data.get("ups_recovery_threshold", 58.0)),
-                alert_cooldown=int(server_data.get("alert_cooldown", 300)),
+                collect_ups=bool(server_data.get("collect_ups", True)),
+                collect_evolution=bool(server_data.get("collect_evolution", True)),
+                enable_alerts=bool(server_data.get("enable_alerts", True)),
+                alert_check_interval=_safe_int(server_data.get("alert_check_interval"), "alert_check_interval", 60),
+                alert_samples_required=_safe_int(server_data.get("alert_samples_required"), "alert_samples_required", 3),
+                ups_warning_threshold=_safe_float(server_data.get("ups_warning_threshold"), "ups_warning_threshold", 55.0),
+                ups_recovery_threshold=_safe_float(server_data.get("ups_recovery_threshold"), "ups_recovery_threshold", 58.0),
+                alert_cooldown=_safe_int(server_data.get("alert_cooldown"), "alert_cooldown", 300),
+                ups_ema_alpha=_safe_float(server_data.get("ups_ema_alpha"), "ups_ema_alpha", 0.2),
             )
 
         logger.info("servers_loaded_from_json", count=len(servers))
@@ -478,8 +539,8 @@ def load_config() -> Config:
     bot_name = get_config_value("BOT_NAME") or "Factorio ISR"
     log_level = (get_config_value("LOG_LEVEL") or "info").lower()
     log_format = (get_config_value("LOG_FORMAT") or "console").lower()
-    health_check_host = get_config_value("health_check_host") or "0.0.0.0"
-    health_check_port_str = get_config_value("health_check_port") or "8080"
+    health_check_host = get_config_value("HEALTH_CHECK_HOST") or "0.0.0.0"
+    health_check_port_str = get_config_value("HEALTH_CHECK_PORT") or "8080"
     patterns_dir_str = get_config_value("PATTERNS_DIR") or "patterns"
 
     # RCON legacy settings
@@ -498,7 +559,7 @@ def load_config() -> Config:
     # Parse complex fields
     webhook_channels_str = get_config_value("WEBHOOK_CHANNELS") or "{}"
     channel_id_str = get_config_value("DISCORD_EVENT_CHANNEL_ID")
-    event_channel_id = int(channel_id_str) if channel_id_str else None
+    event_channel_id = _safe_int(channel_id_str, "DISCORD_EVENT_CHANNEL_ID", 0) or None
 
     # ===== MULTI-SERVER CONFIGURATION (NEW) =====
     servers: Optional[Dict[str, ServerConfig]] = None
@@ -525,12 +586,12 @@ def load_config() -> Config:
                     name="Primary Server",
                     description="Legacy single-server configuration",
                     rcon_host=rcon_host,
-                    rcon_port=int(rcon_port_str),
+                    rcon_port=_safe_int(rcon_port_str, "rcon_port", 27015),
                     rcon_password=rcon_password,
                     event_channel_id=event_channel_id,
-                    stats_interval=int(stats_interval_str),
+                    stats_interval=_safe_int(stats_interval_str, "stats_interval", 300),
                     rcon_breakdown_mode=breakdown_mode.lower(),
-                    rcon_breakdown_interval=int(breakdown_interval_str),
+                    rcon_breakdown_interval=_safe_int(breakdown_interval_str, "rcon_breakdown_interval", 300),
                 )
             }
 
@@ -544,18 +605,18 @@ def load_config() -> Config:
         log_level=log_level,
         log_format=log_format,
         health_check_host=health_check_host,
-        health_check_port=int(health_check_port_str),
+        health_check_port=_safe_int(health_check_port_str, "health_check_port", 8080),
         patterns_dir=Path(patterns_dir_str),
         pattern_files=parse_pattern_files(get_config_value("PATTERN_FILES")),
         webhook_channels=parse_webhook_channels(webhook_channels_str),
         send_test_message=send_test_str.lower() == "true",
         rcon_enabled=rcon_enabled_str.lower() == "true",
         rcon_host=rcon_host,
-        rcon_port=int(rcon_port_str),
+        rcon_port=_safe_int(rcon_port_str, "rcon_port", 27015),
         rcon_password=get_config_value("RCON_PASSWORD"),
-        stats_interval=int(stats_interval_str),
+        stats_interval=_safe_int(stats_interval_str, "stats_interval", 300),
         rcon_breakdown_mode=breakdown_mode.lower(),
-        rcon_breakdown_interval=int(breakdown_interval_str),
+        rcon_breakdown_interval=_safe_int(breakdown_interval_str, "rcon_breakdown_interval", 300),
         servers=servers,  # Multi-server support
     )
 
