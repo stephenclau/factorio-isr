@@ -21,6 +21,12 @@ servers:
     event_channel_id: 1443838551019094048  # Discord channel ID for events for THIS server.
     stats_interval: 300             # Post stat card every 5 minutes
     log_path: ./logs/prod/console.log  # NEW: Per-server log path
+    
+    # Breakdown Reporting Configuration (optional - defaults shown below)
+    # Breakdown reporting lets you determine when to receive metrics on server state changes
+    rcon_breakdown_mode: "transition"  # "transition" = on state change, "interval" = periodic
+    rcon_breakdown_interval: 300        # How often to report when mode=interval (seconds, default 300=5min)
+    
     # Performance monitoring (NEW)
     collect_ups: true
     collect_evolution: true
@@ -41,6 +47,8 @@ servers:
   #   rcon_password: "your-staging-secret-here"
   #   event_channel_id: 987654321098765432
   #   stats_interval: 600             # Post stats every 10 minutes
+  #   rcon_breakdown_mode: "interval"  # Report metrics every interval
+  #   rcon_breakdown_interval: 600     # Report every 10 minutes
 
   # # Los Hermanos - creative/experimental world
   # lh:
@@ -51,6 +59,8 @@ servers:
   #   rcon_password: "your-lh-secret-here"
   #   event_channel_id: 555555555555555555
   #   stats_interval: 300
+  #   rcon_breakdown_mode: "transition"  # Only report on state changes
+  #   rcon_breakdown_interval: 300       # (ignored when mode=transition)
 
   # Development server (optional)
   # dev:
@@ -61,6 +71,8 @@ servers:
   #   rcon_password: "dev-password"
   #   event_channel_id: 111111111111111111
   #   stats_interval: 900  # 15 minutes
+  #   rcon_breakdown_mode: "transition"
+  #   rcon_breakdown_interval: 900
 
 # Configuration Notes:
 # 
@@ -72,6 +84,8 @@ servers:
 # - `rcon_password`: RCON password from server-settings.json
 # - `event_channel_id`: Discord channel ID for this server's events (optional)
 # - `stats_interval`: How often to post stats in seconds (default: 300)
+# - `rcon_breakdown_mode`: When to send breakdown reports: "transition" (state changes) or "interval" (periodic)
+# - `rcon_breakdown_interval`: Report interval in seconds (only applies when mode=interval, default 300)
 #
 # To get Discord channel ID:
 # 1. Enable Developer Mode in Discord (User Settings > Advanced)
