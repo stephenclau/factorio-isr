@@ -2225,6 +2225,9 @@ class DiscordBot(discord.Client):
             # Set flag FIRST - allows loops to exit gracefully
             self._connected = False
 
+            # Send disconnection notification
+            await self._send_disconnection_notification()
+
             # PHASE 5.2: Stop RCON monitoring
             if self.rcon_monitor_task:
                 self.rcon_monitor_task.cancel()
@@ -2234,9 +2237,6 @@ class DiscordBot(discord.Client):
                     pass
                 self.rcon_monitor_task = None
                 logger.info("rcon_status_monitoring_disabled")
-
-            # Send disconnection notification
-            await self._send_disconnection_notification()
 
             # Cancel connection task if exists
             if self._connection_task is not None:
