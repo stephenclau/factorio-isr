@@ -12,15 +12,15 @@
 
 servers:
   # Production server - main 24/7 gameplay
-  prod:
-    name: "Factorio Default"
-    description: "prod"
+  test:
+    name: "local test"
+    description: "local test"
     rcon_host: 172.20.48.220 # Docker container name or IP e.g. localhost, 812.180.18.1, 192.168.1.220, factorio-container-name-from-docker-compose.yml
     rcon_port: 27015                # RCON port
     rcon_password:  #you can hardcode it here, but i recommend secrets
     event_channel_id: 1443838551019094048  # Discord channel ID for events for THIS server.
     stats_interval: 300             # Post stat card every 5 minutes
-    log_path: ./logs/prod/console.log  # NEW: Per-server log path
+    log_path: ./logs/test/console.log  # NEW: Per-server log path
     
     # Breakdown Reporting Configuration (optional - defaults shown below)
     # Breakdown reporting lets you determine when to receive metrics on server state changes
