@@ -15,11 +15,11 @@ echo "**************************************************************************
 groupmod -g ${GID} factorio-isr \
 && usermod -u ${UID} -g ${GID} factorio-isr
 echo "Aligning container directory permissions to the host user UID:GID ${UID}:${GID}..."
-chown -R "${UID}:${GID}" /app
+chown -R "${UID}:${GID}" /app 2>/dev/null || true
 echo "Permissions aligned."
 echo "****************************************************************************";
 echo "Starting FISR..."
-exec gosu factorio-isr "$@"
+exec gosu factorio-isr "$@" 
 echo "****************************************************************************";
 echo "FISR Running."
 }
