@@ -177,7 +177,7 @@ class ServerManager:
             
             collector = RconStatsCollector(
                 rcon_client=client,
-                discord_client=server_interface,  # Channel-bound interface!
+                discord_interface=server_interface,
                 interval=config.stats_interval,
                 collect_ups=getattr(config, 'collect_ups', True),
                 collect_evolution=getattr(config, 'collect_evolution', True),
@@ -205,7 +205,7 @@ class ServerManager:
             
             alert_monitor = RconAlertMonitor(
                 rcon_client=client,
-                discord_client=alert_interface,  # Channel-bound interface!
+                discord_interface=alert_interface,
                 check_interval=getattr(config, 'alert_check_interval', 60),
                 samples_before_alert=getattr(config, 'alert_samples_required', 3),
                 ups_warning_threshold=getattr(config, 'ups_warning_threshold', 55.0),
