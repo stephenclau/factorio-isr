@@ -48,13 +48,13 @@ try:
     from .config import load_config, validate_config  # type: ignore
     from .health import HealthCheckServer  # type: ignore
     from .discord_interface import DiscordInterfaceFactory, DiscordInterface  # type: ignore
-    from .event_parser import EventParser  # type: ignore
+    from .event_parser import EventParser, FactorioEvent  # type: ignore
 except ImportError:
     # Flat layout (tests and direct execution)
     from config import load_config, validate_config  # type: ignore
     from health import HealthCheckServer  # type: ignore
     from discord_interface import DiscordInterfaceFactory, DiscordInterface  # type: ignore
-    from event_parser import EventParser  # type: ignore
+    from event_parser import EventParser, FactorioEvent  # type: ignore
 
 # Phase 6: ServerManager (REQUIRED for multi-server support)
 try:
