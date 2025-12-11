@@ -36,13 +36,18 @@ from discord import app_commands
 import structlog
 
 try:
-    from ..event_parser import FactorioEvent
-    from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
-    from ..discord_interface import EmbedBuilder
+    # Try package-style imports first
+    from event_parser import FactorioEvent
+    from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
+    from discord_interface import EmbedBuilder
 except ImportError:
-    from event_parser import FactorioEvent  # type: ignore
-    from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
-    from discord_interface import EmbedBuilder  # type: ignore
+    try:
+        # Fallback to src. prefix
+        from src.event_parser import FactorioEvent  # type: ignore
+        from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
+        from src.discord_interface import EmbedBuilder  # type: ignore
+    except ImportError:
+        raise ImportError("Could not import event_parser, rate_limiting, or discord_interface")
 
 logger = structlog.get_logger()
 
@@ -671,7 +676,7 @@ def register_factorio_commands(bot: Any) -> None:
 
             embed = discord.Embed(
                 title="🚫 Player Banned",
-                color=EmbedBuilder.COLOR_DANGER,
+                color=EmbedBuilder.COLOR_ADMIN,
                 timestamp=discord.utils.utcnow(),
             )
             embed.add_field(name="Player", value=player, inline=True)
