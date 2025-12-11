@@ -330,10 +330,6 @@ class Config:
     discord_bot_token: str
     """Discord bot token (required for multi-server mode)."""
 
-    # Factorio log configuration
-    factorio_log_path: Path = field(default_factory=lambda: Path("/tmp/console.log"))
-    """Legacy: single server log path (deprecated - use servers.yml)."""
-
     # Servers configuration (REQUIRED for multi-server mode)
     servers: Optional[Dict[str, ServerConfig]] = None
     """Dictionary of server tag -> ServerConfig. REQUIRED for multi-server operation."""
