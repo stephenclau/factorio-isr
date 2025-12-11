@@ -440,6 +440,81 @@ class RconClient:
             logger.warning("failed_to_get_server_time", error=str(e))
             return "Unknown"
 
+    async def get_evolution_factor(self) -> Dict[str, float]:
+        """Get evolution factor per surface (multi-surface support).
+        
+        Returns:
+            Dict mapping surface names to evolution factors (0.0 to 1.0).
+            Returns empty dict on error.
+        """
+        evolution_by_surface: Dict[str, float] = {}
+        
+        try:
+            # Execute command to get evolution per surface
+            response = await self.execute(
+                "/sc "
+                "for _, surface in pairs(game.surfaces) do "
+                "  local evo = game.forces[\"enemy\"].get_evolution_factor(surface); "
+                "  rcon.print(surface.name .. \":\" .. evo); "
+                "end"
+            )
+
+            if not response:
+                logger.warning("evolution_collection_failed_empty_response")
+                return evolution_by_surface
+
+            # Parse response: expect "name:factor" per line
+            for line in response.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                
+                parts = line.split(":")
+                if len(parts) != 2:
+                    logger.debug(
+                        "evolution_line_unexpected_format",
+                        line=line,
+                    )
+                    continue
+                
+                name, factor_str = parts
+                name = name.strip()
+                factor_str = factor_str.strip()
+
+                # Skip platform surfaces
+                if "platform" in name.lower():
+                    logger.debug(
+                        "evolution_surface_skipped_platform",
+                        surface=name,
+                    )
+                    continue
+
+                try:
+                    factor = float(factor_str)
+                    evolution_by_surface[name] = factor
+                except ValueError:
+                    logger.debug(
+                        "evolution_line_parse_failed",
+                        line=line,
+                        factor_str=factor_str,
+                    )
+                    continue
+
+            logger.debug(
+                "evolution_collected",
+                surfaces=list(evolution_by_surface.keys()),
+                evolution_data=evolution_by_surface,
+            )
+
+        except Exception as e:
+            logger.warning(
+                "evolution_collection_failed",
+                error=str(e),
+                exc_info=True,
+            )
+
+        return evolution_by_surface
+
 
 class RconStatsCollector:
     """Periodically collect and post server statistics with pause detection."""
@@ -576,7 +651,7 @@ class RconStatsCollector:
             "tick": None,
             "game_time_seconds": None,
             "evolution_factor": None,
-            "evolution_by_surface": {},  # Dict[surface_name, {factor, index}]
+            "evolution_by_surface": {},  # Dict[surface_name, factor]
         }
 
         try:
@@ -632,78 +707,12 @@ class RconStatsCollector:
 
             # Evolution factor per surface (multi-surface support)
             if self.collect_evolution:
-                response: Optional[str] = None
-                try:
-                    # Print as: name:index:factor per line
-                    response = await self.rcon_client.execute(
-                        "/sc "
-                        "for _, surface in pairs(game.surfaces) do "
-                        "  local evo = game.forces[\"enemy\"].get_evolution_factor(surface); "
-                        "  rcon.print(surface.name .. \":\" .. surface.index .. \":\" .. evo); "
-                        "end"
-                    )
-
-                    if not response:
-                        logger.warning("evolution_collection_failed_empty_response")
-                    else:
-                        evolution_by_surface: Dict[str, Dict[str, float]] = {}
-                        for line in response.splitlines():
-                            line = line.strip()
-                            if not line:
-                                continue
-                            # Expect "name:index:factor"
-                            parts = line.split(":")
-                            if len(parts) != 3:
-                                logger.debug(
-                                    "evolution_line_unexpected_format",
-                                    line=line,
-                                )
-                                continue
-                            name, index_str, factor_str = parts
-
-                            # Skip platform surfaces by name
-                            if "platform" in name.lower():
-                                logger.debug(
-                                    "evolution_surface_skipped_platform",
-                                    surface=name,
-                                )
-                                continue
-
-                            try:
-                                index = int(index_str)
-                                factor = float(factor_str)
-                            except ValueError:
-                                logger.debug(
-                                    "evolution_line_parse_failed",
-                                    line=line,
-                                )
-                                continue
-
-                            evolution_by_surface[name] = {
-                                "factor": factor,
-                                "index": index,
-                            }
-
-                        metrics["evolution_by_surface"] = evolution_by_surface
-
-                        # For backwards compatibility, store the first/main surface evolution
-                        if evolution_by_surface:
-                            first_surface = next(iter(evolution_by_surface.values()))
-                            metrics["evolution_factor"] = first_surface["factor"]
-
-                        logger.debug(
-                            "evolution_collected_multi_surface",
-                            surfaces=list(evolution_by_surface.keys()),
-                            evolution_data=evolution_by_surface,
-                        )
-                        
-                        
-                except Exception as e:
-                    logger.warning(
-                        "evolution_collection_failed",
-                        error=str(e),
-                        response=(response[:200] if isinstance(response, str) else "")
-                    )
+                evolution_by_surface = await self.rcon_client.get_evolution_factor()
+                if evolution_by_surface:
+                    metrics["evolution_by_surface"] = evolution_by_surface
+                    # For backwards compatibility, store the first surface evolution
+                    first_surface = next(iter(evolution_by_surface.values()))
+                    metrics["evolution_factor"] = first_surface
 
         except Exception as e:
             logger.warning("extended_metrics_partial_failure", error=str(e))
@@ -790,8 +799,6 @@ class RconStatsCollector:
             parts.append(self.rcon_client.server_name)
         return " ".join(parts) if parts else "Factorio Server"
 
-        # ... all existing imports, classes, and code above unchanged ...
-
     def _format_stats_text(
         self,
         player_count: int,
@@ -836,17 +843,16 @@ class RconStatsCollector:
             if len(evolution_by_surface) == 1:
                 # Single surface - compact format
                 surface_name = next(iter(evolution_by_surface.keys()))
-                evo_pct = evolution_by_surface[surface_name]["factor"] * 100.0
+                evo_pct = evolution_by_surface[surface_name] * 100.0
                 evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                 lines.append(f"🐛 Evolution: {evo_str}%")
             else:
                 # Multiple surfaces - list format
                 lines.append("🐛 Evolution:")
-                for surface_name, data in sorted(
+                for surface_name, factor in sorted(
                     evolution_by_surface.items(),
-                    key=lambda x: x[1]["index"],
                 ):
-                    evo_pct = data["factor"] * 100.0
+                    evo_pct = factor * 100.0
                     evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                     lines.append(f" • {surface_name}: {evo_str}%")
         elif metrics and metrics.get("evolution_factor") is not None:
@@ -939,7 +945,7 @@ class RconStatsCollector:
             if len(evolution_by_surface) == 1:
                 # Single surface - inline field
                 surface_name = next(iter(evolution_by_surface.keys()))
-                evo_pct = evolution_by_surface[surface_name]["factor"] * 100.0
+                evo_pct = evolution_by_surface[surface_name] * 100.0
                 evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                 embed.add_field(
                     name="🐛 Evolution",
@@ -949,11 +955,10 @@ class RconStatsCollector:
             else:
                 # Multiple surfaces - full-width field with list
                 evo_lines = []
-                for surface_name, data in sorted(
+                for surface_name, factor in sorted(
                     evolution_by_surface.items(),
-                    key=lambda x: x[1]["index"],
                 ):
-                    evo_pct = data["factor"] * 100.0
+                    evo_pct = factor * 100.0
                     evo_str = (
                         f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                     )
@@ -979,9 +984,6 @@ class RconStatsCollector:
             )
 
         return embed
-
-# ... remainder of RconAlertMonitor and other code stays unchanged ...
-
 
 
 class RconAlertMonitor:
