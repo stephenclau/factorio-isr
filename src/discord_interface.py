@@ -490,19 +490,6 @@ class DiscordInterfaceFactory:
 
         bot = DiscordBot(
             token=config.discord_bot_token,
-            breakdown_mode=getattr(config, 'rcon_breakdown_mode', 'transition'),
-            breakdown_interval=getattr(config, 'rcon_breakdown_interval', 300),
         )
-
-        # Set global event channel if configured
-        channel_id = getattr(config, 'discord_event_channel_id', None)
-        if channel_id:
-            bot.set_event_channel(channel_id)
-            logger.info("global_event_channel_configured", channel_id=channel_id)
-        else:
-            logger.info(
-                "bot_created_without_global_channel",
-                message="Event channels are configured per-server in servers.yml"
-            )
-
+       
         return BotDiscordInterface(bot)
