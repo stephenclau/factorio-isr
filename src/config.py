@@ -30,9 +30,10 @@ from typing import Optional, Dict, Any
 import os
 import yaml
 import structlog
+from dotenv import load_dotenv
 
 logger = structlog.get_logger()
-
+load_dotenv()
 
 def _read_docker_secret(secret_name: str) -> Optional[str]:
     """
