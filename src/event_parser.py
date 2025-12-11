@@ -17,7 +17,7 @@
 Event parser for Factorio log files.
 
 Parses log lines and extracts structured events using YAML-configured patterns
-with multi-channel routing support and @mention detection.
+with @mention detection and security monitoring.
 
 SECURITY HARDENING (Runtime Defenses):
 - ReDoS protection via google-re2 (linear-time regex engine)
@@ -103,19 +103,22 @@ class EventType(str, Enum):
 
 @dataclass(frozen=True, slots=True)
 class FactorioEvent:
-    """Parsed Factorio event with metadata and channel routing."""
+    """Parsed Factorio event with metadata (mentions, security)."""
     event_type: EventType
     player_name: Optional[str] = None
     message: Optional[str] = None
     raw_line: str = ""
     emoji: str = ""
     formatted_message: str = ""
-    # metadata carries routing info plus mention info:
-    # - channel: str
+    # metadata carries mention info and security context:
     # - mentions: list[str]
     # - mention_type: "user" | "group" | "mixed"
+    # - infraction: dict (for security alerts)
+    # - severity: str (for security alerts)
+    # - auto_banned: bool (for security alerts)
+    # - channel: str (ONLY for security alerts - routed to security channel)
     metadata: Dict[str, Any] = field(default_factory=dict)
-    server_tag: Optional[str] = None  # NEW: Which server did this event come from?
+    server_tag: Optional[str] = None  # Which server did this event come from?
 
 
 # Type alias for compiled pattern storage
@@ -175,7 +178,6 @@ class EventParser:
                 "pattern_compiled",
                 name=pattern.name,
                 type=pattern.event_type,
-                channel=pattern.channel,
             )
 
         self.compiled_patterns = compiled
@@ -517,7 +519,8 @@ class EventParser:
         server_tag: Optional[str] = None,
     ) -> FactorioEvent:
         """
-        Create a FactorioEvent from a regex match with channel routing and mention detection.
+        Create a FactorioEvent from a regex match with mention detection.
+        Channel routing handled by discord_bot.py based on server_tag.
         """
         if not isinstance(line, str):
             raise AssertionError("line must be str")
@@ -559,10 +562,8 @@ class EventParser:
             message,
         )
 
-        # Build metadata with channel routing information
+        # Build metadata (mentions only - channel routing handled by discord_bot.py)
         metadata: Dict[str, Any] = {}
-        if pattern.channel:
-            metadata["channel"] = pattern.channel
 
         # Mention detection for chat/server text
         mentions = self._extract_mentions(message)
@@ -576,12 +577,6 @@ class EventParser:
                 mention_type=metadata["mention_type"],
             )
 
-        logger.debug(
-            "event_routed_to_channel",
-            channel=pattern.channel,
-            event_type=event_type.value,
-        )
-
         event = FactorioEvent(
             event_type=event_type,
             player_name=player_name,
@@ -590,7 +585,7 @@ class EventParser:
             emoji=pattern.emoji,
             formatted_message=formatted_message,
             metadata=metadata,
-            server_tag=server_tag,  # NEW: Attach server context
+            server_tag=server_tag,
         )
 
         logger.debug(
@@ -598,7 +593,6 @@ class EventParser:
             type=event.event_type.value,
             player=player_name,
             pattern=pattern.name,
-            channel=pattern.channel,
             server_tag=server_tag,
         )
 
