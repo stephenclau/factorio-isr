@@ -2384,6 +2384,15 @@ class DiscordBot(discord.Client):
         event_repr=repr(event)[:200],
         is_factorio_event=isinstance(event, FactorioEvent),
         )
+        # ADD THIS CHECK HERE
+        if not isinstance(event, FactorioEvent):
+            logger.error(
+                "send_event_invalid_type",
+                received_type=type(event).__name__,
+                event_value=str(event)[:500],
+            )
+            return False
+        
         if not self._connected:
             logger.warning("send_event_not_connected", event_type=event.event_type.value)
             return False
