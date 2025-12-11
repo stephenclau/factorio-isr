@@ -59,12 +59,13 @@ class ServerManager:
 
         logger.info("server_manager_initialized")
 
-    async def add_server(self, config: ServerConfig) -> None:
+    async def add_server(self, config: ServerConfig, defer_stats: bool = False) -> None:
         """
         Add and connect a new server.
 
         Args:
             config: Server configuration
+            defer_stats: If True, don't start stats collectors yet (call start_stats_for_server later)
 
         Raises:
             ValueError: If tag already exists
@@ -78,7 +79,8 @@ class ServerManager:
             tag=config.tag,
             name=config.name,
             host=config.rcon_host,
-            port=config.rcon_port
+            port=config.rcon_port,
+            defer_stats=defer_stats
         )
 
         try:
@@ -98,65 +100,16 @@ class ServerManager:
             self.servers[config.tag] = config
             self.clients[config.tag] = client
 
-            # Create stats collector if channel configured
-            if config.event_channel_id:
-                # Create a per-server interface bound to this server's channel
-                server_interface = self.discord_interface.use_channel(config.event_channel_id)
-                
-                collector = RconStatsCollector(
-                    rcon_client=client,
-                    discord_client=server_interface,  # Channel-bound interface!
-                    interval=config.stats_interval,
-                    collect_ups=getattr(config, 'collect_ups', True),
-                    collect_evolution=getattr(config, 'collect_evolution', True),
-                )
-
-                await collector.start()
-                self.stats_collectors[config.tag] = collector
-
-                logger.info(
-                    "stats_collector_started",
-                    tag=config.tag,
-                    channel_id=config.event_channel_id,
-                    interval=config.stats_interval,
-                    ups_enabled=getattr(config, 'collect_ups', True),
-                    evolution_enabled=getattr(config, 'collect_evolution', True),
-                )
-
-            # Create alert monitor if enabled
-            if getattr(config, 'enable_alerts', True):
-                # Create a per-server interface bound to this server's channel
-                if config.event_channel_id:
-                    alert_interface = self.discord_interface.use_channel(config.event_channel_id)
-                else:
-                    alert_interface = self.discord_interface
-                
-                alert_monitor = RconAlertMonitor(
-                    rcon_client=client,
-                    discord_client=alert_interface,  # Channel-bound interface!
-                    check_interval=getattr(config, 'alert_check_interval', 60),
-                    samples_before_alert=getattr(config, 'alert_samples_required', 3),
-                    ups_warning_threshold=getattr(config, 'ups_warning_threshold', 55.0),
-                    ups_recovery_threshold=getattr(config, 'ups_recovery_threshold', 58.0),
-                    alert_cooldown=getattr(config, 'alert_cooldown', 300),
-                )
-
-                await alert_monitor.start()
-                self.alert_monitors[config.tag] = alert_monitor
-
-                logger.info(
-                    "alert_monitor_started",
-                    tag=config.tag,
-                    channel_id=config.event_channel_id if config.event_channel_id else "global",
-                    check_interval=getattr(config, 'alert_check_interval', 60),
-                    threshold=getattr(config, 'ups_warning_threshold', 55.0),
-                )
+            # Start stats collectors immediately unless deferred
+            if not defer_stats:
+                await self.start_stats_for_server(config.tag)
 
             logger.info(
                 "server_added",
                 tag=config.tag,
                 name=config.name,
-                connected=client.is_connected
+                connected=client.is_connected,
+                stats_started=not defer_stats
             )
 
         except Exception as e:
@@ -194,6 +147,82 @@ class ServerManager:
                 del self.servers[config.tag]
 
             raise
+
+    async def start_stats_for_server(self, tag: str) -> None:
+        """
+        Start stats collector and alert monitor for a server.
+        
+        Used when server was added with defer_stats=True.
+
+        Args:
+            tag: Server tag
+
+        Raises:
+            KeyError: If server doesn't exist
+            RuntimeError: If stats already started
+        """
+        if tag not in self.clients:
+            raise KeyError(f"Server '{tag}' not found")
+
+        if tag in self.stats_collectors:
+            raise RuntimeError(f"Stats collector for '{tag}' already started")
+
+        config = self.servers[tag]
+        client = self.clients[tag]
+
+        # Create stats collector if channel configured
+        if config.event_channel_id:
+            # Create a per-server interface bound to this server's channel
+            server_interface = self.discord_interface.use_channel(config.event_channel_id)
+            
+            collector = RconStatsCollector(
+                rcon_client=client,
+                discord_client=server_interface,  # Channel-bound interface!
+                interval=config.stats_interval,
+                collect_ups=getattr(config, 'collect_ups', True),
+                collect_evolution=getattr(config, 'collect_evolution', True),
+            )
+
+            await collector.start()
+            self.stats_collectors[config.tag] = collector
+
+            logger.info(
+                "stats_collector_started",
+                tag=config.tag,
+                channel_id=config.event_channel_id,
+                interval=config.stats_interval,
+                ups_enabled=getattr(config, 'collect_ups', True),
+                evolution_enabled=getattr(config, 'collect_evolution', True),
+            )
+
+        # Create alert monitor if enabled
+        if getattr(config, 'enable_alerts', True):
+            # Create a per-server interface bound to this server's channel
+            if config.event_channel_id:
+                alert_interface = self.discord_interface.use_channel(config.event_channel_id)
+            else:
+                alert_interface = self.discord_interface
+            
+            alert_monitor = RconAlertMonitor(
+                rcon_client=client,
+                discord_client=alert_interface,  # Channel-bound interface!
+                check_interval=getattr(config, 'alert_check_interval', 60),
+                samples_before_alert=getattr(config, 'alert_samples_required', 3),
+                ups_warning_threshold=getattr(config, 'ups_warning_threshold', 55.0),
+                ups_recovery_threshold=getattr(config, 'ups_recovery_threshold', 58.0),
+                alert_cooldown=getattr(config, 'alert_cooldown', 300),
+            )
+
+            await alert_monitor.start()
+            self.alert_monitors[config.tag] = alert_monitor
+
+            logger.info(
+                "alert_monitor_started",
+                tag=config.tag,
+                channel_id=config.event_channel_id if config.event_channel_id else "global",
+                check_interval=getattr(config, 'alert_check_interval', 60),
+                threshold=getattr(config, 'ups_warning_threshold', 55.0),
+            )
 
     async def remove_server(self, tag: str) -> None:
         """
