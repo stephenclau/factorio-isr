@@ -2378,6 +2378,12 @@ class DiscordBot(discord.Client):
         Returns:
             True if sent successfully, False otherwise
         """
+        logger.debug(
+        "send_event_called",
+        event_type=type(event).__name__,
+        event_repr=repr(event)[:200],
+        is_factorio_event=isinstance(event, FactorioEvent),
+        )
         if not self._connected:
             logger.warning("send_event_not_connected", event_type=event.event_type.value)
             return False
