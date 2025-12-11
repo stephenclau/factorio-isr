@@ -576,7 +576,7 @@ class RconStatsCollector:
             "tick": None,
             "game_time_seconds": None,
             "evolution_factor": None,
-            "evolution_by_surface": {},  # Dict[surface_name, {factor, index}]
+            "evolution_by_surface": {},  # Dict[surface_name, factor]
         }
 
         try:
@@ -634,75 +634,48 @@ class RconStatsCollector:
             if self.collect_evolution:
                 response: Optional[str] = None
                 try:
-                    # Print as: name:index:factor per line
-                    response = await self.rcon_client.execute(
-                        "/sc "
-                        "for _, surface in pairs(game.surfaces) do "
-                        "  local evo = game.forces[\"enemy\"].get_evolution_factor(surface); "
-                        "  rcon.print(surface.name .. \":\" .. surface.index .. \":\" .. evo); "
-                        "end"
+                    # Query all surfaces for evolution factor
+                    lua = (
+                        "/c "
+                        "local f = game.forces['enemy']; "
+                        "local evo_data = {}; "
+                        "for _, s in pairs(game.surfaces) do "
+                        "  if not string.find(string.lower(s.name), 'platform') then "
+                        "    evo_data[s.name] = f.get_evolution_factor(s); "
+                        "  end "
+                        "end; "
+                        "rcon.print(game.table_to_json(evo_data))"
                     )
+                    response = await self.rcon_client.execute(lua)
 
-                    if not response:
+                    if not response or not response.strip():
                         logger.warning("evolution_collection_failed_empty_response")
                     else:
-                        evolution_by_surface: Dict[str, Dict[str, float]] = {}
-                        for line in response.splitlines():
-                            line = line.strip()
-                            if not line:
-                                continue
-                            # Expect "name:index:factor"
-                            parts = line.split(":")
-                            if len(parts) != 3:
-                                logger.debug(
-                                    "evolution_line_unexpected_format",
-                                    line=line,
-                                )
-                                continue
-                            name, index_str, factor_str = parts
-
-                            # Skip platform surfaces by name
-                            if "platform" in name.lower():
-                                logger.debug(
-                                    "evolution_surface_skipped_platform",
-                                    surface=name,
-                                )
-                                continue
-
-                            try:
-                                index = int(index_str)
-                                factor = float(factor_str)
-                            except ValueError:
-                                logger.debug(
-                                    "evolution_line_parse_failed",
-                                    line=line,
-                                )
-                                continue
-
-                            evolution_by_surface[name] = {
-                                "factor": factor,
-                                "index": index,
-                            }
-
-                        metrics["evolution_by_surface"] = evolution_by_surface
-
-                        # For backwards compatibility, store the first/main surface evolution
-                        if evolution_by_surface:
-                            first_surface = next(iter(evolution_by_surface.values()))
-                            metrics["evolution_factor"] = first_surface["factor"]
-
-                        logger.debug(
-                            "evolution_collected_multi_surface",
-                            surfaces=list(evolution_by_surface.keys()),
-                            evolution_data=evolution_by_surface,
+                        evolution_by_surface: Dict[str, float] = json.loads(
+                            response.strip()
                         )
-                        
-                        
+                        if evolution_by_surface:
+                            metrics["evolution_by_surface"] = evolution_by_surface
+                            # For backwards compatibility, store the first surface evolution
+                            first_surface = next(iter(evolution_by_surface.values()))
+                            metrics["evolution_factor"] = first_surface
+
+                            logger.debug(
+                                "evolution_collected_multi_surface",
+                                surfaces=list(evolution_by_surface.keys()),
+                                evolution_data=evolution_by_surface,
+                            )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "evolution_json_parse_failed",
+                        error=str(e),
+                        response=response[:200] if isinstance(response, str) else "",
+                    )
                 except Exception as e:
                     logger.warning(
                         "evolution_collection_failed",
                         error=str(e),
-                        response=(response[:200] if isinstance(response, str) else "")
+                        exc_info=True,
                     )
 
         except Exception as e:
@@ -790,8 +763,6 @@ class RconStatsCollector:
             parts.append(self.rcon_client.server_name)
         return " ".join(parts) if parts else "Factorio Server"
 
-        # ... all existing imports, classes, and code above unchanged ...
-
     def _format_stats_text(
         self,
         player_count: int,
@@ -836,17 +807,16 @@ class RconStatsCollector:
             if len(evolution_by_surface) == 1:
                 # Single surface - compact format
                 surface_name = next(iter(evolution_by_surface.keys()))
-                evo_pct = evolution_by_surface[surface_name]["factor"] * 100.0
+                evo_pct = evolution_by_surface[surface_name] * 100.0
                 evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                 lines.append(f"🐛 Evolution: {evo_str}%")
             else:
                 # Multiple surfaces - list format
                 lines.append("🐛 Evolution:")
-                for surface_name, data in sorted(
+                for surface_name, factor in sorted(
                     evolution_by_surface.items(),
-                    key=lambda x: x[1]["index"],
                 ):
-                    evo_pct = data["factor"] * 100.0
+                    evo_pct = factor * 100.0
                     evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                     lines.append(f" • {surface_name}: {evo_str}%")
         elif metrics and metrics.get("evolution_factor") is not None:
@@ -939,7 +909,7 @@ class RconStatsCollector:
             if len(evolution_by_surface) == 1:
                 # Single surface - inline field
                 surface_name = next(iter(evolution_by_surface.keys()))
-                evo_pct = evolution_by_surface[surface_name]["factor"] * 100.0
+                evo_pct = evolution_by_surface[surface_name] * 100.0
                 evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                 embed.add_field(
                     name="🐛 Evolution",
@@ -949,11 +919,10 @@ class RconStatsCollector:
             else:
                 # Multiple surfaces - full-width field with list
                 evo_lines = []
-                for surface_name, data in sorted(
+                for surface_name, factor in sorted(
                     evolution_by_surface.items(),
-                    key=lambda x: x[1]["index"],
                 ):
-                    evo_pct = data["factor"] * 100.0
+                    evo_pct = factor * 100.0
                     evo_str = (
                         f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
                     )
@@ -979,9 +948,6 @@ class RconStatsCollector:
             )
 
         return embed
-
-# ... remainder of RconAlertMonitor and other code stays unchanged ...
-
 
 
 class RconAlertMonitor:
