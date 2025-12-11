@@ -447,14 +447,14 @@ class RconStatsCollector:
     def __init__(
         self,
         rcon_client: RconClient,
-        discord_client: Any,
+        discord_interface: Any,
         interval: int | float = 300,
         collect_ups: bool = True,
         collect_evolution: bool = True,
     ) -> None:
         """Initialize stats collector."""
         self.rcon_client = rcon_client
-        self.discord_client = discord_client
+        self.discord_interface = discord_interface
         self.interval = interval
 
         self.collect_ups = collect_ups
@@ -488,7 +488,7 @@ class RconStatsCollector:
             "stats_collector_initialized",
             interval=interval,
             rcon_connected=rcon_client.is_connected,
-            discord_connected=getattr(discord_client, "is_connected", None),
+            discord_connected=getattr(discord_interface, "is_connected", None),
             collect_ups=collect_ups,
             collect_evolution=collect_evolution,
             ema_alpha=self.ema_alpha,
@@ -507,7 +507,7 @@ class RconStatsCollector:
             "stats_collector_started",
             interval=self.interval,
             rcon_connected=self.rcon_client.is_connected,
-            discord_connected=getattr(self.discord_client, "is_connected", None),
+            discord_connected=getattr(self.discord_interface, "is_connected", None),
         )
 
     async def stop(self) -> None:
@@ -732,7 +732,7 @@ class RconStatsCollector:
             )
 
             embed_sent = False
-            if hasattr(self.discord_client, "send_embed"):
+            if hasattr(self.discord_interface, "send_embed"):
                 try:
                     embed = self._format_stats_embed(
                         player_count,
@@ -741,7 +741,7 @@ class RconStatsCollector:
                         metrics,
                     )
                     logger.debug("stats_formatted_as_embed")
-                    result = self.discord_client.send_embed(embed)
+                    result = self.discord_interface.send_embed(embed)
                     embed_sent = await result
                     logger.debug("stats_embed_send_result", success=embed_sent)
                 except Exception as e:
@@ -765,7 +765,7 @@ class RconStatsCollector:
                         message[:100] if len(message) > 100 else message
                     ),
                 )
-                result = self.discord_client.send_message(message)
+                result = self.discord_interface.send_message(message)
                 await result
 
             logger.info(
@@ -990,7 +990,7 @@ class RconAlertMonitor:
     def __init__(
         self,
         rcon_client: RconClient,
-        discord_client: Any,
+        discord_interface: Any,
         check_interval: int = 60,
         samples_before_alert: int = 3,
         ups_warning_threshold: float = 55.0,
@@ -999,7 +999,7 @@ class RconAlertMonitor:
     ) -> None:
         """Initialize alert monitor."""
         self.rcon_client = rcon_client
-        self.discord_client = discord_client
+        self.discord_interface = discord_interface
         self.check_interval = check_interval
         self.samples_before_alert = samples_before_alert
         self.ups_warning_threshold = ups_warning_threshold
@@ -1277,8 +1277,8 @@ class RconAlertMonitor:
             inline=False,
         )
 
-        if hasattr(self.discord_client, "send_embed"):
-            result = self.discord_client.send_embed(embed)
+        if hasattr(self.discord_interface, "send_embed"):
+            result = self.discord_interface.send_embed(embed)
             await result
         else:
             message = (
@@ -1289,7 +1289,7 @@ class RconAlertMonitor:
                 f"Duration: {self.alert_state['consecutive_bad_samples']} checks\n"
                 "Performance degraded."
             )
-            result = self.discord_client.send_message(message)
+            result = self.discord_interface.send_message(message)
             await result
 
         logger.warning(
@@ -1337,8 +1337,8 @@ class RconAlertMonitor:
             inline=False,
         )
 
-        if hasattr(self.discord_client, "send_embed"):
-            result = self.discord_client.send_embed(embed)
+        if hasattr(self.discord_interface, "send_embed"):
+            result = self.discord_interface.send_embed(embed)
             await result
         else:
             message = (
@@ -1347,7 +1347,7 @@ class RconAlertMonitor:
                 f"(SMA: {sma_ups:.1f}, EMA: {ema_ups:.1f})\n"
                 "Performance normal."
             )
-            result = self.discord_client.send_message(message)
+            result = self.discord_interface.send_message(message)
             await result
 
         logger.info(
