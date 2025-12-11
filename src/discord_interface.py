@@ -69,7 +69,7 @@ class EmbedBuilder:
     COLOR_INFO = 0x3498DB     # Blue
     COLOR_WARNING = 0xFFA500  # Orange
     COLOR_ERROR = 0xFF0000    # Red
-    COLOR_ADMIN = 0x9B59B6    # Purple
+    COLOR_ADMIN =  0xFFC0CB    # Pink formally, Purple 0x9B59B6
     COLOR_FACTORIO = 0xFF6B00 # Factorio orange
 
     @staticmethod
