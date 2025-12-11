@@ -62,11 +62,14 @@ except ImportError:
 
 # NEW: Import modular components
 try:
-    from .bot import UserContextManager, RconMonitor, EventHandler, PresenceManager
-    from .bot.commands import register_factorio_commands
+    from bot import UserContextManager, RconMonitor, EventHandler, PresenceManager
+    from bot.commands import register_factorio_commands
 except ImportError:
-    from bot import UserContextManager, RconMonitor, EventHandler, PresenceManager  # type: ignore
-    from bot.commands import register_factorio_commands  # type: ignore
+    try:
+        from src.bot import UserContextManager, RconMonitor, EventHandler, PresenceManager  # type: ignore
+        from src.bot.commands import register_factorio_commands  # type: ignore
+    except ImportError:
+        raise ImportError("Could not import bot modules from bot/ or src/bot/")
 
 logger = structlog.get_logger()
 
@@ -362,7 +365,10 @@ class DiscordBot(discord.Client):
         for tag, config in self.server_manager.list_servers().items():
             channel_id = config.event_channel_id
             if channel_id:
-                from .bot.helpers import send_to_channel  # type: ignore
+                try:
+                    from bot.helpers import send_to_channel  # type: ignore
+                except ImportError:
+                    from src.bot.helpers import send_to_channel  # type: ignore
                 await send_to_channel(self, channel_id, embed)
                 logger.info(
                     "connection_notification_sent",
@@ -389,7 +395,10 @@ class DiscordBot(discord.Client):
         for tag, config in self.server_manager.list_servers().items():
             channel_id = config.event_channel_id
             if channel_id:
-                from .bot.helpers import send_to_channel  # type: ignore
+                try:
+                    from bot.helpers import send_to_channel  # type: ignore
+                except ImportError:
+                    from src.bot.helpers import send_to_channel  # type: ignore
                 await send_to_channel(self, channel_id, embed)
                 logger.info(
                     "disconnection_notification_sent",

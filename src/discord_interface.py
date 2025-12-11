@@ -385,26 +385,64 @@ class BotDiscordInterface(DiscordInterface):
 class DiscordInterfaceFactory:
     """Factory for creating Discord interface instances."""
 
+    # @staticmethod
+    # def _import_discord_bot() -> Any:
+    #     """
+    #     Import DiscordBot with fallback to importlib.util.
+
+    #     This method is extracted for testability.
+
+    #     Returns:
+    #         DiscordBot class
+
+    #     Raises:
+    #         ImportError: If DiscordBot cannot be imported
+    #     """
+    #     try:
+    #         # Try normal import first
+    #         from discord_bot import DiscordBot
+    #         return DiscordBot
+    #     except ImportError:
+    #         # Fallback to importlib
+    #         return DiscordInterfaceFactory._import_with_importlib('discord_bot', 'DiscordBot')
     @staticmethod
     def _import_discord_bot() -> Any:
         """
-        Import DiscordBot with fallback to importlib.util.
-
-        This method is extracted for testability.
-
+        Import DiscordBot from refactored module with fallback.
+        
+        Prefers discord_bot_refactored (modular architecture) but falls
+        back to discord_bot for compatibility.
+        
         Returns:
             DiscordBot class
-
+        
         Raises:
-            ImportError: If DiscordBot cannot be imported
+            ImportError: If DiscordBot cannot be imported from either module
         """
+        # Try 1: Refactored modular version (new - preferred)
         try:
-            # Try normal import first
-            from discord_bot import DiscordBot
+            from discord_bot_refactored import DiscordBot
+            logger.info("Using refactored DiscordBot (modular architecture)")
             return DiscordBot
+        except ImportError as e:
+            logger.debug(f"discord_bot_refactored not found: {e}")
+        
+        # Try 2: Original version (backward compatibility)
+        try:
+            from discord_bot import DiscordBot
+            logger.info("Using original DiscordBot (fallback)")
+            return DiscordBot
+        except ImportError as e:
+            logger.debug(f"discord_bot not found: {e}")
+        
+        # Try 3: importlib fallback
+        try:
+            logger.debug("Attempting importlib fallback for discord_bot_refactored")
+            return DiscordInterfaceFactory._import_with_importlib('discord_bot_refactored', 'DiscordBot')
         except ImportError:
-            # Fallback to importlib
+            logger.debug("Attempting importlib fallback for discord_bot")
             return DiscordInterfaceFactory._import_with_importlib('discord_bot', 'DiscordBot')
+
 
     @staticmethod
     def _import_with_importlib(module_name: str, class_name: str) -> Any:
