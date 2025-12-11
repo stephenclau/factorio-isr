@@ -336,9 +336,6 @@ class Config:
     bot_avatar_url: Optional[str] = None
     """Optional Discord bot avatar URL."""
 
-    discord_webhook_url: Optional[str] = None
-    """Deprecated: webhook mode is not supported. Use bot mode only."""
-
     # Factorio log configuration
     factorio_log_path: Path = field(default_factory=lambda: Path("/tmp/console.log"))
     """Legacy: single server log path (deprecated - use servers.yml)."""
