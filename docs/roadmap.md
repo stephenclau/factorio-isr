@@ -3,51 +3,72 @@ layout: default
 title: Roadmap
 ---
 
+# 🛣️ Project Roadmap
 
-## 🗺️ Roadmap
+This document outlines the development trajectory of Factorio ISR.
 
-### Phase 1 - Minimum Viable Product (MVP) ✅
-- [x] Real-time log monitoring
-- [x] Discord webhook integration
-- [x] Core event parsing
-- [x] Docker deployment
-- [x] Health checks
-- [x] Comprehensive tests
+For detailed observability plans (logging, metrics, tracing), see **[Observability Roadmap](OBSERVABILITY_ROADMAP.md)**.
 
-### Phase 2 - RCON Integration ✅
-- [x] Read-only RCON commands
-- [x] Server statistics (players, uptime)
-- [x] Scheduled status updates (set intervals)
+## Phase 1: Core Foundation ✅
+**Status:** Complete (v0.1.0)
 
-### Phase 3 - Enhanced Parsing ✅
+- [x] Log tailing implementation (`log_tailer.py`)
+- [x] Basic event parsing (`event_parser.py`)
+- [x] Discord Webhook integration (Legacy)
+- [x] Docker containerization
+- [x] Health check endpoint
+
+## Phase 2: Configuration & Extensibility ✅
+**Status:** Complete (v0.2.0)
+
 - [x] YAML-based pattern configuration
-- [x] Custom event filters
-- [x] Multiple Discord channels
-- [x] Event statistics and aggregation
+- [x] Support for custom event patterns
+- [x] ReDoS protection for regex
+- [x] Strict configuration validation
 
-### Phase 4 - Discord Bot ✅
-- [x] Replace webhook with Discord bot (1 bot to 1 RCON/server arch)
-- [x] Slash commands
-- [x] Interactive queries
+## Phase 3: RCON Integration ✅
+**Status:** Complete (v0.3.0)
 
-### Phase 5 - Interactive Features Baseline ✅
-- [x] Admin commands from Discord
-- [x] RCON write operations
-- [x] Multi-server support (1 bot supporting n number of RCON/server connections)
+- [x] RCON client implementation (`rcon_client.py`)
+- [x] Authentication & Reconnection logic
+- [x] Server stats (players, game time)
+- [x] Player online list
+- [x] Evolution factor tracking
 
-### Phase 6 - More Interactions and House Cleaning ✅
-- [x] Default use of embeds over plain text for bot responses
-- [x] Console to Discord @mention support
-- [x] Input sanitization + memory and threadsafe performance optimization 
+## Phase 4: Discord Bot & Commands ✅
+**Status:** Complete (v1.0.0)
 
-### Future 
-- [ ] Full webhook deprecation and removal from codebase
-- [ ] Permission system
-- [X] Milestone/Todo mod event support (only works if/when those mods write to console log)
-- [ ] Open Telemetry/Prometheus 
-- [ ] Hot loadable configs
+- [x] Native Discord bot implementation (`discord_bot.py`)
+- [x] Slash commands (`/factorio status`, `/factorio players`)
+- [x] Embed-based notifications
+- [x] Permission system
 
+## Phase 5: Multi-Server Architecture ✅
+**Status:** Complete (v2.0.0)
 
+- [x] `servers.yml` configuration
+- [x] Server Manager coordinator (`server_manager.py`)
+- [x] Multi-server RCON monitoring
+- [x] Unified bot presence ("Watching 3 servers")
+- [x] Per-server event routing
+
+## Phase 6: Hardening & Observability ✅
+**Status:** In Use / Ongoing (v2.1.0)
+
+- [x] Metrics polling & UPS alerts
+- [x] Security hardening (Rate limiting, Input sanitization)
+- [x] Hardcoded config paths for Docker reliability
+- [x] Removal of legacy webhook code
+- [ ] OpenTelemetry integration (See [Observability Roadmap](OBSERVABILITY_ROADMAP.md))
+
+## Phase 7: Advanced Features (Planned) 📋
+
+- [ ] **Hot Reloading**: Update patterns/config without restart
+- [ ] **Data Persistence**: SQLite/Postgres for long-term stats
+- [ ] **Web Dashboard**: Control plane for server management
+- [ ] **Mod Portal Integration**: Check for mod updates
+
+---
 
 > **📄 Licensing Information**
 > 
