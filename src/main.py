@@ -219,7 +219,7 @@ class Application:
         self.discord = DiscordInterfaceFactory.create_interface(self.config)
         assert self.discord is not None
 
-        # Setup ServerManager, add servers, and wire to bot BEFORE Discord connects
+        # Setup ServerManager, add servers (without stats), and wire to bot BEFORE Discord connects
         # This ensures connection notification can access server channels
         await self._setup_multi_server_manager()
 
@@ -239,7 +239,7 @@ class Application:
         # Event parser must exist from setup
         assert self.event_parser is not None, "Event parser not initialized"
 
-        # Stats collectors are already started - just log confirmation
+        # Start stats collectors now that Discord is connected
         await self._start_multi_server_stats_collectors()
 
         # Start multi-server log tailer
@@ -263,8 +263,8 @@ class Application:
         """
         Initialize ServerManager, add servers, and wire to Discord bot.
         
-        This is called BEFORE Discord connects to ensure the bot
-        has a populated server_manager for connection notifications.
+        Servers are added with defer_stats=True so RCON connects but
+        stats collectors don't start until Discord is ready.
         """
         assert self.config is not None
         assert self.discord is not None
@@ -312,14 +312,14 @@ class Application:
             )
             raise ValueError("No servers configured in config/servers.yml")
 
-        # Add all servers to ServerManager BEFORE wiring to bot
-        # This ensures connection notification sees populated server list
+        # Add all servers to ServerManager with defer_stats=True
+        # This connects RCON but doesn't start stats collectors yet
         added_servers: list[str] = []
         failed_servers: list[str] = []
 
         for tag, server_config in self.config.servers.items():
             try:
-                await self.server_manager.add_server(server_config)
+                await self.server_manager.add_server(server_config, defer_stats=True)
                 added_servers.append(f"{tag} ({server_config.name})")
 
                 logger.info(
@@ -328,6 +328,7 @@ class Application:
                     name=server_config.name,
                     host=server_config.rcon_host,
                     port=server_config.rcon_port,
+                    stats_deferred=True
                 )
 
             except Exception as e:
@@ -366,17 +367,35 @@ class Application:
 
     async def _start_multi_server_stats_collectors(self) -> None:
         """
-        Confirm stats collectors are running for all servers.
+        Start stats collectors for all servers.
         
-        Called AFTER Discord connects. Stats collectors are already
-        started by ServerManager.add_server() in _setup_multi_server_manager().
-        This method just logs confirmation.
+        Called AFTER Discord connects. Servers were added with defer_stats=True,
+        now we start their stats collectors so they can post to Discord.
         """
         assert self.server_manager is not None
 
+        started_count = 0
+        failed_count = 0
+
+        for tag in self.server_manager.list_tags():
+            try:
+                await self.server_manager.start_stats_for_server(tag)
+                started_count += 1
+                logger.debug("stats_started_for_server", tag=tag)
+            except Exception as e:
+                failed_count += 1
+                logger.error(
+                    "failed_to_start_stats_for_server",
+                    tag=tag,
+                    error=str(e),
+                    exc_info=True
+                )
+
         logger.info(
-            "multi_server_stats_collectors_confirmed",
+            "multi_server_stats_collectors_started",
             server_count=len(self.server_manager.list_servers()),
+            started=started_count,
+            failed=failed_count
         )
 
     async def handle_log_line(self, line: str, server_tag: str) -> None:
