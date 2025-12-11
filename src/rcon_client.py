@@ -440,81 +440,6 @@ class RconClient:
             logger.warning("failed_to_get_server_time", error=str(e))
             return "Unknown"
 
-    async def get_evolution_factor(self) -> Dict[str, float]:
-        """Get evolution factor per surface (multi-surface support).
-        
-        Returns:
-            Dict mapping surface names to evolution factors (0.0 to 1.0).
-            Returns empty dict on error.
-        """
-        evolution_by_surface: Dict[str, float] = {}
-        
-        try:
-            # Execute command to get evolution per surface
-            response = await self.execute(
-                "/sc "
-                "for _, surface in pairs(game.surfaces) do "
-                "  local evo = game.forces[\"enemy\"].get_evolution_factor(surface); "
-                "  rcon.print(surface.name .. \":\" .. evo); "
-                "end"
-            )
-
-            if not response:
-                logger.warning("evolution_collection_failed_empty_response")
-                return evolution_by_surface
-
-            # Parse response: expect "name:factor" per line
-            for line in response.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                
-                parts = line.split(":")
-                if len(parts) != 2:
-                    logger.debug(
-                        "evolution_line_unexpected_format",
-                        line=line,
-                    )
-                    continue
-                
-                name, factor_str = parts
-                name = name.strip()
-                factor_str = factor_str.strip()
-
-                # Skip platform surfaces
-                if "platform" in name.lower():
-                    logger.debug(
-                        "evolution_surface_skipped_platform",
-                        surface=name,
-                    )
-                    continue
-
-                try:
-                    factor = float(factor_str)
-                    evolution_by_surface[name] = factor
-                except ValueError:
-                    logger.debug(
-                        "evolution_line_parse_failed",
-                        line=line,
-                        factor_str=factor_str,
-                    )
-                    continue
-
-            logger.debug(
-                "evolution_collected",
-                surfaces=list(evolution_by_surface.keys()),
-                evolution_data=evolution_by_surface,
-            )
-
-        except Exception as e:
-            logger.warning(
-                "evolution_collection_failed",
-                error=str(e),
-                exc_info=True,
-            )
-
-        return evolution_by_surface
-
 
 class RconStatsCollector:
     """Periodically collect and post server statistics with pause detection."""
@@ -707,12 +632,51 @@ class RconStatsCollector:
 
             # Evolution factor per surface (multi-surface support)
             if self.collect_evolution:
-                evolution_by_surface = await self.rcon_client.get_evolution_factor()
-                if evolution_by_surface:
-                    metrics["evolution_by_surface"] = evolution_by_surface
-                    # For backwards compatibility, store the first surface evolution
-                    first_surface = next(iter(evolution_by_surface.values()))
-                    metrics["evolution_factor"] = first_surface
+                response: Optional[str] = None
+                try:
+                    # Query all surfaces for evolution factor
+                    lua = (
+                        "/c "
+                        "local f = game.forces['enemy']; "
+                        "local evo_data = {}; "
+                        "for _, s in pairs(game.surfaces) do "
+                        "  if not string.find(string.lower(s.name), 'platform') then "
+                        "    evo_data[s.name] = f.get_evolution_factor(s); "
+                        "  end "
+                        "end; "
+                        "rcon.print(game.table_to_json(evo_data))"
+                    )
+                    response = await self.rcon_client.execute(lua)
+
+                    if not response or not response.strip():
+                        logger.warning("evolution_collection_failed_empty_response")
+                    else:
+                        evolution_by_surface: Dict[str, float] = json.loads(
+                            response.strip()
+                        )
+                        if evolution_by_surface:
+                            metrics["evolution_by_surface"] = evolution_by_surface
+                            # For backwards compatibility, store the first surface evolution
+                            first_surface = next(iter(evolution_by_surface.values()))
+                            metrics["evolution_factor"] = first_surface
+
+                            logger.debug(
+                                "evolution_collected_multi_surface",
+                                surfaces=list(evolution_by_surface.keys()),
+                                evolution_data=evolution_by_surface,
+                            )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "evolution_json_parse_failed",
+                        error=str(e),
+                        response=response[:200] if isinstance(response, str) else "",
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "evolution_collection_failed",
+                        error=str(e),
+                        exc_info=True,
+                    )
 
         except Exception as e:
             logger.warning("extended_metrics_partial_failure", error=str(e))
