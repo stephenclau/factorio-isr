@@ -88,11 +88,11 @@ def register_factorio_commands(bot: Any) -> None:
 
         await interaction.response.defer()
         try:
-            current_tag = bot.user_context.get_user_server(interaction.user.id)
+            current_tag = bot.get_user_server(interaction.user.id)
             status_summary = bot.server_manager.get_status_summary()
 
             embed = discord.Embed(
-                title="📱 Available Factorio Servers",
+                title="📡 Available Factorio Servers",
                 color=EmbedBuilder.COLOR_INFO,
                 timestamp=discord.utils.utcnow(),
             )
@@ -158,16 +158,14 @@ def register_factorio_commands(bot: Any) -> None:
                     display += f" ({config.description})"
                 choices.append(
                     app_commands.Choice(
-                        name=display[:100],
+                        name=display[:100],  # Discord limit
                         value=tag,
                     )
                 )
 
-        return choices[:25]
+        return choices[:25]  # Discord limit
 
-    @factorio_group.command(
-        name="connect", description="Connect to a specific Factorio server"
-    )
+    @factorio_group.command(name="connect", description="Connect to a specific Factorio server")
     @app_commands.describe(server="Server tag (use autocomplete or /factorio servers)")
     @app_commands.autocomplete(server=server_autocomplete)
     async def connect_command(interaction: discord.Interaction, server: str) -> None:
@@ -197,7 +195,7 @@ def register_factorio_commands(bot: Any) -> None:
                 await interaction.followup.send(embed=embed, ephemeral=True)
                 return
 
-            bot.user_context.set_user_server(interaction.user.id, server)
+            bot.set_user_server(interaction.user.id, server)
 
             config = bot.server_manager.get_config(server)
             client = bot.server_manager.get_client(server)
@@ -244,7 +242,7 @@ def register_factorio_commands(bot: Any) -> None:
             logger.error("connect_command_failed", error=str(e), exc_info=True)
 
     # ========================================================================
-    # SERVER INFORMATION COMMANDS (7/25)
+    # Server Information Commands (7/25)
     # ========================================================================
 
     @factorio_group.command(name="status", description="Show Factorio server status")
@@ -258,10 +256,10 @@ def register_factorio_commands(bot: Any) -> None:
 
         await interaction.response.defer()
 
-        server_tag = bot.user_context.get_user_server(interaction.user.id)
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
+        server_tag = bot.get_user_server(interaction.user.id)
+        server_name = bot.get_server_display_name(interaction.user.id)
 
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n"
@@ -274,32 +272,27 @@ def register_factorio_commands(bot: Any) -> None:
             bot_online = bot._connected
             bot_status = "🟢 Online" if bot_online else "🔴 Offline"
 
-            players = await rcon_client.get_players()
-            player_count = len(players)
+            # Get players - raw RCON command
+            resp = await rcon_client.execute("/players")
+            player_names = resp.split("\n") if resp.strip() else []
+            player_count = len([p for p in player_names if p.strip()])
 
+            # RCON monitor uptime for this server
             uptime_text = "Unknown"
-            state = bot.rcon_monitor.rcon_server_states.get(server_tag)
+            state = bot.rcon_server_states.get(server_tag)
             last_connected = state.get("last_connected") if state else None
-            if last_connected is not None:
-                from ..bot.helpers import format_uptime  # type: ignore
+            if isinstance(last_connected, datetime):
                 uptime_delta = datetime.now(timezone.utc) - last_connected
-                uptime_text = format_uptime(uptime_delta)
+                uptime_text = bot._format_uptime(uptime_delta)
 
-            try:
-                from ..bot.helpers import get_game_uptime  # type: ignore
-                game_uptime = await get_game_uptime(rcon_client)
-                if game_uptime != "Unknown":
-                    uptime_text = game_uptime
-            except Exception:
-                pass
+            # Get in-game uptime from game.tick
+            game_uptime = await bot._get_game_uptime(rcon_client)
+            if game_uptime != "Unknown":
+                uptime_text = game_uptime
 
             embed = EmbedBuilder.create_base_embed(
                 title=f"🏭 {server_name} Status",
-                color=(
-                    EmbedBuilder.COLOR_SUCCESS
-                    if rcon_client.is_connected
-                    else EmbedBuilder.COLOR_WARNING
-                ),
+                color=EmbedBuilder.COLOR_SUCCESS if rcon_client.is_connected else EmbedBuilder.COLOR_WARNING,
             )
 
             embed.add_field(name="🤖 Bot Status", value=bot_status, inline=True)
@@ -319,19 +312,15 @@ def register_factorio_commands(bot: Any) -> None:
                 inline=True,
             )
 
-            if players:
-                player_list = "\n".join(f"• {name}" for name in players[:10])
-                if len(players) > 10:
-                    player_list += f"\n... and {len(players) - 10} more"
+            if player_names:
                 embed.add_field(
                     name="👥 Online Players",
-                    value=player_list,
+                    value="\n".join(f"• {name}" for name in player_names if name.strip()),
                     inline=False,
                 )
 
             embed.set_footer(text="Factorio ISR")
             await interaction.followup.send(embed=embed)
-            logger.info("status_command_executed", user=interaction.user.name)
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get status: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -339,7 +328,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="players", description="List players currently online")
     async def players_command(interaction: discord.Interaction) -> None:
-        """List online players with detailed information."""
+        """List online players with rich embed."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -347,35 +336,22 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            players = await rcon_client.get_players()
-            embed = discord.Embed(
-                title=f"👥 Players on {server_name}",
-                color=EmbedBuilder.COLOR_INFO,
-                timestamp=discord.utils.utcnow(),
-            )
-
-            if not players:
-                embed.description = "No players currently online."
-            else:
-                player_list = "\n".join(f"• {name}" for name in sorted(players))
-                embed.add_field(
-                    name=f"Online Players ({len(players)})",
-                    value=player_list,
-                    inline=False,
-                )
-
-            embed.set_footer(text="Factorio ISR")
+            resp = await rcon_client.execute("/players")
+            players = [p.strip() for p in resp.split("\n") if p.strip()]
+            embed = EmbedBuilder.players_list_embed(players)
             await interaction.followup.send(embed=embed)
-            logger.info("players_command_executed", player_count=len(players))
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get players: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -383,7 +359,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="version", description="Show Factorio server version")
     async def version_command(interaction: discord.Interaction) -> None:
-        """Get Factorio server version."""
+        """Display the Factorio server version."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -391,158 +367,583 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            version = await rcon_client.get_version()
-            embed = discord.Embed(
-                title=f"📦 {server_name} Version",
-                description=f"`{version}`",
-                color=EmbedBuilder.COLOR_INFO,
-                timestamp=discord.utils.utcnow(),
+            resp = await rcon_client.execute("/version")
+            embed = EmbedBuilder.info_embed(
+                title="🎮 Factorio Version",
+                message=resp,
             )
-            embed.set_footer(text="Factorio ISR")
             await interaction.followup.send(embed=embed)
-            logger.info("version_command_executed", version=version)
+            logger.info("version_requested", moderator=interaction.user.name)
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get version: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
             logger.error("version_command_failed", error=str(e))
 
-    @factorio_group.command(name="seed", description="Show map seed")
+    @factorio_group.command(name="seed", description="Show the map seed")
     async def seed_command(interaction: discord.Interaction) -> None:
-        """Get map seed."""
-        is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
+        """Display the current map seed."""
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            seed = await rcon_client.get_seed()
-            embed = discord.Embed(
-                title=f"🌍 {server_name} Map Seed",
-                description=f"```\n{seed}\n```",
-                color=EmbedBuilder.COLOR_INFO,
-                timestamp=discord.utils.utcnow(),
+            resp = await rcon_client.execute('/sc rcon.print(game.surfaces["nauvis"].map_gen_settings.seed)')
+            embed = EmbedBuilder.info_embed(
+                title="🌱 Map Seed",
+                message=f"Seed: `{resp.strip()}`\n\nUse this seed to generate an identical map.",
             )
-            embed.set_footer(text="Use this seed to generate the same map")
             await interaction.followup.send(embed=embed)
-            logger.info("seed_command_executed")
+            logger.info("seed_requested", moderator=interaction.user.name)
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to get seed: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Failed to get map seed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
             logger.error("seed_command_failed", error=str(e))
 
-    @factorio_group.command(name="evolution", description="Show biter evolution factor")
-    async def evolution_command(interaction: discord.Interaction) -> None:
-        """Get enemy evolution factor."""
-        is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
+    @factorio_group.command(
+        name="evolution",
+        description="Show evolution for a surface or all non-platform surfaces",
+    )
+    @app_commands.describe(
+        target='Surface/planet name (e.g. "nauvis") or the keyword "all"',
+    )
+    async def evolution_command(
+        interaction: discord.Interaction,
+        target: str,
+    ) -> None:
+        """
+        /factorio evolution all -> aggregate evolution across all non-platform surfaces
+        /factorio evolution nauvis -> evolution for surface 'nauvis' only
+        """
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                "Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
-        try:
-            evolution = await rcon_client.get_evolution_factor()
-            percentage = min(100.0, evolution * 100)
-            bar_filled = int(percentage / 10)
-            bar = "█" * bar_filled + "░" * (10 - bar_filled)
+        raw = target.strip()
+        lower = raw.lower()
 
-            embed = discord.Embed(
-                title=f"👾 {server_name} Enemy Evolution",
-                color=EmbedBuilder.COLOR_INFO,
-                timestamp=discord.utils.utcnow(),
+        try:
+            if lower == "all":
+                # Aggregate + detailed per-surface evolution, skipping platform surfaces
+                lua = (
+                    "/c "
+                    "local f = game.forces['enemy']; "
+                    "local total = 0; local count = 0; "
+                    "local lines = {}; "
+                    "for _, s in pairs(game.surfaces) do "
+                    " if not string.find(string.lower(s.name), 'platform') then "
+                    " local evo = f.get_evolution_factor(s); "
+                    " total = total + evo; count = count + 1; "
+                    " table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
+                    " end "
+                    "end; "
+                    "if count > 0 then "
+                    " local avg = total / count; "
+                    " rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); "
+                    "else "
+                    " rcon.print('AGG:0.00%%'); "
+                    "end; "
+                    "for _, line in ipairs(lines) do "
+                    " rcon.print(line); "
+                    "end"
+                )
+                resp = await rcon_client.execute(lua)
+                lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
+                agg_line = next((ln for ln in lines if ln.startswith("AGG:")), None)
+                per_surface = [ln for ln in lines if not ln.startswith("AGG:")]
+
+                agg_value = "0.00%"
+                if agg_line:
+                    agg_value = agg_line.replace("AGG:", "", 1).strip()
+
+                if not per_surface:
+                    title = "🐛 Evolution – All Surfaces"
+                    message = (
+                        f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
+                        "No individual non-platform surfaces returned evolution data."
+                    )
+                else:
+                    formatted = "\n".join(f"• `{ln}`" for ln in per_surface)
+                    title = "🐛 Evolution – All Non-platform Surfaces"
+                    message = (
+                        f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
+                        "Per-surface evolution:\n\n"
+                        f"{formatted}"
+                    )
+
+                embed = EmbedBuilder.info_embed(title=title, message=message)
+                await interaction.followup.send(embed=embed)
+                logger.info(
+                    "evolution_requested",
+                    moderator=interaction.user.name,
+                    target="all",
+                )
+                return
+
+            # Single-surface mode
+            surface = raw
+            lua = (
+                "/c "
+                f"local s = game.get_surface('{surface}'); "
+                "if not s then "
+                " rcon.print('SURFACE_NOT_FOUND'); "
+                " return "
+                "end; "
+                "if string.find(string.lower(s.name), 'platform') then "
+                " rcon.print('SURFACE_PLATFORM_IGNORED'); "
+                " return "
+                "end; "
+                "local evo = game.forces['enemy'].get_evolution_factor(s); "
+                "rcon.print(string.format('%.2f%%', evo * 100))"
             )
-            embed.add_field(
-                name="Evolution Factor",
-                value=f"{percentage:.1f}%",
-                inline=True,
+            resp = await rcon_client.execute(lua)
+            resp_str = resp.strip()
+
+            if resp_str == "SURFACE_NOT_FOUND":
+                embed = EmbedBuilder.error_embed(
+                    f"Surface `{surface}` was not found.\n\n"
+                    "Use map tools or an admin command to list available surfaces."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            if resp_str == "SURFACE_PLATFORM_IGNORED":
+                embed = EmbedBuilder.error_embed(
+                    f"Surface `{surface}` is a platform surface and is ignored for evolution queries."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            title = f"🐛 Evolution – Surface `{surface}`"
+            message = (
+                f"Enemy evolution on `{surface}`: **{resp_str}**\n\n"
+                "Higher evolution means stronger biters!"
             )
-            embed.add_field(
-                name="Progress",
-                value=f"`{bar}`",
-                inline=False,
-            )
-            embed.set_footer(text="Higher evolution = stronger biters")
+            embed = EmbedBuilder.info_embed(title=title, message=message)
             await interaction.followup.send(embed=embed)
-            logger.info("evolution_command_executed", evolution=evolution)
+            logger.info(
+                "evolution_requested",
+                moderator=interaction.user.name,
+                target=surface,
+            )
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get evolution: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("evolution_command_failed", error=str(e))
+            logger.error(
+                "evolution_command_failed",
+                error=str(e),
+                target=target,
+            )
 
-    @factorio_group.command(name="admins", description="List server administrators")
+    @factorio_group.command(name="admins", description="List server admins")
     async def admins_command(interaction: discord.Interaction) -> None:
-        """Get list of admins."""
-        is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
+        """List all server administrators."""
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            admins = await rcon_client.get_admins()
-            embed = discord.Embed(
-                title=f"👑 {server_name} Administrators",
-                color=EmbedBuilder.COLOR_INFO,
-                timestamp=discord.utils.utcnow(),
+            resp = await rcon_client.execute("/admins")
+            embed = EmbedBuilder.info_embed(
+                title="👑 Server Administrators",
+                message=resp,
             )
-
-            if not admins:
-                embed.description = "No administrators configured."
-            else:
-                admin_list = "\n".join(f"• {name}" for name in sorted(admins))
-                embed.add_field(
-                    name=f"Admins ({len(admins)})",
-                    value=admin_list,
-                    inline=False,
-                )
-
-            embed.set_footer(text="Factorio ISR")
             await interaction.followup.send(embed=embed)
-            logger.info("admins_command_executed", admin_count=len(admins))
+            logger.info("admins_listed", moderator=interaction.user.name)
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to get admins: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Failed to list admins: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
             logger.error("admins_command_failed", error=str(e))
 
-    @factorio_group.command(name="health", description="Check bot and server health")
+    @factorio_group.command(name="health", description="Check bot and server health status")
     async def health_command(interaction: discord.Interaction) -> None:
-        """Check overall health status."""
+        """Display comprehensive health status of bot and connections."""
+        await interaction.response.defer()
+
+        bot_online = bot._connected
+        bot_status = "🟢 Online" if bot_online else "🔴 Offline"
+
+        server_tag = bot.get_user_server(interaction.user.id)
+        server_name = bot.get_server_display_name(interaction.user.id)
+
+        server_state = bot.rcon_server_states.get(server_tag, {})
+        last_connected = server_state.get("last_connected")
+        rcon_connected = bool(server_state.get("previous_status"))
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is not None:
+            rcon_connected = bool(rcon_client.is_connected)
+
+        monitoring_uptime = "Unknown"
+        if isinstance(last_connected, datetime):
+            uptime_delta = datetime.now(timezone.utc) - last_connected
+            monitoring_uptime = bot._format_uptime(uptime_delta)
+
+        multi_summary = None
+        if bot.server_manager:
+            status_summary = bot.server_manager.get_status_summary()
+            total = len(status_summary)
+            connected_count = sum(1 for v in status_summary.values() if v)
+            multi_summary = f"📡 RCON {connected_count}/{total} servers connected"
+
+        embed = EmbedBuilder.create_base_embed(
+            title="🩺 Bot & Server Health",
+            color=EmbedBuilder.COLOR_INFO,
+        )
+
+        embed.add_field(name="🤖 Bot Status", value=bot_status, inline=True)
+        embed.add_field(
+            name="🔧 RCON Status",
+            value="🟢 Connected" if rcon_connected else "🔴 Disconnected",
+            inline=True,
+        )
+        embed.add_field(
+            name="🏭 Current Server",
+            value=f"[{server_tag}] {server_name}",
+            inline=False,
+        )
+        embed.add_field(
+            name="⏱️ Monitoring Since",
+            value=monitoring_uptime,
+            inline=True,
+        )
+
+        if multi_summary:
+            embed.add_field(
+                name="🌐 Multi-Server RCON",
+                value=multi_summary,
+                inline=False,
+            )
+
+        embed.set_footer(text="Factorio ISR")
+        await interaction.followup.send(embed=embed)
+
+    # ========================================================================
+    # Player Management Commands (7/25)
+    # ========================================================================
+
+    @factorio_group.command(name="kick", description="Kick a player from the server")
+    @app_commands.describe(
+        player="Player name to kick",
+        reason="Optional reason shown to the player",
+    )
+    async def kick_command(
+        interaction: discord.Interaction,
+        player: str,
+        reason: str | None = None,
+    ) -> None:
+        """Kick a player with admin cooldown."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            reason_part = f" {reason}" if reason else ""
+            cmd = f"/kick {player}{reason_part}"
+            resp = await rcon_client.execute(cmd)
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Kicked",
+                player=player,
+                moderator=interaction.user.name,
+                reason=reason,
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_kicked", player=player, reason=reason, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Kick failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("kick_command_failed", error=str(e), player=player)
+
+    @factorio_group.command(name="ban", description="Ban a player from the server")
+    @app_commands.describe(player="Player name to ban")
+    async def ban_command(interaction: discord.Interaction, player: str) -> None:
+        """Ban a player with admin cooldown."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        if not player or not player.strip():
+            embed = EmbedBuilder.error_embed("Player name is required for ban command")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            resp = await rcon_client.execute(f"/ban {player}")
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Banned",
+                player=player,
+                moderator=interaction.user.name,
+                reason=None,
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_banned", player=player, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Ban failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("ban_command_failed", error=str(e), player=player)
+
+    @factorio_group.command(name="unban", description="Unban a player from the server")
+    @app_commands.describe(player="Player name to unban")
+    async def unban_command(interaction: discord.Interaction, player: str) -> None:
+        """Unban a player."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            resp = await rcon_client.execute(f"/unban {player}")
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Unbanned",
+                player=player,
+                moderator=interaction.user.name,
+                reason=None,
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_unbanned", player=player, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Unban failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("unban_command_failed", error=str(e), player=player)
+
+    @factorio_group.command(name="mute", description="Mute a player (prevent chat)")
+    @app_commands.describe(player="Player name to mute")
+    async def mute_command(interaction: discord.Interaction, player: str) -> None:
+        """Mute a player to prevent them from chatting."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            resp = await rcon_client.execute(f"/mute {player}")
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Muted",
+                player=player,
+                moderator=interaction.user.name,
+                reason=None,
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_muted", player=player, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Mute failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("mute_command_failed", error=str(e), player=player)
+
+    @factorio_group.command(name="unmute", description="Unmute a player")
+    @app_commands.describe(player="Player name to unmute")
+    async def unmute_command(interaction: discord.Interaction, player: str) -> None:
+        """Unmute a player to allow them to chat again."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            resp = await rcon_client.execute(f"/unmute {player}")
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Unmuted",
+                player=player,
+                moderator=interaction.user.name,
+                reason=None,
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_unmuted", player=player, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Unmute failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("unmute_command_failed", error=str(e), player=player)
+
+    @factorio_group.command(name="promote", description="Promote a player to admin")
+    @app_commands.describe(player="Player name to promote")
+    async def promote_command(interaction: discord.Interaction, player: str) -> None:
+        """Promote a player to admin status."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            resp = await rcon_client.execute(f"/promote {player}")
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Promoted",
+                player=player,
+                moderator=interaction.user.name,
+                reason="Promoted to admin",
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_promoted", player=player, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Promote failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("promote_command_failed", error=str(e), player=player)
+
+    @factorio_group.command(name="demote", description="Demote a player from admin")
+    @app_commands.describe(player="Player name to demote")
+    async def demote_command(interaction: discord.Interaction, player: str) -> None:
+        """Demote a player from admin status."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+        if is_limited:
+            embed = EmbedBuilder.cooldown_embed(retry)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        try:
+            resp = await rcon_client.execute(f"/demote {player}")
+            embed = EmbedBuilder.admin_action_embed(
+                action="Player Demoted",
+                player=player,
+                moderator=interaction.user.name,
+                reason="Demoted from admin",
+                response=resp,
+            )
+            await interaction.followup.send(embed=embed)
+            logger.info("player_demoted", player=player, moderator=interaction.user.name)
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Demote failed: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("demote_command_failed", error=str(e), player=player)
+
+    # ========================================================================
+    # Server Management Commands (4/25)
+    # ========================================================================
+
+    @factorio_group.command(name="save", description="Save the Factorio game")
+    @app_commands.describe(name="Optional save name")
+    async def save_command(interaction: discord.Interaction, name: str | None = None) -> None:
+        """Save the game with optional custom save name."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -550,418 +951,52 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
 
-        embed = discord.Embed(
-            title=f"💚 {server_name} Health Check",
-            color=EmbedBuilder.COLOR_SUCCESS,
-            timestamp=discord.utils.utcnow(),
-        )
-
-        try:
-            # Bot status
-            bot_status = "🟢 Healthy" if bot._connected else "🔴 Disconnected"
-            embed.add_field(name="Bot Status", value=bot_status, inline=True)
-
-            # RCON status
-            rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-            rcon_status = (
-                "🟢 Connected" if rcon_client and rcon_client.is_connected
-                else "🔴 Disconnected"
-            )
-            embed.add_field(name="RCON Status", value=rcon_status, inline=True)
-
-            # Monitor status
-            monitor_status = "🟢 Running" if bot.rcon_monitor else "🔴 Not available"
-            embed.add_field(name="Monitor Status", value=monitor_status, inline=True)
-
-            # Uptime
-            if bot.rcon_monitor and bot.rcon_monitor.rcon_server_states:
-                state = bot.rcon_monitor.rcon_server_states.get(
-                    bot.user_context.get_user_server(interaction.user.id)
-                )
-                if state and state.get("last_connected"):
-                    from ..bot.helpers import format_uptime  # type: ignore
-                    uptime_delta = datetime.now(timezone.utc) - state["last_connected"]
-                    uptime = format_uptime(uptime_delta)
-                    embed.add_field(name="Uptime", value=uptime, inline=True)
-
-            embed.set_footer(text="Factorio ISR Health Check")
-            await interaction.followup.send(embed=embed)
-            logger.info("health_command_executed")
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Health check failed: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("health_command_failed", error=str(e))
-
-    # ========================================================================
-    # PLAYER MANAGEMENT COMMANDS (7/25)
-    # ========================================================================
-
-    @factorio_group.command(name="kick", description="Kick a player from the server")
-    @app_commands.describe(player="Player name", reason="Reason for kick (optional)")
-    async def kick_command(
-        interaction: discord.Interaction,
-        player: str,
-        reason: Optional[str] = None,
-    ) -> None:
-        """Kick a player."""
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            message = reason if reason else "Kicked by moderator"
-            await rcon_client.kick_player(player, message)
+            cmd = f"/save {name}" if name else "/save"
+            resp = await rcon_client.execute(cmd)
 
-            embed = discord.Embed(
-                title="⚠️ Player Kicked",
-                color=EmbedBuilder.COLOR_WARNING,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.add_field(name="Reason", value=message, inline=False)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
+            import re
 
-            logger.info(
-                "player_kicked",
-                player=player,
-                reason=message,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to kick player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("kick_command_failed", error=str(e))
+            if name:
+                label = name
+            else:
+                match = re.search(r"/([^/]+?)\.zip", resp)
+                if match:
+                    label = match.group(1)
+                else:
+                    match = re.search(r"Saving (?:map )?to ([\w-]+)", resp)
+                    label = match.group(1) if match else "current save"
 
-    @factorio_group.command(name="ban", description="Ban a player from the server")
-    @app_commands.describe(player="Player name", reason="Reason for ban (optional)")
-    async def ban_command(
-        interaction: discord.Interaction,
-        player: str,
-        reason: Optional[str] = None,
-    ) -> None:
-        """Ban a player."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            message = reason if reason else "Banned by moderator"
-            await rcon_client.ban_player(player, message)
-
-            embed = discord.Embed(
-                title="🚫 Player Banned",
-                color=EmbedBuilder.COLOR_ADMIN,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.add_field(name="Reason", value=message, inline=False)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "player_banned",
-                player=player,
-                reason=message,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to ban player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("ban_command_failed", error=str(e))
-
-    @factorio_group.command(name="unban", description="Unban a player")
-    @app_commands.describe(player="Player name")
-    async def unban_command(
-        interaction: discord.Interaction,
-        player: str,
-    ) -> None:
-        """Unban a player."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            await rcon_client.unban_player(player)
-
-            embed = discord.Embed(
-                title="✅ Player Unbanned",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "player_unbanned",
-                player=player,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to unban player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("unban_command_failed", error=str(e))
-
-    @factorio_group.command(name="mute", description="Mute a player")
-    @app_commands.describe(player="Player name")
-    async def mute_command(interaction: discord.Interaction, player: str) -> None:
-        """Mute a player from chat."""
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            await rcon_client.mute_player(player)
-
-            embed = discord.Embed(
-                title="🔇 Player Muted",
-                color=EmbedBuilder.COLOR_WARNING,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "player_muted",
-                player=player,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to mute player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("mute_command_failed", error=str(e))
-
-    @factorio_group.command(name="unmute", description="Unmute a player")
-    @app_commands.describe(player="Player name")
-    async def unmute_command(interaction: discord.Interaction, player: str) -> None:
-        """Unmute a player."""
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            await rcon_client.unmute_player(player)
-
-            embed = discord.Embed(
-                title="🔊 Player Unmuted",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "player_unmuted",
-                player=player,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to unmute player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("unmute_command_failed", error=str(e))
-
-    @factorio_group.command(name="promote", description="Promote player to admin")
-    @app_commands.describe(player="Player name")
-    async def promote_command(interaction: discord.Interaction, player: str) -> None:
-        """Promote a player to admin."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            await rcon_client.promote_player(player)
-
-            embed = discord.Embed(
-                title="👑 Player Promoted",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Role", value="Administrator", inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "player_promoted",
-                player=player,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to promote player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("promote_command_failed", error=str(e))
-
-    @factorio_group.command(name="demote", description="Demote player from admin")
-    @app_commands.describe(player="Player name")
-    async def demote_command(interaction: discord.Interaction, player: str) -> None:
-        """Demote a player from admin."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            await rcon_client.demote_player(player)
-
-            embed = discord.Embed(
-                title="📉 Player Demoted",
-                color=EmbedBuilder.COLOR_WARNING,
-                timestamp=discord.utils.utcnow(),
-            )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Role", value="Player", inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "player_demoted",
-                player=player,
-                moderator=interaction.user.name,
-            )
-        except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to demote player: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("demote_command_failed", error=str(e))
-
-    # ========================================================================
-    # SERVER MANAGEMENT COMMANDS (4/25)
-    # ========================================================================
-
-    @factorio_group.command(name="save", description="Save the game")
-    @app_commands.describe(name="Save name (optional, defaults to auto-save)")
-    async def save_command(interaction: discord.Interaction, name: Optional[str] = None) -> None:
-        """Save the game."""
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
-        if is_limited:
-            embed = EmbedBuilder.cooldown_embed(retry)
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        try:
-            save_name = name if name else "auto-save"
-            await rcon_client.save(save_name)
-
-            embed = discord.Embed(
+            embed = EmbedBuilder.info_embed(
                 title="💾 Game Saved",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+                message=(
+                    f"Save name: **{label}**\n\n"
+                    f"Server response:\n{resp}"
+                ),
             )
-            embed.add_field(name="Save Name", value=save_name, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "game_saved",
-                save_name=save_name,
-                moderator=interaction.user.name,
-            )
+            logger.info("game_saved", name=label, moderator=interaction.user.name)
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to save game: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("save_command_failed", error=str(e))
+            logger.error("save_command_failed", error=str(e), name=name)
 
-    @factorio_group.command(name="broadcast", description="Send message to all players")
-    @app_commands.describe(message="Message to broadcast")
+    @factorio_group.command(name="broadcast", description="Send a message to all players")
+    @app_commands.describe(message="Message to broadcast to all players")
     async def broadcast_command(interaction: discord.Interaction, message: str) -> None:
-        """Broadcast a message to all players."""
+        """Broadcast a message to all players on the server."""
         is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -969,45 +1004,43 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            await rcon_client.send_message_to_players(message)
-
-            embed = discord.Embed(
+            escaped_msg = message.replace('"', '\\"')
+            resp = await rcon_client.execute(f'/sc game.print("[color=pink]{escaped_msg}[/color]")')
+            embed = EmbedBuilder.info_embed(
                 title="📢 Broadcast Sent",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+                message=f"Message: _{message}_\n\nAll online players have been notified.",
             )
-            embed.add_field(name="Message", value=message, inline=False)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "broadcast_sent",
-                message=message[:50],
-                moderator=interaction.user.name,
-            )
+            logger.info("message_broadcast", message=message, moderator=interaction.user.name)
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to send broadcast: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Broadcast failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("broadcast_command_failed", error=str(e))
+            logger.error("broadcast_command_failed", error=str(e), message=message)
 
-    @factorio_group.command(name="whisper", description="Send private message to a player")
-    @app_commands.describe(player="Player name", message="Message to send")
+    @factorio_group.command(name="whisper", description="Send a private message to a player")
+    @app_commands.describe(
+        player="Player name to whisper to",
+        message="Private message to send",
+    )
     async def whisper_command(
         interaction: discord.Interaction,
         player: str,
         message: str,
     ) -> None:
-        """Send a private message to a player."""
+        """Send a private whisper message to a specific player."""
         is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -1015,142 +1048,119 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            await rcon_client.send_message_to_player(player, message)
-
-            embed = discord.Embed(
-                title="💬 Private Message Sent",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+            resp = await rcon_client.execute(f"/whisper {player} {message}")
+            embed = EmbedBuilder.info_embed(
+                title="💬 Whisper Sent",
+                message=(
+                    f"**To:** {player}\n"
+                    f"**Message:** _{message}_\n\n"
+                    f"Private message delivered to player."
+                ),
             )
-            embed.add_field(name="Player", value=player, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.add_field(name="Message", value=message, inline=False)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
-
             logger.info(
                 "whisper_sent",
                 player=player,
-                message=message[:50],
+                message=message,
                 moderator=interaction.user.name,
             )
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to send message: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Whisper failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("whisper_command_failed", error=str(e))
+            logger.error("whisper_command_failed", error=str(e), player=player)
 
     @factorio_group.command(name="whitelist", description="Manage server whitelist")
     @app_commands.describe(
-        action="Action: add, remove, list, enable, disable",
+        action="Action to perform (add/remove/list/enable/disable)",
         player="Player name (required for add/remove)",
     )
     async def whitelist_command(
         interaction: discord.Interaction,
         action: str,
-        player: Optional[str] = None,
+        player: str | None = None,
     ) -> None:
         """Manage the server whitelist."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
-        try:
-            action_lower = action.lower().strip()
+        action = action.lower()
 
-            if action_lower == "add" and player:
-                await rcon_client.whitelist_add(player)
-                embed = discord.Embed(
-                    title="✅ Player Added to Whitelist",
-                    color=EmbedBuilder.COLOR_SUCCESS,
-                )
-                embed.add_field(name="Player", value=player, inline=True)
-                embed.add_field(name="Server", value=server_name, inline=True)
-            elif action_lower == "remove" and player:
-                await rcon_client.whitelist_remove(player)
-                embed = discord.Embed(
-                    title="❌ Player Removed from Whitelist",
-                    color=EmbedBuilder.COLOR_WARNING,
-                )
-                embed.add_field(name="Player", value=player, inline=True)
-                embed.add_field(name="Server", value=server_name, inline=True)
-            elif action_lower == "list":
-                whitelist = await rcon_client.whitelist_list()
-                embed = discord.Embed(
-                    title="📋 Server Whitelist",
-                    color=EmbedBuilder.COLOR_INFO,
-                )
-                if whitelist:
-                    wl_text = "\n".join(f"• {name}" for name in whitelist[:20])
-                    if len(whitelist) > 20:
-                        wl_text += f"\n... and {len(whitelist) - 20} more"
-                    embed.add_field(
-                        name=f"Whitelisted Players ({len(whitelist)})",
-                        value=wl_text,
-                        inline=False,
-                    )
-                else:
-                    embed.description = "Whitelist is empty."
-            elif action_lower == "enable":
-                await rcon_client.whitelist_enable()
-                embed = discord.Embed(
-                    title="🟢 Whitelist Enabled",
-                    color=EmbedBuilder.COLOR_SUCCESS,
-                )
-                embed.add_field(name="Server", value=server_name, inline=True)
-            elif action_lower == "disable":
-                await rcon_client.whitelist_disable()
-                embed = discord.Embed(
-                    title="🔴 Whitelist Disabled",
-                    color=EmbedBuilder.COLOR_WARNING,
-                )
-                embed.add_field(name="Server", value=server_name, inline=True)
+        try:
+            if action == "list":
+                resp = await rcon_client.execute("/whitelist get")
+                title = "📋 Whitelist"
+            elif action == "enable":
+                resp = await rcon_client.execute("/whitelist enable")
+                title = "✅ Whitelist Enabled"
+            elif action == "disable":
+                resp = await rcon_client.execute("/whitelist disable")
+                title = "⚠️ Whitelist Disabled"
+            elif action == "add":
+                if not player:
+                    embed = EmbedBuilder.error_embed("Player name required for 'add' action")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                resp = await rcon_client.execute(f"/whitelist add {player}")
+                title = f"✅ {player} Added to Whitelist"
+                logger.info("whitelist_add", player=player, moderator=interaction.user.name)
+            elif action == "remove":
+                if not player:
+                    embed = EmbedBuilder.error_embed("Player name required for 'remove' action")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                resp = await rcon_client.execute(f"/whitelist remove {player}")
+                title = f"🚫 {player} Removed from Whitelist"
+                logger.info("whitelist_remove", player=player, moderator=interaction.user.name)
             else:
                 embed = EmbedBuilder.error_embed(
-                    "Invalid action. Valid actions: add, remove, list, enable, disable"
+                    f"Invalid action: {action}\nValid actions: add, remove, list, enable, disable"
                 )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
 
-            embed.set_footer(text="Action performed via Discord")
+            embed = EmbedBuilder.info_embed(title=title, message=resp)
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "whitelist_command_executed",
-                action=action_lower,
-                player=player,
-                moderator=interaction.user.name,
-            )
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Whitelist command failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("whitelist_command_failed", error=str(e))
+            logger.error("whitelist_command_failed", error=str(e), action=action, player=player)
 
     # ========================================================================
-    # GAME CONTROL COMMANDS (3/25)
+    # Game Control Commands (3/25)
     # ========================================================================
 
-    @factorio_group.command(name="time", description="Show or set game time")
-    @app_commands.describe(value="Game time value (optional, format: tick number)")
-    async def time_command(interaction: discord.Interaction, value: Optional[int] = None) -> None:
-        """Get or set game time."""
+    @factorio_group.command(name="time", description="Set or display game time")
+    @app_commands.describe(value="Time value (e.g., 0.5 for noon, 0 for midnight) or leave empty to view")
+    async def time_command(interaction: discord.Interaction, value: float | None = None) -> None:
+        """Set or display the game time."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -1158,106 +1168,83 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            if value is not None:
-                await rcon_client.set_time(value)
-                embed = discord.Embed(
-                    title="⏱️ Game Time Set",
-                    color=EmbedBuilder.COLOR_SUCCESS,
+            if value is None:
+                resp = await rcon_client.execute("/time")
+                embed = EmbedBuilder.info_embed(
+                    title="🕐 Current Game Time",
+                    message=resp,
                 )
-                embed.add_field(name="New Time", value=f"{value} ticks", inline=True)
             else:
-                current_time = await rcon_client.get_time()
-                minutes = current_time / 60
-                hours = minutes / 60
-                embed = discord.Embed(
-                    title="⏱️ Current Game Time",
-                    color=EmbedBuilder.COLOR_INFO,
+                resp = await rcon_client.execute(f'/sc game.surfaces["nauvis"].daytime = {value}')
+                time_desc = "noon" if abs(value - 0.5) < 0.1 else "midnight" if value < 0.1 else f"{value}"
+                embed = EmbedBuilder.info_embed(
+                    title="🕐 Time Changed",
+                    message=f"Game time set to: **{time_desc}**\n\nServer response:\n{resp}",
                 )
-                embed.add_field(name="Ticks", value=str(current_time), inline=True)
-                embed.add_field(name="Minutes", value=f"{minutes:.1f}", inline=True)
-                embed.add_field(name="Hours", value=f"{hours:.1f}", inline=True)
+                logger.info("time_changed", value=value, moderator=interaction.user.name)
 
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="1 tick = 1/60 second")
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "time_command_executed",
-                action="set" if value else "get",
-            )
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to get/set time: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Time command failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("time_command_failed", error=str(e))
+            logger.error("time_command_failed", error=str(e), value=value)
 
-    @factorio_group.command(name="speed", description="Set game speed")
-    @app_commands.describe(value="Game speed (0.1-10.0, 1.0 = normal)")
-    async def speed_command(interaction: discord.Interaction, value: float) -> None:
-        """Set game speed."""
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
+    @factorio_group.command(name="speed", description="Set game speed (admin only)")
+    @app_commands.describe(speed="Game speed multiplier (0.1 to 10.0, default 1.0)")
+    async def speed_command(interaction: discord.Interaction, speed: float) -> None:
+        """Set the game speed multiplier."""
+        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        if not 0.1 <= value <= 10.0:
-            embed = EmbedBuilder.error_embed("Speed must be between 0.1 and 10.0")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
-        await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
-
-        if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+        if speed < 0.1 or speed > 10.0:
+            embed = EmbedBuilder.error_embed("Speed must be between 0.1 and 10.0")
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            await rcon_client.set_game_speed(value)
-
-            embed = discord.Embed(
-                title="⚡ Game Speed Set",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+            resp = await rcon_client.execute(f"/sc game.speed = {speed}")
+            embed = EmbedBuilder.info_embed(
+                title="⚡ Game Speed Changed",
+                message=f"Speed multiplier: **{speed}x**\n\n⚠️ This affects all players!\n\nServer response:\n{resp}",
             )
-            embed.add_field(name="New Speed", value=f"{value}x", inline=True)
-            if value < 1.0:
-                embed.add_field(name="Effect", value="⬇️ Slower", inline=True)
-            elif value > 1.0:
-                embed.add_field(name="Effect", value="⬆️ Faster", inline=True)
-            else:
-                embed.add_field(name="Effect", value="➡️ Normal", inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_WARNING
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "game_speed_set",
-                speed=value,
-                moderator=interaction.user.name,
-            )
+            logger.info("speed_changed", speed=speed, moderator=interaction.user.name)
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to set speed: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Speed change failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("speed_command_failed", error=str(e))
+            logger.error("speed_command_failed", error=str(e), speed=speed)
 
     @factorio_group.command(name="research", description="Force research a technology")
-    @app_commands.describe(technology="Technology name")
-    async def research_command(
-        interaction: discord.Interaction,
-        technology: str,
-    ) -> None:
+    @app_commands.describe(technology="Technology name to research")
+    async def research_command(interaction: discord.Interaction, technology: str) -> None:
         """Force research a technology."""
         is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
@@ -1266,85 +1253,77 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            await rcon_client.research_technology(technology)
-
-            embed = discord.Embed(
+            cmd = f'/sc game.forces["player"].technologies["{technology}"].researched = true'
+            resp = await rcon_client.execute(cmd)
+            embed = EmbedBuilder.info_embed(
                 title="🔬 Technology Researched",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+                message=(
+                    f"Technology: **{technology}**\n\n"
+                    "The technology has been forcefully researched.\n\n"
+                    f"Server response:\n{resp}"
+                ),
             )
-            embed.add_field(name="Technology", value=technology, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "technology_researched",
-                technology=technology,
-                moderator=interaction.user.name,
-            )
+            logger.info("tech_researched", technology=technology, moderator=interaction.user.name)
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to research technology: {str(e)}")
+            embed = EmbedBuilder.error_embed(
+                f"Research failed: {str(e)}\n\n"
+                "Make sure the technology name is correct (e.g., 'automation', 'logistics')"
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("research_command_failed", error=str(e))
+            logger.error("research_command_failed", error=str(e), technology=technology)
 
     # ========================================================================
-    # ADVANCED COMMANDS (2/25)
+    # Advanced Commands (2/25)
     # ========================================================================
 
-    @factorio_group.command(name="rcon", description="Run raw RCON command")
-    @app_commands.describe(command="RCON command to execute")
+    @factorio_group.command(name="rcon", description="Run a raw RCON command")
+    @app_commands.describe(command="Raw RCON command, e.g. /time or /ban Alice")
     async def rcon_command(interaction: discord.Interaction, command: str) -> None:
-        """Execute a raw RCON command."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
+        """Execute raw RCON command."""
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            result = await rcon_client.send_command(command)
-
-            embed = discord.Embed(
-                title="⌨️ RCON Command Executed",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+            resp = await rcon_client.execute(command)
+            embed = EmbedBuilder.info_embed(
+                title="🖥️ RCON Executed",
+                message=f"Command: `{command}`\n\nServer response:\n{resp}",
             )
-            embed.add_field(name="Command", value=f"```\n{command}\n```", inline=False)
-            if result:
-                result_text = result if len(result) < 1024 else result[:1021] + "..."
-                embed.add_field(name="Response", value=f"```\n{result_text}\n```", inline=False)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Dangerous operation - use with caution")
             await interaction.followup.send(embed=embed)
-
-            logger.warning(
-                "raw_rcon_executed",
-                command=command[:50],
-                user=interaction.user.name,
-            )
+            logger.info("raw_rcon_executed", command=command, moderator=interaction.user.name)
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"RCON command failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("rcon_command_failed", error=str(e))
+            logger.error("rcon_command_failed", error=str(e), command=command)
 
     @factorio_group.command(name="help", description="Show available Factorio commands")
     async def help_command(interaction: discord.Interaction) -> None:
@@ -1359,7 +1338,7 @@ def register_factorio_commands(bot: Any) -> None:
             "**🏭 Factorio ISR Bot – Commands**\n\n"
             "**🌐 Multi-Server**\n"
             "`/factorio servers` – List available servers\n"
-            "`/factorio connect <server>` – Switch to a server\n\n"
+            "`/factorio connect ` – Switch to a server\n\n"
             "**📊 Server Information**\n"
             "`/factorio status` – Show server status and uptime\n"
             "`/factorio players` – List players currently online\n"
@@ -1369,39 +1348,36 @@ def register_factorio_commands(bot: Any) -> None:
             "`/factorio admins` – List server administrators\n"
             "`/factorio health` – Check bot and server health\n\n"
             "**👥 Player Management**\n"
-            "`/factorio kick <player> [reason]` – Kick a player\n"
-            "`/factorio ban <player> [reason]` – Ban a player\n"
-            "`/factorio unban <player>` – Unban a player\n"
-            "`/factorio mute <player>` – Mute a player from chat\n"
-            "`/factorio unmute <player>` – Unmute a player\n"
-            "`/factorio promote <player>` – Promote player to admin\n"
-            "`/factorio demote <player>` – Demote player from admin\n\n"
+            "`/factorio kick [reason]` – Kick a player\n"
+            "`/factorio ban ` – Ban a player\n"
+            "`/factorio unban ` – Unban a player\n"
+            "`/factorio mute ` – Mute a player from chat\n"
+            "`/factorio unmute ` – Unmute a player\n"
+            "`/factorio promote ` – Promote player to admin\n"
+            "`/factorio demote ` – Demote player from admin\n\n"
             "**🔧 Server Management**\n"
-            "`/factorio broadcast <message>` – Send message to all players\n"
-            "`/factorio whisper <player> <message>` – Send private message\n"
+            "`/factorio broadcast ` – Send message to all players\n"
+            "`/factorio whisper ` – Send private message to a player\n"
             "`/factorio save [name]` – Save the game\n"
-            "`/factorio whitelist <action> [player]` – Manage whitelist\n"
-            "  └ Actions: add, remove, list, enable, disable\n\n"
+            "`/factorio whitelist [player]` – Manage whitelist\n"
+            " └ Actions: add, remove, list, enable, disable\n\n"
             "**🎮 Game Control**\n"
-            "`/factorio time [value]` – Show/set game time\n"
-            "`/factorio speed <value>` – Set game speed (0.1-10.0)\n"
-            "`/factorio research <technology>` – Force research tech\n\n"
-            "**🖛️ Advanced**\n"
-            "`/factorio rcon <command>` – Run raw RCON command\n"
+            "`/factorio time [value]` – Set/display game time\n"
+            "`/factorio speed ` – Set game speed (0.1-10.0)\n"
+            "`/factorio research ` – Force research tech\n\n"
+            "**🛠️ Advanced**\n"
+            "`/factorio rcon ` – Run raw RCON command\n"
             "`/factorio help` – Show this help message\n\n"
             "_Most commands require RCON to be enabled._"
         )
 
         await interaction.response.send_message(help_text)
 
-    # ========================================================================
-    # Register the command group
-    # ========================================================================
-
+    # Register the group
     bot.tree.add_command(factorio_group)
     logger.info(
-        "factorio_commands_registered",
+        "slash_commands_registered",
         root=factorio_group.name,
         command_count=len(factorio_group.commands),
-        phase="6.0-complete",
+        phase="6.0-multi-server",
     )
