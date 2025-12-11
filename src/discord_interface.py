@@ -22,7 +22,7 @@ Uses utils/ for general features, implements Discord-specific features here.
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Optional, TYPE_CHECKING, Any
+from typing import Optional, Any
 from unittest.mock import MagicMock, Mock, patch
 import asyncio
 import structlog
@@ -43,17 +43,16 @@ except ImportError:
     discord = None  # type: ignore
     DISCORD_AVAILABLE = False
 
-# Import for type hints only
-if TYPE_CHECKING:
-    from event_parser import FactorioEvent
-    if DISCORD_AVAILABLE:
-        from discord import Embed, Client
-else:
+# Import FactorioEvent with single consistent import path (NO TYPE_CHECKING)
+# This ensures the same class object is used everywhere, making isinstance() checks work
+try:
+    from .event_parser import FactorioEvent, FactorioEventFormatter
+except ImportError:
     try:
-        from .event_parser import FactorioEvent, FactorioEventFormatter
-    except ImportError:
         from event_parser import FactorioEvent, FactorioEventFormatter  # type: ignore
-
+    except ImportError:
+        FactorioEvent = None  # type: ignore
+        FactorioEventFormatter = None  # type: ignore
 
 logger = structlog.get_logger()
 
