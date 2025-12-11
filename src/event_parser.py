@@ -671,9 +671,7 @@ class FactorioEventFormatter:
         Note: Input sanitization happens in EventParser._format_message(),
         so event.formatted_message and event.player_name are already safe.
         """
-        # Validate input
-        assert isinstance(event, FactorioEvent), "event must be FactorioEvent"
-
+        # Event is already properly typed by EventParser, so no need to validate
         # Preferred: use preformatted message if provided.
         if event.formatted_message:
             if event.emoji:
