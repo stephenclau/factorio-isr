@@ -50,12 +50,10 @@ if TYPE_CHECKING:
         from discord import Embed, Client
 else:
     try:
-        from .event_parser import FactorioEvent
+        from .event_parser import FactorioEvent, FactorioEventFormatter
     except ImportError:
-        try:
-            from event_parser import FactorioEvent  # type: ignore
-        except ImportError:
-            FactorioEvent = None  # type: ignore
+        from event_parser import FactorioEvent, FactorioEventFormatter  # type: ignore
+
 
 logger = structlog.get_logger()
 
