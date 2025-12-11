@@ -490,7 +490,6 @@ class DiscordInterfaceFactory:
 
         bot = DiscordBot(
             token=config.discord_bot_token,
-            bot_name=config.bot_name,
             breakdown_mode=getattr(config, 'rcon_breakdown_mode', 'transition'),
             breakdown_interval=getattr(config, 'rcon_breakdown_interval', 300),
         )
