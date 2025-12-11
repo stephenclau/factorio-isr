@@ -1,113 +1,109 @@
 ---
 layout: default
-title: Security Monitor Guide
+title: Security Guide
 ---
 
-# Security Monitor Configuration Reference
+# 🛡️ Security Guide
 
-Configure security monitoring, alert routing, and rate limits via config/secmon.yml.
+Comprehensive guide for securing your Factorio ISR installation, covering the Security Monitor, threat models, and hardening practices.
 
 ## Table of Contents
-- Overview
-- File format
-- Structure
-- Field reference
-- Examples
-- Best practices
-- Testing
-- Next steps
+- [Security Monitor Configuration](#security-monitor-configuration)
+- [Threat Model](#threat-model)
+- [Hardening Measures](#hardening-measures)
+- [Rate Limiting](#rate-limiting)
+- [Best Practices](#best-practices)
 
 ---
 
-## Overview
-The security monitor inspects events for risky patterns, applies per‑category policies (enable/disable, auto_ban, severity), and posts alerts to a dedicated Discord channel.   
-It also enforces basic rate limits for sensitive actions like mass mentions. 
+## Security Monitor Configuration
 
----
+The Security Monitor (`security_monitor.py`) inspects events for risky patterns and applies policies defined in `config/secmon.yml`.
 
-## File format
-Place the file at ./config/secmon.yml and define a top-level security section with alert routing, patterns, and rate_limits. 
+### File Format (`config/secmon.yml`)
 
 ```yaml
-
-config/secmon.yml
 security:
-enabled: true
+  enabled: true
+  alert_channel: "security-alerts"
 
-Discord channel (by name) for security alerts
-alert_channel: "security-alerts"
+  patterns:
+    code_injection:
+      enabled: true
+      auto_ban: true
+      severity: critical
+    command_injection:
+      enabled: true
+      auto_ban: true
+      severity: critical
 
-Monitored categories and policies
-patterns:
-code_injection:
-    enabled: true
-    auto_ban: true
-    severity: critical
-path_traversal:
-    enabled: true
-    auto_ban: false
-    severity: high
-command_injection:
-    enabled: true
-    auto_ban: true
-    severity: critical
-
-Basic rate limits
-rate_limits:
+  rate_limits:
     mention_admin:
-    max_events: 5
-    time_window_seconds: 60
-mention_everyone:
-    max_events: 1
-    time_window_seconds: 300
-chat_message:
-    max_events: 20
-    time_window_seconds: 60
-
+      max_events: 5
+      time_window_seconds: 60
+    mention_everyone:
+      max_events: 1
+      time_window_seconds: 300
 ```
 
 ---
 
-## Structure
-- security.enabled: Master switch; disables or enables the security monitor.   
-- security.alert_channel: Discord channel (by name) where alerts are posted.   
-- security.patterns: Policy per category (enabled, auto_ban, severity).   
-- security.rate_limits: Sliding-window limits by action key with max_events and time_window_seconds. 
+## Threat Model
+
+Factorio ISR bridges a game server (which accepts user input) and Discord (a public platform). This creates several attack vectors we mitigate:
+
+| Threat | Vector | Mitigation |
+|--------|--------|-----------|
+| **ReDoS** | Malicious YAML patterns | `google-re2` usage (if available), strict regex timeouts (300ms) |
+| **Log Injection** | Fake console messages | Input sanitization, strict pattern anchoring |
+| **Role Escalation** | `@everyone` spam | `mentions.yml` whitelist, runtime replacement |
+| **Command Injection** | RCON commands | Hardcoded command list, role-based access control |
+| **Config Tampering** | Modified YAML | Docker read-only mounts, secrets isolation |
 
 ---
 
-## Field reference
-- patterns.<name>.enabled: Toggle detection of a given category (e.g., code_injection).   
-- patterns.<name>.auto_ban: If true, flag for automated moderation for that category.   
-- patterns.<name>.severity: One of critical/high/etc., used for alert emphasis.   
-- rate_limits.<key>.max_events: Maximum events within window.   
-- rate_limits.<key>.time_window_seconds: Window length in seconds. 
+## Hardening Measures
+
+### 1. ReDoS Mitigation (Regex Denial of Service)
+User-supplied regex patterns in YAML files can be crafted to hang the CPU.
+- **Timeouts**: All regex compilations and matches have a strict timeout.
+- **RE2**: The system attempts to use `google-re2` for deterministic performance.
+- **Validation**: Patterns are checked at load time for obvious catastrophic backtracking risks.
+
+### 2. Strict YAML Validation
+- **Schema Enforcement**: All YAML files (`servers.yml`, patterns) are validated against a strict schema.
+- **Path Locking**: Patterns are only loaded from the hardcoded `/app/patterns` directory. Directory traversal symbols (`../`) are blocked.
+
+### 3. Input Sanitization
+- **Console Input**: In-game chat is treated as untrusted.
+- **Escaping**: All Discord output is escaped to prevent formatting injection (e.g., hiding text, spoofing links).
+- **Mentions**: Raw mentions (e.g., `<@12345>`) in chat are escaped unless they match a mapped role in `mentions.yml`.
 
 ---
 
-## Examples
-- Enable high‑severity auto_ban for code injection and command injection; keep path traversal visible but non‑banning with severity high.   
-- Throttle @everyone to 1 event per 5 minutes and admin mentions to 5 per minute to reduce abuse. 
+## Rate Limiting
+
+Rate limits are applied per-user or per-action to prevent flooding.
+
+### Configuration
+
+Defined in `rate_limits` section of `secmon.yml`.
+
+- **`mention_admin`**: Limits how often a user can trigger an admin ping.
+- **`chat_message`**: General flood protection for bridging chat to Discord.
+
+Violations trigger a warning in the `alert_channel` and drop the event.
 
 ---
 
-## Best practices
-- Start with alerting first; enable auto_ban per category only after reviewing alert volume and false‑positive risk.   
-- Use a dedicated alert_channel with restricted posting permissions for clarity. 
+## Best Practices
+
+1. **Read-Only Mounts**: Mount your `config` and `patterns` directories as read-only in Docker (`:ro`).
+2. **Dedicated Alert Channel**: Use a private Discord channel for `alert_channel` to monitor security incidents without exposing them to public users.
+3. **Least Privilege**: The Discord Bot role should only have permissions it needs (Send Messages, Embed Links). Do not give it "Administrator".
+4. **Audit RCON**: Ensure your Factorio RCON password is strong and rotated if staff changes.
 
 ---
-
-## Testing
-- Trigger a benign event matching a monitored category and verify an alert arrives in the alert_channel.   
-- Attempt repeated mentions (like @everyone) and confirm events are rate‑limited per the configured thresholds. 
-
----
-
-## Next steps
-- See Pattern Syntax to understand how base events are parsed before security policies apply.   
-- Review Troubleshooting for Discord permission issues impacting alert delivery. 
-
-
 
 > **📄 Licensing Information**
 > 
