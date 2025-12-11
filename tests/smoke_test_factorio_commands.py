@@ -9,19 +9,26 @@ Verifies that:
 
 Usage:
     python tests/smoke_test_factorio_commands.py
+    OR
+    cd src && python ../tests/smoke_test_factorio_commands.py
 """
 
 import sys
+import os
 import asyncio
 from typing import Optional
 
+# Add src/ to path to allow imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
 try:
-    from src.discord_bot_refactored import DiscordBot, DiscordBotFactory
-    from src.bot import UserContextManager, RconMonitor, EventHandler, PresenceManager
-    from src.bot.commands import register_factorio_commands
+    from discord_bot_refactored import DiscordBot, DiscordBotFactory
+    from bot import UserContextManager, RconMonitor, EventHandler, PresenceManager
+    from bot.commands import register_factorio_commands
     print("✅ All imports successful")
 except ImportError as e:
     print(f"❌ Import failed: {e}")
+    print(f"   sys.path: {sys.path[:3]}")
     sys.exit(1)
 
 # Expected command structure
@@ -68,6 +75,8 @@ def test_bot_creation() -> Optional[DiscordBot]:
         return bot
     except Exception as e:
         print(f"❌ Bot creation failed: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
@@ -100,6 +109,8 @@ def test_factorio_command_registration(bot: DiscordBot) -> bool:
         print("✅ setup_hook() executed successfully")
     except Exception as e:
         print(f"❌ setup_hook() failed: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
     # Get the factorio command group from the tree
@@ -111,6 +122,7 @@ def test_factorio_command_registration(bot: DiscordBot) -> bool:
 
     if factorio_group is None:
         print("❌ Factorio command group not found in command tree")
+        print(f"   Commands found: {[cmd.name for cmd in bot.tree.get_commands()]}")
         return False
 
     print(f"✅ Factorio command group found: {factorio_group.name}")
