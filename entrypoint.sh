@@ -19,7 +19,11 @@ chown -R "${UID}:${GID}" /app 2>/dev/null || true
 echo "Permissions aligned."
 echo "****************************************************************************";
 echo "Starting FISR..."
-exec gosu factorio-isr "$@" 
+if [ $# -gt 0 ]; then
+    exec gosu factorio-isr "$@"
+else
+    exec gosu factorio-isr python -m src.main
+fi
 echo "****************************************************************************";
 echo "FISR Running."
 }
