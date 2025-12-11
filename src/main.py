@@ -219,11 +219,11 @@ class Application:
         self.discord = DiscordInterfaceFactory.create_interface(self.config)
         assert self.discord is not None
 
-        # Setup ServerManager and wire to bot BEFORE Discord connects
+        # Setup ServerManager, add servers, and wire to bot BEFORE Discord connects
         # This ensures connection notification can access server channels
         await self._setup_multi_server_manager()
 
-        # NOW connect Discord (connection notification will have server_manager available)
+        # NOW connect Discord (connection notification will have populated server_manager)
         await self.discord.connect()
 
         # Optional: Test connection (skip for production to avoid test messages)
@@ -239,8 +239,8 @@ class Application:
         # Event parser must exist from setup
         assert self.event_parser is not None, "Event parser not initialized"
 
-        # Start RCON clients and stats collectors
-        await self._start_multi_server_components()
+        # Stats collectors are already started - just log confirmation
+        await self._start_multi_server_stats_collectors()
 
         # Start multi-server log tailer
         self.logtailer = MultiServerLogTailer(
@@ -261,10 +261,10 @@ class Application:
 
     async def _setup_multi_server_manager(self) -> None:
         """
-        Initialize ServerManager and wire to Discord bot.
+        Initialize ServerManager, add servers, and wire to Discord bot.
         
         This is called BEFORE Discord connects to ensure the bot
-        has server_manager available for connection notifications.
+        has a populated server_manager for connection notifications.
         """
         assert self.config is not None
         assert self.discord is not None
@@ -312,27 +312,8 @@ class Application:
             )
             raise ValueError("No servers configured in config/servers.yml")
 
-        # Wire ServerManager to bot BEFORE connecting
-        # This allows connection notification to access server channels
-        bot.set_server_manager(self.server_manager)
-
-        logger.info("server_manager_wired_to_bot")
-
-        # Apply per-server breakdown configuration to the bot
-        bot._apply_server_breakdown_config()
-
-        logger.info("server_breakdown_config_applied_to_bot")
-
-    async def _start_multi_server_components(self) -> None:
-        """
-        Add servers to ServerManager and start RCON clients.
-        
-        This is called AFTER Discord connects to start the actual
-        RCON connections and stats collection.
-        """
-        assert self.config is not None
-        assert self.server_manager is not None
-
+        # Add all servers to ServerManager BEFORE wiring to bot
+        # This ensures connection notification sees populated server list
         added_servers: list[str] = []
         failed_servers: list[str] = []
 
@@ -342,7 +323,7 @@ class Application:
                 added_servers.append(f"{tag} ({server_config.name})")
 
                 logger.info(
-                    "adding_server",
+                    "server_added_to_manager",
                     tag=tag,
                     name=server_config.name,
                     host=server_config.rcon_host,
@@ -361,7 +342,7 @@ class Application:
 
         # Report summary
         logger.info(
-            "multi_server_components_started",
+            "servers_added_to_manager",
             total_configured=len(self.config.servers),
             added=len(added_servers),
             failed=len(failed_servers),
@@ -371,6 +352,32 @@ class Application:
 
         if not added_servers:
             raise ConnectionError("Failed to add any servers to ServerManager")
+
+        # Wire ServerManager to bot AFTER adding servers
+        # This allows connection notification to access server channels
+        bot.set_server_manager(self.server_manager)
+
+        logger.info("server_manager_wired_to_bot")
+
+        # Apply per-server breakdown configuration to the bot
+        bot._apply_server_breakdown_config()
+
+        logger.info("server_breakdown_config_applied_to_bot")
+
+    async def _start_multi_server_stats_collectors(self) -> None:
+        """
+        Confirm stats collectors are running for all servers.
+        
+        Called AFTER Discord connects. Stats collectors are already
+        started by ServerManager.add_server() in _setup_multi_server_manager().
+        This method just logs confirmation.
+        """
+        assert self.server_manager is not None
+
+        logger.info(
+            "multi_server_stats_collectors_confirmed",
+            server_count=len(self.server_manager.list_servers()),
+        )
 
     async def handle_log_line(self, line: str, server_tag: str) -> None:
         """
