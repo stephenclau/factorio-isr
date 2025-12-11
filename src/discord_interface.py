@@ -16,7 +16,7 @@
 """
 Unified interface for Discord communication with Phase 5.1 enhancements.
 
-Supports both webhook (Phase 1-3) and bot (Phase 4+) modes.
+Supports Discord bot mode only (webhooks deprecated in Phase 4+).
 Uses utils/ for general features, implements Discord-specific features here.
 """
 
@@ -230,41 +230,6 @@ class DiscordInterface(ABC):
 
 
 # ============================================================================
-# WEBHOOK INTERFACE (Phase 1-3) - Unchanged
-# ============================================================================
-
-class WebhookDiscordInterface(DiscordInterface):
-    """Discord interface using webhooks (Phase 1-3)."""
-
-    def __init__(self, discord_client: Any) -> None:
-        self.client = discord_client
-        self._connected = False
-
-    async def connect(self) -> None:
-        await self.client.connect()
-        self._connected = True
-        logger.info("webhook_interface_connected")
-
-    async def disconnect(self) -> None:
-        await self.client.disconnect()
-        self._connected = False
-        logger.info("webhook_interface_disconnected")
-
-    async def send_event(self, event: Any) -> bool:
-        return await self.client.send_event(event)
-
-    async def send_message(self, message: str, username: Optional[str] = None) -> bool:
-        return await self.client.send_message(message, username=username)
-
-    async def test_connection(self) -> bool:
-        return await self.client.test_connection()
-
-    @property
-    def is_connected(self) -> bool:
-        return self._connected
-
-
-# ============================================================================
 # BOT INTERFACE (Phase 4+ with Phase 5.1 Enhancements)
 # ============================================================================
 
@@ -412,12 +377,6 @@ class BotDiscordInterface(DiscordInterface):
     def is_connected(self) -> bool:
         return self.bot.is_connected
 
-"""
-RECOMMENDED SOLUTION: Refactor create_interface() for Testability
-
-The 49% missing coverage is in unreachable error-handling paths.
-This refactoring extracts import logic into testable helper methods.
-"""
 
 # ============================================================================
 # REFACTORED discord_interface.py (Factory section)
@@ -446,27 +405,6 @@ class DiscordInterfaceFactory:
         except ImportError:
             # Fallback to importlib
             return DiscordInterfaceFactory._import_with_importlib('discord_bot', 'DiscordBot')
-
-    @staticmethod
-    def _import_discord_client() -> Any:
-        """
-        Import DiscordClient with fallback to importlib.util.
-
-        This method is extracted for testability.
-
-        Returns:
-            DiscordClient class
-
-        Raises:
-            ImportError: If DiscordClient cannot be imported
-        """
-        try:
-            # Try normal import first
-            from discord_client import DiscordClient
-            return DiscordClient
-        except ImportError:
-            # Fallback to importlib
-            return DiscordInterfaceFactory._import_with_importlib('discord_client', 'DiscordClient')
 
     @staticmethod
     def _import_with_importlib(module_name: str, class_name: str) -> Any:
@@ -521,70 +459,51 @@ class DiscordInterfaceFactory:
     @staticmethod
     def create_interface(config: Any) -> DiscordInterface:
         """
-        Create appropriate Discord interface based on configuration.
+        Create Discord bot interface from configuration.
 
         Args:
-            config: Application configuration
+            config: Application configuration with discord_bot_token
 
         Returns:
-            DiscordInterface instance (webhook or bot mode)
+            BotDiscordInterface instance
 
         Raises:
-            ValueError: If neither webhook nor bot is configured
+            ValueError: If bot token is not configured
+            ImportError: If DiscordBot cannot be imported
         """
-        if config.discord_bot_token:
-            logger.info("creating_bot_interface", phase="6.0-multi-server")
-
-            try:
-                # Import using extracted method (now testable!)
-                DiscordBot = DiscordInterfaceFactory._import_discord_bot()
-            except Exception as e:
-                logger.error("failed_to_import_discord_bot", error=str(e), exc_info=True)
-                raise ImportError(
-                    f"Could not import DiscordBot. Make sure discord_bot.py is in the same directory. Error: {e}"
-                )
-
-            bot = DiscordBot(
-                token=config.discord_bot_token,
-                bot_name=config.bot_name,
-                breakdown_mode=getattr(config, 'rcon_breakdown_mode', 'transition'),
-                breakdown_interval=getattr(config, 'rcon_breakdown_interval', 300),
-            )
-
-            # Set global event channel if configured
-            channel_id = getattr(config, 'discord_event_channel_id', None)
-            if channel_id:
-                bot.set_event_channel(channel_id)
-                logger.info("global_event_channel_configured", channel_id=channel_id)
-            else:
-                logger.info(
-                    "bot_created_without_global_channel",
-                    message="Event channels are configured per-server in servers.yml"
-                )
-
-            return BotDiscordInterface(bot)
-
-        elif config.discord_webhook_url:
-            logger.info("creating_webhook_interface")
-
-            try:
-                # Import using extracted method (now testable!)
-                DiscordClient = DiscordInterfaceFactory._import_discord_client()
-            except Exception as e:
-                logger.error("failed_to_import_discord_client", error=str(e), exc_info=True)
-                raise ImportError(
-                    f"Could not import DiscordClient. Error: {e}"
-                )
-
-            client = DiscordClient(
-                webhook_url=config.discord_webhook_url,
-                bot_name=config.bot_name,
-                bot_avatar_url=getattr(config, 'bot_avatar_url', None),
-            )
-
-            return WebhookDiscordInterface(client)
-
-        else:
+        if not config.discord_bot_token:
             raise ValueError(
-                "Either DISCORD_BOT_TOKEN or DISCORD_WEBHOOK_URL must be configured"
+                "discord_bot_token is REQUIRED. "
+                "Webhook mode is deprecated; bot mode is the only supported mode."
             )
+
+        logger.info("creating_bot_interface", phase="6.0-multi-server")
+
+        try:
+            # Import using extracted method (now testable!)
+            DiscordBot = DiscordInterfaceFactory._import_discord_bot()
+        except Exception as e:
+            logger.error("failed_to_import_discord_bot", error=str(e), exc_info=True)
+            raise ImportError(
+                f"Could not import DiscordBot. Make sure discord_bot.py is in the same directory. Error: {e}"
+            )
+
+        bot = DiscordBot(
+            token=config.discord_bot_token,
+            bot_name=config.bot_name,
+            breakdown_mode=getattr(config, 'rcon_breakdown_mode', 'transition'),
+            breakdown_interval=getattr(config, 'rcon_breakdown_interval', 300),
+        )
+
+        # Set global event channel if configured
+        channel_id = getattr(config, 'discord_event_channel_id', None)
+        if channel_id:
+            bot.set_event_channel(channel_id)
+            logger.info("global_event_channel_configured", channel_id=channel_id)
+        else:
+            logger.info(
+                "bot_created_without_global_channel",
+                message="Event channels are configured per-server in servers.yml"
+            )
+
+        return BotDiscordInterface(bot)
