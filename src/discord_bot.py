@@ -2328,6 +2328,45 @@ class DiscordBot(discord.Client):
     # ========================================================================
     # Event Sending
     # ========================================================================
+    def _get_channel_for_event(self, event: FactorioEvent) -> Optional[int]:
+        """
+        Determine which Discord channel should receive this event.
+        
+        Uses per-server event_channel_id from ServerConfig.
+        
+        Args:
+            event: Factorio event with server_tag
+            
+        Returns:
+            Discord channel ID or None if not configured
+        """
+        server_tag = getattr(event, "server_tag", None)
+        
+        if not server_tag:
+            logger.warning("event_missing_server_tag", event_type=event.event_type.value)
+            return None
+        
+        if not self.server_manager:
+            logger.warning("no_server_manager_for_event_routing")
+            return None
+        
+        try:
+            config = self.server_manager.get_config(server_tag)
+            channel_id = config.event_channel_id
+            
+            if channel_id is None:
+                logger.warning(
+                    "server_has_no_event_channel",
+                    server_tag=server_tag,
+                )
+            
+            return channel_id
+        except KeyError:
+            logger.error(
+                "server_tag_not_found_in_manager",
+                server_tag=server_tag,
+            )
+            return None
 
     async def send_event(self, event: FactorioEvent) -> bool:
         """
@@ -2343,26 +2382,32 @@ class DiscordBot(discord.Client):
             logger.warning("send_event_not_connected", event_type=event.event_type.value)
             return False
 
-        if self.event_channel_id is None:
+        # Get per-server channel from ServerManager
+        channel_id = self._get_channel_for_event(event)
+        
+        if channel_id is None:
             logger.warning(
                 "send_event_no_channel_configured",
                 event_type=event.event_type.value,
+                server_tag=getattr(event, "server_tag", None),
             )
             return False
 
         try:
-            channel = self.get_channel(self.event_channel_id)
+            channel = self.get_channel(channel_id)
             if channel is None:
                 logger.error(
                     "send_event_channel_not_found",
-                    channel_id=self.event_channel_id,
+                    channel_id=channel_id,
+                    server_tag=getattr(event, "server_tag", None),
                 )
                 return False
 
             if not isinstance(channel, discord.TextChannel):
                 logger.error(
                     "send_event_invalid_channel_type",
-                    channel_id=self.event_channel_id,
+                    channel_id=channel_id,
+                    server_tag=getattr(event, "server_tag", None),
                 )
                 return False
 
@@ -2390,15 +2435,23 @@ class DiscordBot(discord.Client):
                     )
 
             await channel.send(message)
-            logger.debug("event_sent", event_type=event.event_type.value)
+            logger.debug(
+                "event_sent",
+                event_type=event.event_type.value,
+                server_tag=getattr(event, "server_tag", None),
+                channel_id=channel_id,
+            )
             return True
         except Exception as e:
             logger.error(
                 "send_event_unexpected_error",
                 error=str(e),
+                server_tag=getattr(event, "server_tag", None),
+                channel_id=channel_id,
                 exc_info=True,
             )
             return False
+
 
     async def _resolve_mentions(
         self,
