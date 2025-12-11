@@ -330,12 +330,6 @@ class Config:
     discord_bot_token: str
     """Discord bot token (required for multi-server mode)."""
 
-    bot_name: str
-    """Discord bot display name."""
-
-    bot_avatar_url: Optional[str] = None
-    """Optional Discord bot avatar URL."""
-
     # Factorio log configuration
     factorio_log_path: Path = field(default_factory=lambda: Path("/tmp/console.log"))
     """Legacy: single server log path (deprecated - use servers.yml)."""
@@ -524,16 +518,6 @@ def load_config() -> Config:
     )
     
     # Load other config from environment with defaults
-    bot_name = get_config_value(
-        env_var="BOT_NAME",
-        default="Factorio ISR",
-    )
-    
-    bot_avatar_url = get_config_value(
-        env_var="BOT_AVATAR_URL",
-        default=None,
-    )
-    
     health_check_host = get_config_value(
         env_var="HEALTH_CHECK_HOST",
         default="0.0.0.0",
@@ -568,8 +552,6 @@ def load_config() -> Config:
     # Create and return Config object
     config = Config(
         discord_bot_token=discord_bot_token or "",
-        bot_name=bot_name or "Factorio ISR",
-        bot_avatar_url=bot_avatar_url,
         servers=servers if servers else None,
         health_check_host=health_check_host or "0.0.0.0",
         health_check_port=health_check_port,
