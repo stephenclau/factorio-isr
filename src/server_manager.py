@@ -19,6 +19,8 @@
 Multi-server RCON management for Factorio ISR.
 
 Manages multiple RconClient instances, their stats collectors, and alert monitors.
+Provides unified metrics engine access for on-demand (status command) and periodic
+(stats collector) consumers.
 """
 
 from __future__ import annotations
@@ -31,9 +33,11 @@ import structlog
 try:
     from .config import ServerConfig
     from .rcon_client import RconClient, RconStatsCollector, RconAlertMonitor
+    from .rcon_metrics_engine import RconMetricsEngine
 except ImportError:
     from config import ServerConfig
     from rcon_client import RconClient, RconStatsCollector, RconAlertMonitor
+    from rcon_metrics_engine import RconMetricsEngine
 
 if TYPE_CHECKING:
     from discord_interface import DiscordInterface  # Use interface, not bot
@@ -54,6 +58,7 @@ class ServerManager:
         self.discord_interface = discord_interface
         self.servers: Dict[str, ServerConfig] = {}  # {tag: ServerConfig}
         self.clients: Dict[str, RconClient] = {}  # {tag: RconClient}
+        self.metrics_engines: Dict[str, RconMetricsEngine] = {}  # {tag: MetricsEngine} ✨
         self.stats_collectors: Dict[str, RconStatsCollector] = {}  # {tag: Collector}
         self.alert_monitors: Dict[str, RconAlertMonitor] = {}  # {tag: AlertMonitor}
 
@@ -171,6 +176,9 @@ class ServerManager:
         config = self.servers[tag]
         client = self.clients[tag]
 
+        # ✨ Get or create shared metrics engine for this server
+        metrics_engine = self.get_metrics_engine(tag)
+
         # Create stats collector if enabled and channel configured
         if config.enable_stats_collector and config.event_channel_id:
             # Create a per-server interface bound to this server's channel
@@ -179,6 +187,7 @@ class ServerManager:
             collector = RconStatsCollector(
                 rcon_client=client,
                 discord_interface=server_interface,
+                metrics_engine=metrics_engine,  # ✨ Pass shared engine
                 interval=config.stats_interval,
                 enable_ups_stat=config.enable_ups_stat,
                 enable_evolution_stat=config.enable_evolution_stat,
@@ -194,6 +203,7 @@ class ServerManager:
                 interval=config.stats_interval,
                 ups_enabled=config.enable_ups_stat,
                 evolution_enabled=config.enable_evolution_stat,
+                metrics_engine_shared=True,
             )
         elif not config.enable_stats_collector:
             logger.info(
@@ -272,6 +282,11 @@ class ServerManager:
         except Exception as e:
             logger.warning("failed_to_stop_rcon_client", tag=tag, error=str(e))
 
+        # ✨ Clean up metrics engine
+        if tag in self.metrics_engines:
+            del self.metrics_engines[tag]
+            logger.debug("metrics_engine_cleaned_up", tag=tag)
+
         # Remove from registry
         del self.clients[tag]
         del self.servers[tag]
@@ -316,6 +331,63 @@ class ServerManager:
             raise KeyError(f"Server '{tag}' not found")
 
         return self.servers[tag]
+
+    def get_metrics_engine(self, tag: str) -> Optional[RconMetricsEngine]:
+        """
+        Get or create metrics engine for a specific server.
+        
+        Lazy-loads RconMetricsEngine on first call. Subsequent calls return
+        the same instance (singleton per server), ensuring unified metrics state.
+        
+        Used by:
+        - Status command (on-demand queries)
+        - Stats collector (periodic background)
+        - Future alert monitors
+        
+        This is the single entry point for all metrics across server, ensuring:
+        - UPS calculated once per gather call
+        - Pause detection unified across consumers
+        - EMA/SMA smoothing maintained in one state object
+
+        Args:
+            tag: Server tag
+
+        Returns:
+            RconMetricsEngine instance, or None if server doesn't exist
+
+        Example:
+            >>> metrics_engine = manager.get_metrics_engine("prod")
+            >>> metrics = await metrics_engine.gather_all_metrics()
+            >>> print(metrics['ups'], metrics['evolution_factor'])
+        """
+        if tag not in self.clients:
+            logger.warning(
+                "metrics_engine_requested_for_nonexistent_server",
+                tag=tag,
+                available_servers=list(self.clients.keys()),
+            )
+            return None
+
+        # Lazy-load: create on first request
+        if tag not in self.metrics_engines:
+            client = self.clients[tag]
+            config = self.servers[tag]
+            
+            self.metrics_engines[tag] = RconMetricsEngine(
+                rcon_client=client,
+                enable_ups_stat=config.enable_ups_stat,
+                enable_evolution_stat=config.enable_evolution_stat,
+            )
+            
+            logger.info(
+                "metrics_engine_created",
+                tag=tag,
+                server_name=config.name,
+                ups_enabled=config.enable_ups_stat,
+                evolution_enabled=config.enable_evolution_stat,
+            )
+        
+        return self.metrics_engines[tag]
 
     def get_collector(self, tag: str) -> RconStatsCollector:
         """
@@ -412,5 +484,9 @@ class ServerManager:
                 await self.remove_server(tag)
             except Exception as e:
                 logger.error("failed_to_remove_server", tag=tag, error=str(e))
+
+        # ✨ Clean up all metrics engines
+        self.metrics_engines.clear()
+        logger.info("metrics_engines_cleaned_up")
 
         logger.info("all_servers_stopped")
