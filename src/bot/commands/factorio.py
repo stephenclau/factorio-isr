@@ -75,7 +75,7 @@ def register_factorio_commands(bot: Any) -> None:
     async def servers_command(interaction: discord.Interaction) -> None:
         """List all configured servers with status and current context."""
         # Check if multi-server is configured
-        if not self.server_manager:
+        if not bot.server_manager:
             embed = EmbedBuilder.info_embed(
                 title="📡 Server Information",
                 message=(
@@ -89,8 +89,8 @@ def register_factorio_commands(bot: Any) -> None:
 
         await interaction.response.defer()
         try:
-            current_tag = self.get_user_server(interaction.user.id)
-            status_summary = self.server_manager.get_status_summary()
+            current_tag = bot.get_user_server(interaction.user.id)
+            status_summary = bot.server_manager.get_status_summary()
 
             embed = discord.Embed(
                 title="📡 Available Factorio Servers",
@@ -98,12 +98,12 @@ def register_factorio_commands(bot: Any) -> None:
                 timestamp=discord.utils.utcnow(),
             )
 
-            if not self.server_manager.list_tags():
+            if not bot.server_manager.list_tags():
                 embed.description = "No servers configured."
             else:
                 embed.description = f"**Your Context:** `{current_tag}`\n\n"
 
-            for tag, config in self.server_manager.list_servers().items():
+            for tag, config in bot.server_manager.list_servers().items():
                 is_connected = status_summary.get(tag, False)
                 status_icon = "🟢" if is_connected else "🔴"
                 context_icon = "👉 " if tag == current_tag else " "
@@ -128,7 +128,7 @@ def register_factorio_commands(bot: Any) -> None:
             logger.info(
                 "servers_listed",
                 user=interaction.user.name,
-                server_count=len(self.server_manager.list_tags()),
+                server_count=len(bot.server_manager.list_tags()),
             )
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to list servers: {str(e)}")
@@ -181,7 +181,7 @@ def register_factorio_commands(bot: Any) -> None:
     async def connect_command(interaction: discord.Interaction, server: str) -> None:
         """Switch user's context to a different server."""
         # Check if multi-server is configured
-        if not self.server_manager:
+        if not bot.server_manager:
             embed = EmbedBuilder.error_embed(
                 "Multi-server mode not enabled.\n\n"
                 "This bot is running in single-server mode."
@@ -195,9 +195,9 @@ def register_factorio_commands(bot: Any) -> None:
             server = server.lower().strip()
 
             # Validate server exists
-            if server not in self.server_manager.clients:
+            if server not in bot.server_manager.clients:
                 available_list = []
-                for tag, config in self.server_manager.list_servers().items():
+                for tag, config in bot.server_manager.list_servers().items():
                     available_list.append(f"`{tag}` ({config.name})")
                 available = ", ".join(available_list) if available_list else "none"
                 embed = EmbedBuilder.error_embed(
@@ -209,11 +209,11 @@ def register_factorio_commands(bot: Any) -> None:
                 return
 
             # Set user context
-            self.set_user_server(interaction.user.id, server)
+            bot.set_user_server(interaction.user.id, server)
 
             # Get server info
-            config = self.server_manager.get_config(server)
-            client = self.server_manager.get_client(server)
+            config = bot.server_manager.get_config(server)
+            client = bot.server_manager.get_client(server)
             is_connected = client.is_connected
 
             # Build confirmation embed
@@ -273,11 +273,11 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Per-user server context
-        server_tag = self.get_user_server(interaction.user.id)
-        server_name = self.get_server_display_name(interaction.user.id)
+        server_tag = bot.get_user_server(interaction.user.id)
+        server_name = bot.get_server_display_name(interaction.user.id)
 
         # User-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n"
@@ -288,7 +288,7 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             # Bot + RCON status
-            bot_online = self._connected
+            bot_online = bot._connected
             bot_status = "🟢 Online" if bot_online else "🔴 Offline"
 
             # Players
@@ -298,14 +298,14 @@ def register_factorio_commands(bot: Any) -> None:
 
             # RCON monitor uptime for this server (from rcon_server_states)
             uptime_text = "Unknown"
-            state = self.rcon_server_states.get(server_tag)
+            state = bot.rcon_server_states.get(server_tag)
             last_connected = state.get("last_connected") if state else None
             if isinstance(last_connected, datetime):
                 uptime_delta = datetime.now(timezone.utc) - last_connected
-                uptime_text = self._format_uptime(uptime_delta)
+                uptime_text = bot._format_uptime(uptime_delta)
 
             # Actual in-game uptime from game.tick (best-effort)
-            game_uptime = await self._get_game_uptime(rcon_client)
+            game_uptime = await bot._get_game_uptime(rcon_client)
             if game_uptime != "Unknown":
                 uptime_text = game_uptime
 
@@ -358,9 +358,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -389,9 +389,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -418,9 +418,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -459,9 +459,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 "Use `/factorio servers` to see available servers."
@@ -591,9 +591,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -624,20 +624,20 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Global bot health
-        bot_online = self._connected
+        bot_online = bot._connected
         bot_status = "🟢 Online" if bot_online else "🔴 Offline"
 
         # Per-user server context
-        server_tag = self.get_user_server(interaction.user.id)
-        server_name = self.get_server_display_name(interaction.user.id)
+        server_tag = bot.get_user_server(interaction.user.id)
+        server_name = bot.get_server_display_name(interaction.user.id)
 
         # RCON status from monitor state
-        server_state = self.rcon_server_states.get(server_tag, {})
+        server_state = bot.rcon_server_states.get(server_tag, {})
         last_connected = server_state.get("last_connected")
         rcon_connected = bool(server_state.get("previous_status"))
 
         # Fallback to direct RCON client for this user's context
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is not None:
             rcon_connected = bool(rcon_client.is_connected)
 
@@ -645,12 +645,12 @@ def register_factorio_commands(bot: Any) -> None:
         monitoring_uptime = "Unknown"
         if isinstance(last_connected, datetime):
             uptime_delta = datetime.now(timezone.utc) - last_connected
-            monitoring_uptime = self._format_uptime(uptime_delta)
+            monitoring_uptime = bot._format_uptime(uptime_delta)
 
         # Multi-server overall summary
         multi_summary = None
-        if self.server_manager:
-            status_summary = self.server_manager.get_status_summary()
+        if bot.server_manager:
+            status_summary = bot.server_manager.get_status_summary()
             total = len(status_summary)
             connected_count = sum(1 for v in status_summary.values() if v)
             multi_summary = f"📡 RCON {connected_count}/{total} servers connected"
@@ -712,9 +712,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -757,9 +757,9 @@ def register_factorio_commands(bot: Any) -> None:
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -796,9 +796,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -835,9 +835,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -874,9 +874,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -913,9 +913,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -952,9 +952,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -995,9 +995,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1054,9 +1054,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1099,9 +1099,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1153,9 +1153,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1222,9 +1222,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1269,9 +1269,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1311,9 +1311,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1360,9 +1360,9 @@ def register_factorio_commands(bot: Any) -> None:
         await interaction.response.defer()
 
         # Get user-specific RCON client
-        rcon_client = self.get_rcon_for_user(interaction.user.id)
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            server_name = self.get_server_display_name(interaction.user.id)
+            server_name = bot.get_server_display_name(interaction.user.id)
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n\n"
                 f"Use `/factorio servers` to see available servers."
@@ -1432,4 +1432,11 @@ def register_factorio_commands(bot: Any) -> None:
 
         await interaction.response.send_message(help_text)
 
-        
+# Register the group
+    bot.tree.add_command(factorio_group)
+    logger.info(
+    "slash_commands_registered",
+    root=factorio_group.name,
+    command_count=len(factorio_group.commands),
+    phase="6.0-multi-server",
+    )        
