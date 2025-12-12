@@ -11,58 +11,50 @@
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
-┌─────────────────────────────────────────────────────────────┐
+┌────────────────────┴────────────────────────────────────────┐
 │              discord_interface.py                           │
-│   BotDiscordInterface (wraps DiscordBot)                    │
-│   - Creates bot instance                                    │
-│   - Connects to Discord                                     │
+│   - BotDiscordInterface (wraps DiscordBot)                  │
+│   - Creates bot instance & connects to Discord              │
 │   - Forwards events to bot                                  │
 └────────────────────┬────────────────────────────────────────┘
                      │
                      ▼
-┌─────────────────────────────────────────────────────────────┐
-│          discord_bot_refactored.py                          │
+┌────────────────────┴────────────────────────────────────────┐
+│                  discord_bot.py (Orchestrator)              │
 │                                                             │
 │  ┌──────────────────────────────────────────────────────┐  │
 │  │ DiscordBot(discord.Client)                           │  │
-│  │ - Coordinates modular components                     │  │
-│  │ - Handles lifecycle (connect, disconnect, ready)     │  │
-│  │ - Delegates concerns to specialized modules          │  │
-│  └──┬────────────────────────────────────────────────┬──┘  │
-│     │                                                │      │
-│     ▼                                                ▼      │
-│  ┌─────────────────┐    ┌─────────────────────────────┐   │
-│  │ user_context:   │    │ presence_manager:          │   │
-│  │ UserContextMgr  │    │ PresenceManager            │   │
-│  │                 │    │                            │   │
-│  │ • get_user_     │    │ • update() - updates bot   │   │
-│  │   server()      │    │   presence based on RCON   │   │
-│  │ • set_user_     │    │   connection status        │   │
-│  │   server()      │    └─────────────────────────────┘   │
-│  │ • get_rcon_for_ │                                      │
-│  │   user()        │                                      │
-│  │ • get_server_   │                                      │
-│  │   display_name()│                                      │
-│  └─────────────────┘                                      │
-│     │                                                      │
-│     ├──────────────────────────────────────────────────┐  │
-│     │                                                  │  │
-│     ▼                                                  ▼  │
-│  ┌──────────────────────┐       ┌──────────────────────┐ │
-│  │ event_handler:       │       │ rcon_monitor:        │ │
-│  │ EventHandler         │       │ RconMonitor          │ │
-│  │                      │       │                      │ │
-│  │ • send_event() -     │       │ • start() - starts   │ │
-│  │   routes to channel  │       │   monitoring loop    │ │
-│  │ • mention resolution │       │ • stop() - stops     │ │
-│  │   (users, roles)     │       │   monitoring loop    │ │
-│  │ • config loading     │       │ • per-server state   │ │
-│  │   from mentions.yml  │       │   tracking           │ │
-│  │                      │       │ • status change      │ │
-│  │                      │       │   handlers           │ │
-│  │                      │       │ • breakdown embeds   │ │
-│  └──────────────────────┘       └──────────────────────┘ │
-│                                                             │
+│  │ - Handles Discord lifecycle (on_ready, on_interaction) │  │
+│  │ - Registers slash commands                           │  │
+│  │ - Delegates all logic to specialized managers        │  │
+│  └──┬──────────────────┬───────────────────────────────┘  │
+│     │                  │                                    │
+│     ▼                  ▼                                    │
+│  ┌─────────────────┐  ┌─────────────────────────────────┐   │
+│  │ user_context.py │  │ presence_manager.py             │   │
+│  │ UserContextMgr  │  │ PresenceManager                 │   │
+│  │                 │  │                                 │   │
+│  │• get_user_server│  │• update() - sets bot activity   │   │
+│  │• set_user_server│  │  based on server RCON status    │   │
+│  │• get_rcon_for_   │  │                                 │   │
+│  │  user           │  └─────────────────────────────────┘   │
+│  └─────────────────┘                                        │
+│           │                                                   │
+│           └───────────┐                                       │
+│                       ▼                                       │
+│  ┌────────────────────┴───────────────────────────────────┐ │
+│  │                   server_manager.py                     │ │
+│  │ ServerManager                                           │ │
+│  │ - Master controller for all Factorio server interactions│ │
+│  │ - Initializes, starts, and stops all RCON clients     │ │
+│  │ - Aggregates status for presence and health checks      │ │
+│  │                                                         │ │
+│  │ ┌────────────────────┬───────────────────┬──────────┐ │ │
+│  │ │ rcon_client.py     │ rcon_alert_monitor│ rcon_... │ │ │
+│  │ │ RconClient         │ .py               │          │ │ │
+│  │ │ • Pure protocol    │ • UPS alerts      │          │ │ │
+│  │ └────────────────────┴───────────────────┴──────────┘ │ │
+│  └────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                            │
                 ┌──────────┴──────────┐
@@ -72,210 +64,114 @@
 │   bot/commands/factorio.py   │   │  config.py           │
 │                              │   │                      │
 │  register_factorio_commands()│   │ • ServerConfig       │
-│  - Registers /factorio group │   │ • load_config()      │
-│  - 17/25 subcommands        │   │ • validate_config()  │
+│  - All 25 slash commands     │   │ • load_config()      │
+│  - Self-contained enclosures │   │                      │
+│                              │   │  Servers from:       │
+│  Multi-Server (2):           │   │  • servers.yml       │
+│  ├─ /factorio servers        │   │  • env vars          │
+│  └─ /factorio connect        │   │  • Docker secrets    │
 │                              │   │                      │
-│  Multi-Server (2):           │   │  Servers from:       │
-│  ├─ /factorio servers        │   │  • servers.yml       │
-│  └─ /factorio connect        │   │  • env vars          │
-│                              │   │  • Docker secrets    │
-│  Server Info (7):            │   │                      │
-│  ├─ /factorio status         │   └──────────────────────┘
-│  ├─ /factorio players        │
-│  ├─ /factorio version        │   ┌──────────────────────┐
-│  ├─ /factorio seed           │   │ server_manager.py    │
-│  ├─ /factorio evolution      │   │                      │
-│  ├─ /factorio admins         │   │ • ServerManager      │
-│  └─ /factorio health         │   │ • multi-server RCON  │
-│                              │   │ • status tracking    │
-│  Player Mgmt (7):            │   │ • stats collection   │
-│  ├─ /factorio kick           │   │                      │
-│  ├─ /factorio ban            │   └──────────────────────┘
+│  Server Info (7):            │   └──────────────────────┘
+│  ├─ /factorio status         │
+│  ├─ /factorio players        │   ┌──────────────────────┐
+│  ├─ /factorio version        │   │ rcon_modules         │
+│  ├─ /factorio seed           │   │                      │
+│  ├─ /factorio evolution      │   │ • rcon_client.py     │
+│  ├─ /factorio admins         │   │ • rcon_metrics_engine│
+│  └─ /factorio health         │   │ • rcon_stats_collector
+│                              │   │ • rcon_alert_monitor │
+│  Player Mgmt (7):            │   │                      │
+│  ├─ /factorio kick           │   └──────────────────────┘
+│  ├─ /factorio ban            │
 │  ├─ /factorio unban          │
-│  ├─ /factorio mute           │   ┌──────────────────────┐
-│  ├─ /factorio unmute         │   │ Discord             │
-│  ├─ /factorio promote        │   │                      │
-│  └─ /factorio demote         │   │ • Text channels      │
-│                              │   │ • Guild roles        │
-│  Server Mgmt (4):            │   │ • Members           │
-│  ├─ /factorio save           │   │                      │
-│  ├─ /factorio broadcast      │   └──────────────────────┘
-│  ├─ /factorio whisper        │
-│  └─ /factorio whitelist      │   ┌──────────────────────┐
-│                              │   │ Factorio Servers    │
-│  Game Control (3):           │   │                      │
-│  ├─ /factorio time           │   │ • Log files          │
-│  ├─ /factorio speed          │   │ • RCON sockets       │
-│  └─ /factorio research       │   │ • Game state         │
-│                              │   │                      │
-│  Advanced (2):               │   └──────────────────────┘
-│  ├─ /factorio rcon           │
-│  └─ /factorio help           │
+│  ├─ /factorio mute           │
+│  ├─ /factorio unmute         │
+│  ├─ /factorio promote        │
+│  └─ /factorio demote         │
 │                              │
+│  ...and 8 more...            │
 └──────────────────────────────┘
 ```
 
 ## Data Flow Diagrams
 
-### 1. Command Execution Flow
+### 1. Command Execution Flow (Discrete Enclosure Pattern)
 
 ```
 Discord User
     │
     │ Types: /factorio status
     ▼
-Discord API
+Discord API (Interaction)
     │
-    │ Slash command interaction
     ▼
-DiscordBot.on_interaction()
+discord_bot.on_interaction() -> status_command(interaction)
     │
-    │ Routes to /factorio group
-    ▼
-statatus_command(interaction)
+    ├─ 1. Check Rate Limit
     │
-    ├─ Check rate limit
+    ├─ 2. Defer Response
     │
-    ├─ Get user's server context
-    │   └─ user_context.get_user_server(user_id) -> "prod"
-    │
-    ├─ Get user's RCON client
+    ├─ 3. Get User Context (RCON Client)
     │   └─ user_context.get_rcon_for_user(user_id) -> RconClient
     │
-    ├─ Query RCON
-    │   ├─ rcon_client.get_players() -> ["Alice", "Bob"]
-    │   └─ helpers.get_game_uptime(rcon_client) -> "2h 15m"
+    ├─ 4. Execute RCON Command
+    │   └─ rcon_client.execute("/players") -> "Players: Alice, Bob"
     │
-    ├─ Build embed
-    │   └─ EmbedBuilder.create_base_embed(...)
+    ├─ 5. Parse Response (Inline)
+    │   └─ Parse player names from string
     │
-    └─ Send response
+    ├─ 6. Format Embed
+    │   └─ EmbedBuilder.success_embed(...)
+    │
+    └─ 7. Send Response
         └─ interaction.followup.send(embed=embed)
 ```
 
-### 2. Event Delivery Flow
+### 2. RCON Monitoring & Alerting Flow
 
 ```
-Factorio Log Entry
+ServerManager.start()
     │
-    │ "[0.123] Alice joined the game"
-    ▼
-log_tailer.handle_log_line(line, server_tag="prod")
+    │ For each server in config:
+    ├─> 1. Create RconClient instance
     │
-    ▼
-EventParser.parse_line(line, server_tag="prod")
+    ├─> 2. Start RconAlertMonitor (if enabled)
+    │      │
+    │      │ Loop every [alert_interval] seconds:
+    │      └─> rcon_client.get_ups() -> 25.0
+    │          │
+    │          │ If UPS < threshold:
+    │          └─> discord_interface.send_alert(embed)
     │
-    ├─ Match against patterns
-    ├─ Extract metadata
-    └─ Return FactorioEvent or None
-        │
-        ▼
-    FactorioEvent(event_type=JOIN, player_name="Alice", server_tag="prod")
-        │
-        ▼
-DiscordBot.send_event(event)
-    │
-    ├─ Delegate to event_handler
-    │
-    ▼
-EventHandler.send_event(event)
-    │
-    ├─ Get target channel
-    │   └─ _get_channel_for_event(event) -> ServerConfig.event_channel_id
-    │
-    ├─ Format message
-    │   └─ FactorioEventFormatter.format_for_discord(event) -> markdown string
-    │
-    ├─ Resolve mentions
-    │   └─ _resolve_mentions(guild, ["@admins"]) -> ["@Role:Admins"]
-    │
-    └─ Send to Discord
-        └─ channel.send(message + mentions)
+    └─> 3. Start RconStatsCollector (if enabled)
+           │
+           │ Loop every [stats_interval] seconds:
+           └─> rcon_metrics_engine.get_all_metrics() -> Stats
+               │
+               │ Format with format_stats_embed()
+               └─> discord_interface.send_stats(embed)
 ```
 
-### 3. RCON Monitoring Flow
+## Module Dependencies (Post-Refactor)
 
 ```
-RconMonitor._monitor_rcon_status()
-    │
-    │ Loop every 5 seconds
-    ▼
-server_manager.get_status_summary() -> {"prod": True, "staging": False}
-    │
-    ├─ For each server:
-    │   └─ Handle status change
-    │       ├─ Detect transition (connected -> disconnected)
-    │       └─ If changed:
-    │           ├─ Send disconnect notification
-    │           │   └─ _notify_rcon_disconnected("prod")
-    │           │       └─ channel.send(embed with warning)
-    │           │
-    │           └─ Send reconnect notification
-    │               └─ _notify_rcon_reconnected("prod")
-    │                   └─ channel.send(embed with success + downtime)
-    │
-    ├─ Check breakdown schedule
-    │   ├─ Mode = "transition" -> send on status change
-    │   └─ Mode = "interval" -> send every N seconds
-    │       └─ _send_breakdown_embeds()
-    │           ├─ Build embed with all server statuses
-    │           └─ Send to global + per-server channels
-    │
-    ├─ Update presence
-    │   └─ presence_manager.update()
-    │       ├─ Calculate connected/total count
-    │       └─ Update bot activity ("🟢 RCON (2/3) | /factorio help")
-    │
-    └─ Repeat
-```
-
-## Module Dependencies
-
-```
-DiscordBot
-    ├─ depends on: UserContextManager
-    │  └─ provides: get_user_server(), set_user_server(), get_rcon_for_user()
-    │
-    ├─ depends on: PresenceManager
-    │  └─ provides: update()
-    │
-    ├─ depends on: EventHandler
-    │  └─ provides: send_event()
-    │  └─ depends on: ServerManager, EmbedBuilder, FactorioEventFormatter
-    │
-    ├─ depends on: RconMonitor
-    │  └─ provides: start(), stop()
-    │  └─ depends on: ServerManager, EmbedBuilder
-    │
-    └─ depends on: register_factorio_commands()
-       └─ provides: /factorio slash command group
-       └─ depends on: UserContextManager, RCON clients, EmbedBuilder
-```
-
-## Type Safety
-
-### Key Type Hints
-
-```python
-# User context
-def get_user_server(self, user_id: int) -> str:
-    ...
-
-def get_rcon_for_user(self, user_id: int) -> Optional[Any]:
-    ...
-
-# Event handling
-async def send_event(self, event: FactorioEvent) -> bool:
-    ...
-
-# RCON monitoring
-async def _handle_server_status_change(self, server_tag: str, current_status: bool) -> bool:
-    ...
-
-# Presence
-class PresenceManager:
-    async def update(self) -> None:
-        ...
+main.py
+ └─ Application
+    └─ discord_interface.py (BotDiscordInterface)
+       └─ discord_bot.py (DiscordBot)
+          ├─ depends on: user_context.py (UserContextManager)
+          ├─ depends on: presence_manager.py (PresenceManager)
+          │  └─ depends on: server_manager.py
+          │
+          ├─ depends on: server_manager.py (ServerManager)
+          │  └─ depends on: RCON Modules
+          │     ├─ rcon_client.py
+          │     ├─ rcon_metrics_engine.py
+          │     ├─ rcon_stats_collector.py
+          │     └─ rcon_alert_monitor.py
+          │
+          └─ depends on: bot/commands/factorio.py
+             └─ depends on: user_context.py, EmbedBuilder
 ```
 
 ## Configuration Flow
@@ -291,70 +187,22 @@ config.py
     │     └─ Defaults
     │
     ├─ ServerConfig (per-server)
-    │  ├─ tag: str ("prod", "staging")
-    │  ├─ name: str ("Production", "Staging")
-    │  ├─ rcon_host: str ("localhost")
-    │  ├─ rcon_port: int (27015)
-    │  ├─ rcon_password: str (loaded from secrets)
-    │  ├─ event_channel_id: int (Discord channel)
-    │  ├─ rcon_breakdown_mode: str ("transition" | "interval")
-    │  └─ rcon_breakdown_interval: int (seconds)
+    │  ├─ tag, name, log_path
+    │  ├─ rcon_host, rcon_port, rcon_password
+    │  ├─ discord_channel_id
+    │  ├─ enable_stats_collector: bool (NEW)
+    │  ├─ enable_ups_stat: bool (NEW)
+    │  └─ enable_evolution_stat: bool (NEW)
     │
     └─ ServerManager
-       └─ Creates RconClient per server
-```
-
-## Execution Context
-
-### Single Async Event Loop
-
-```
-DiscordBot
-    ├─ connect_bot() - async
-    │  ├─ login() to Discord
-    │  └─ start monitoring tasks
-    │
-    ├─ _monitor_rcon_status() - background task (asyncio.create_task)
-    │  └─ Runs loop every 5 seconds while _connected
-    │
-    ├─ on_ready() - event handler
-    │  └─ Called when bot ready
-    │
-    ├─ on_interaction() - event handler
-    │  └─ Routes slash commands
-    │
-    └─ disconnect_bot() - async cleanup
-       ├─ Cancel monitoring task
-       └─ Close connection to Discord
-```
-
-## Error Handling Strategy
-
-```
-All async operations:
-    ├─ Try/Except block
-    ├─ Log error with context
-    ├─ Return error embed to user
-    └─ Never crash the bot
-
-RCON operations:
-    ├─ Timeout protection
-    ├─ Connection validation
-    ├─ Response parsing validation
-    └─ Graceful degradation
-
-Discord operations:
-    ├─ Handle Forbidden (no permissions)
-    ├─ Handle HTTPException (network)
-    ├─ Handle NotFound (channel/user deleted)
-    └─ Log all failures for debugging
+       └─ Creates RconClient per server based on config
 ```
 
 ---
 
 ## For More Information
 
-- **Implementation details:** See docstrings in `src/bot/*.py`
+- **Implementation details:** See docstrings in `src/rcon/` and `src/bot/`
 - **Command patterns:** See `src/bot/commands/factorio.py`
 - **Integration:** See `REFACTORING_GUIDE.md`
 - **Quick start:** See `REFACTOR_SUMMARY.md`
