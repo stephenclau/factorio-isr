@@ -111,6 +111,49 @@ def format_uptime(uptime_delta: timedelta) -> str:
     return " ".join(parts)
 
 
+async def get_version(rcon_client: Any) -> str:
+    """
+    Get Factorio server version via RCON.
+
+    Queries the server for the version string using Lua.
+    This extracts the version from game.active_mods["base"].version.
+
+    Args:
+        rcon_client: RconClient instance to query
+
+    Returns:
+        Version string (e.g., "1.1.0") or "Unknown" on error
+
+    Raises:
+        Exception: Propagates RCON communication errors for caller handling
+    """
+    if not rcon_client or not rcon_client.is_connected:
+        logger.debug("get_version_client_unavailable")
+        return "Unknown"
+
+    try:
+        # Query server version using Lua
+        response = await rcon_client.execute(
+            '/sc rcon.print(game.active_mods["base"].version)'
+        )
+
+        # Log the raw response for debugging
+        logger.debug("get_version_response", response=response, length=len(response))
+
+        # Check if response is empty or invalid
+        if not response or not response.strip():
+            logger.warning("get_version_empty_response")
+            return "Unknown"
+
+        version_value = response.strip()
+        logger.debug("get_version_retrieved", version=version_value)
+        return version_value
+
+    except Exception as e:
+        logger.warning("get_version_query_failed", error=str(e), exc_info=True)
+        return "Unknown"
+
+
 async def get_seed(rcon_client: Any) -> str:
     """
     Get Factorio map seed via RCON.
