@@ -223,6 +223,10 @@ class RconMetricsEngine:
 
         Uses /sc (script command) to access game.forces API and query enemy
         evolution factor for each non-platform surface.
+        
+        **FIX (2025-12-12):** Replaced non-existent game.table_to_json() with
+        manual JSON string construction. Factorio's Lua API doesn't provide
+        table_to_json; instead we build JSON manually using string concatenation.
 
         Returns:
             Dict mapping surface names to evolution factors (0.0-1.0).
@@ -231,16 +235,23 @@ class RconMetricsEngine:
             return {}
 
         try:
+            # FIX: Manual JSON construction instead of game.table_to_json()
+            # Build JSON like: {"nauvis": 0.42, "gleba": 0.15}
             lua = (
                 "/sc "
                 "local f = game.forces['enemy']; "
-                "local evo_data = {}; "
+                "local json_parts = {}; "
                 "for _, s in pairs(game.surfaces) do "
                 "  if not string.find(string.lower(s.name), 'platform') then "
-                "    evo_data[s.name] = f.get_evolution_factor(s); "
+                "    local evo = f.get_evolution_factor(s); "
+                "    table.insert(json_parts, '\"' .. s.name .. '\":' .. tostring(evo)); "
                 "  end "
                 "end; "
-                "rcon.print(game.table_to_json(evo_data))"
+                "if #json_parts > 0 then "
+                "  rcon.print('{' .. table.concat(json_parts, ',') .. '}'); "
+                "else "
+                "  rcon.print('{}'); "
+                "end"
             )
             response = await self.rcon_client.execute(lua)
 
