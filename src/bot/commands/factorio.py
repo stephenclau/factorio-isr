@@ -18,6 +18,13 @@
 All /factorio subcommands are defined in this single file to respect Discord's
 25 subcommand-per-group limit. Currently using 17/25 slots.
 
+Each command is a self-contained closure that:
+1. Validates rate limits and RCON connectivity
+2. Executes RCON command(s)
+3. Parses response inline
+4. Formats Discord embed
+5. Sends to user
+
 Command Breakdown:
 - Multi-Server Commands: 2/25 (servers, connect)
 - Server Information: 7/25 (status, players, version, seed, evolution, admins, health)
@@ -37,27 +44,21 @@ import structlog
 
 try:
     # Try flat layout first (when run from src/ directory)
-    from event_parser import FactorioEvent
     from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
     from discord_interface import EmbedBuilder
-    from bot.helpers import format_uptime, get_seed, get_game_uptime, get_version
 except ImportError:
     try:
         # Fallback to package style (when installed as package)
-        from src.event_parser import FactorioEvent  # type: ignore
         from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
         from src.discord_interface import EmbedBuilder  # type: ignore
-        from src.bot.helpers import format_uptime, get_seed, get_game_uptime, get_version  # type: ignore
     except ImportError:
         # Last resort: use relative imports from parent
         try:
-            from ..event_parser import FactorioEvent  # type: ignore
             from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
             from ..discord_interface import EmbedBuilder  # type: ignore
-            from ..bot.helpers import format_uptime, get_seed, get_game_uptime, get_version  # type: ignore
         except ImportError:
             raise ImportError(
-                "Could not import event_parser, rate_limiting, discord_interface, or bot.helpers from any path"
+                "Could not import rate_limiting or discord_interface from any path"
             )
 
 logger = structlog.get_logger()
@@ -69,6 +70,8 @@ def register_factorio_commands(bot: Any) -> None:
 
     This function creates and registers the complete /factorio command tree.
     Discord limit: 25 subcommands per group (we use 17).
+
+    Each command is self-contained: RCON execute → parse → format → send.
 
     Args:
         bot: DiscordBot instance with user_context, server_manager attributes
@@ -282,26 +285,38 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            bot_online = bot._connected
-            bot_status = "🟢 Online" if bot_online else "🔴 Offline"
-
-            players = await rcon_client.get_players()
+            # Get players
+            players_response = await rcon_client.execute("/players")
+            players = []
+            if players_response:
+                for line in players_response.split("\n"):
+                    line = line.strip()
+                    if "(online)" in line.lower():
+                        player_name = line.split("(online)")[0].strip()
+                        player_name = player_name.lstrip("-").strip()
+                        if player_name and not player_name.startswith("Player"):
+                            players.append(player_name)
             player_count = len(players)
 
+            # Get uptime
             uptime_text = "Unknown"
             state = bot.rcon_monitor.rcon_server_states.get(server_tag)
             last_connected = state.get("last_connected") if state else None
             if last_connected is not None:
                 uptime_delta = datetime.now(timezone.utc) - last_connected
-                uptime_text = format_uptime(uptime_delta)
+                days = int(uptime_delta.total_seconds()) // 86400
+                hours = (int(uptime_delta.total_seconds()) % 86400) // 3600
+                minutes = (int(uptime_delta.total_seconds()) % 3600) // 60
+                parts = []
+                if days > 0:
+                    parts.append(f"{days}d")
+                if hours > 0:
+                    parts.append(f"{hours}h")
+                if minutes > 0 or (days == 0 and hours == 0):
+                    parts.append(f"{minutes}m")
+                uptime_text = " ".join(parts) if parts else "< 1m"
 
-            try:
-                game_uptime = await get_game_uptime(rcon_client)
-                if game_uptime != "Unknown":
-                    uptime_text = game_uptime
-            except Exception:
-                pass
-
+            # Build embed
             embed = EmbedBuilder.create_base_embed(
                 title=f"🏭 {server_name} Status",
                 color=(
@@ -311,6 +326,8 @@ def register_factorio_commands(bot: Any) -> None:
                 ),
             )
 
+            bot_online = bot._connected
+            bot_status = "🟢 Online" if bot_online else "🔴 Offline"
             embed.add_field(name="🤖 Bot Status", value=bot_status, inline=True)
             embed.add_field(
                 name="🔧 RCON",
@@ -365,7 +382,21 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            players = await rcon_client.get_players()
+            # Execute RCON command
+            response = await rcon_client.execute("/players")
+            
+            # Parse response
+            players = []
+            if response:
+                for line in response.split("\n"):
+                    line = line.strip()
+                    if "(online)" in line.lower():
+                        player_name = line.split("(online)")[0].strip()
+                        player_name = player_name.lstrip("-").strip()
+                        if player_name and not player_name.startswith("Player"):
+                            players.append(player_name)
+            
+            # Format embed
             embed = discord.Embed(
                 title=f"👥 Players on {server_name}",
                 color=EmbedBuilder.COLOR_INFO,
@@ -392,7 +423,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="version", description="Show Factorio server version")
     async def version_command(interaction: discord.Interaction) -> None:
-        """Get Factorio server version using helpers.get_version()."""
+        """Get Factorio server version."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -409,7 +440,15 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            version = await get_version(rcon_client)
+            # Execute RCON command
+            response = await rcon_client.execute(
+                '/sc rcon.print(game.active_mods["base"].version)'
+            )
+            
+            # Parse response
+            version = response.strip() if response else "Unknown"
+            
+            # Format embed
             embed = discord.Embed(
                 title=f"📦 {server_name} Version",
                 description=f"`{version}`",
@@ -426,7 +465,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="seed", description="Show map seed")
     async def seed_command(interaction: discord.Interaction) -> None:
-        """Get map seed from helpers.get_seed()."""
+        """Get map seed."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -443,7 +482,21 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            seed = await get_seed(rcon_client)
+            # Execute RCON command
+            response = await rcon_client.execute(
+                '/sc rcon.print(game.surfaces["nauvis"].map_gen_settings.seed)'
+            )
+            
+            # Parse and validate response
+            seed = "Unknown"
+            if response and response.strip():
+                try:
+                    int(response.strip())  # Validate it's numeric
+                    seed = response.strip()
+                except ValueError:
+                    logger.warning("seed_parse_failed", response=response)
+            
+            # Format embed
             embed = discord.Embed(
                 title=f"🌍 {server_name} Map Seed",
                 description=f"```\n{seed}\n```",
@@ -477,11 +530,24 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            evolution = await rcon_client.get_evolution_factor()
+            # Execute RCON command
+            response = await rcon_client.execute(
+                '/sc rcon.print(game.forces["enemy"].evolution_factor)'
+            )
+            
+            # Parse response
+            evolution = 0.0
+            if response and response.strip():
+                try:
+                    evolution = float(response.strip())
+                except ValueError:
+                    logger.warning("evolution_parse_failed", response=response)
+            
             percentage = min(100.0, evolution * 100)
             bar_filled = int(percentage / 10)
             bar = "█" * bar_filled + "░" * (10 - bar_filled)
 
+            # Format embed
             embed = discord.Embed(
                 title=f"👾 {server_name} Enemy Evolution",
                 color=EmbedBuilder.COLOR_INFO,
@@ -524,7 +590,20 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            admins = await rcon_client.get_admins()
+            # Execute RCON command
+            response = await rcon_client.execute("/admins")
+            
+            # Parse response
+            admins = []
+            if response:
+                for line in response.split("\n"):
+                    line = line.strip()
+                    if line and not line.startswith("There are") and not line.startswith("Admins"):
+                        admin_name = line.lstrip("- ").strip()
+                        if admin_name:
+                            admins.append(admin_name)
+            
+            # Format embed
             embed = discord.Embed(
                 title=f"👑 {server_name} Administrators",
                 color=EmbedBuilder.COLOR_INFO,
@@ -591,7 +670,17 @@ def register_factorio_commands(bot: Any) -> None:
                 )
                 if state and state.get("last_connected"):
                     uptime_delta = datetime.now(timezone.utc) - state["last_connected"]
-                    uptime = format_uptime(uptime_delta)
+                    days = int(uptime_delta.total_seconds()) // 86400
+                    hours = (int(uptime_delta.total_seconds()) % 86400) // 3600
+                    minutes = (int(uptime_delta.total_seconds()) % 3600) // 60
+                    parts = []
+                    if days > 0:
+                        parts.append(f"{days}d")
+                    if hours > 0:
+                        parts.append(f"{hours}h")
+                    if minutes > 0 or (days == 0 and hours == 0):
+                        parts.append(f"{minutes}m")
+                    uptime = " ".join(parts) if parts else "< 1m"
                     embed.add_field(name="Uptime", value=uptime, inline=True)
 
             embed.set_footer(text="Factorio ISR Health Check")
@@ -631,7 +720,7 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             message = reason if reason else "Kicked by moderator"
-            await rcon_client.kick_player(player, message)
+            await rcon_client.execute(f'/kick {player} {message}')
 
             embed = discord.Embed(
                 title="⚠️ Player Kicked",
@@ -680,7 +769,7 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             message = reason if reason else "Banned by moderator"
-            await rcon_client.ban_player(player, message)
+            await rcon_client.execute(f'/ban {player} {message}')
 
             embed = discord.Embed(
                 title="🚫 Player Banned",
@@ -727,7 +816,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.unban_player(player)
+            await rcon_client.execute(f'/unban {player}')
 
             embed = discord.Embed(
                 title="✅ Player Unbanned",
@@ -769,7 +858,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.mute_player(player)
+            await rcon_client.execute(f'/mute {player}')
 
             embed = discord.Embed(
                 title="🔇 Player Muted",
@@ -811,7 +900,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.unmute_player(player)
+            await rcon_client.execute(f'/unmute {player}')
 
             embed = discord.Embed(
                 title="🔊 Player Unmuted",
@@ -853,7 +942,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.promote_player(player)
+            await rcon_client.execute(f'/promote {player}')
 
             embed = discord.Embed(
                 title="👑 Player Promoted",
@@ -896,7 +985,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.demote_player(player)
+            await rcon_client.execute(f'/demote {player}')
 
             embed = discord.Embed(
                 title="📉 Player Demoted",
@@ -944,7 +1033,7 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             save_name = name if name else "auto-save"
-            await rcon_client.save(save_name)
+            await rcon_client.execute(f'/save {save_name}')
 
             embed = discord.Embed(
                 title="💾 Game Saved",
@@ -986,7 +1075,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.send_message_to_players(message)
+            await rcon_client.execute(f'/say {message}')
 
             embed = discord.Embed(
                 title="📢 Broadcast Sent",
@@ -1032,7 +1121,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.send_message_to_player(player, message)
+            await rcon_client.execute(f'/whisper {player} {message}')
 
             embed = discord.Embed(
                 title="💬 Private Message Sent",
@@ -1084,9 +1173,10 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             action_lower = action.lower().strip()
+            embed = None
 
             if action_lower == "add" and player:
-                await rcon_client.whitelist_add(player)
+                await rcon_client.execute(f'/whitelist add {player}')
                 embed = discord.Embed(
                     title="✅ Player Added to Whitelist",
                     color=EmbedBuilder.COLOR_SUCCESS,
@@ -1094,7 +1184,7 @@ def register_factorio_commands(bot: Any) -> None:
                 embed.add_field(name="Player", value=player, inline=True)
                 embed.add_field(name="Server", value=server_name, inline=True)
             elif action_lower == "remove" and player:
-                await rcon_client.whitelist_remove(player)
+                await rcon_client.execute(f'/whitelist remove {player}')
                 embed = discord.Embed(
                     title="❌ Player Removed from Whitelist",
                     color=EmbedBuilder.COLOR_WARNING,
@@ -1102,31 +1192,31 @@ def register_factorio_commands(bot: Any) -> None:
                 embed.add_field(name="Player", value=player, inline=True)
                 embed.add_field(name="Server", value=server_name, inline=True)
             elif action_lower == "list":
-                whitelist = await rcon_client.whitelist_list()
+                response = await rcon_client.execute('/whitelist list')
                 embed = discord.Embed(
                     title="📋 Server Whitelist",
                     color=EmbedBuilder.COLOR_INFO,
                 )
-                if whitelist:
-                    wl_text = "\n".join(f"• {name}" for name in whitelist[:20])
-                    if len(whitelist) > 20:
-                        wl_text += f"\n... and {len(whitelist) - 20} more"
+                if response and response.strip():
+                    wl_text = response.strip()
+                    if len(wl_text) > 1024:
+                        wl_text = wl_text[:1021] + "..."
                     embed.add_field(
-                        name=f"Whitelisted Players ({len(whitelist)})",
+                        name="Whitelisted Players",
                         value=wl_text,
                         inline=False,
                     )
                 else:
                     embed.description = "Whitelist is empty."
             elif action_lower == "enable":
-                await rcon_client.whitelist_enable()
+                await rcon_client.execute('/whitelist enable')
                 embed = discord.Embed(
                     title="🟢 Whitelist Enabled",
                     color=EmbedBuilder.COLOR_SUCCESS,
                 )
                 embed.add_field(name="Server", value=server_name, inline=True)
             elif action_lower == "disable":
-                await rcon_client.whitelist_disable()
+                await rcon_client.execute('/whitelist disable')
                 embed = discord.Embed(
                     title="🔴 Whitelist Disabled",
                     color=EmbedBuilder.COLOR_WARNING,
@@ -1137,8 +1227,9 @@ def register_factorio_commands(bot: Any) -> None:
                     "Invalid action. Valid actions: add, remove, list, enable, disable"
                 )
 
-            embed.set_footer(text="Action performed via Discord")
-            await interaction.followup.send(embed=embed)
+            if embed:
+                embed.set_footer(text="Action performed via Discord")
+                await interaction.followup.send(embed=embed)
 
             logger.info(
                 "whitelist_command_executed",
@@ -1176,14 +1267,21 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             if value is not None:
-                await rcon_client.set_time(value)
+                await rcon_client.execute(f'/sc game.tick = {value}')
                 embed = discord.Embed(
                     title="⏱️ Game Time Set",
                     color=EmbedBuilder.COLOR_SUCCESS,
                 )
                 embed.add_field(name="New Time", value=f"{value} ticks", inline=True)
             else:
-                current_time = await rcon_client.get_time()
+                response = await rcon_client.execute('/sc rcon.print(game.tick)')
+                current_time = 0
+                if response and response.strip():
+                    try:
+                        current_time = int(response.strip())
+                    except ValueError:
+                        logger.warning("time_parse_failed", response=response)
+                
                 minutes = current_time / 60
                 hours = minutes / 60
                 embed = discord.Embed(
@@ -1232,7 +1330,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.set_game_speed(value)
+            await rcon_client.execute(f'/sc game.speed = {value}')
 
             embed = discord.Embed(
                 title="⚡ Game Speed Set",
@@ -1283,7 +1381,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.research_technology(technology)
+            await rcon_client.execute(f'/research {technology}')
 
             embed = discord.Embed(
                 title="🔬 Technology Researched",
@@ -1329,7 +1427,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            result = await rcon_client.send_command(command)
+            result = await rcon_client.execute(command)
 
             embed = discord.Embed(
                 title="⌨️ RCON Command Executed",
@@ -1411,5 +1509,5 @@ def register_factorio_commands(bot: Any) -> None:
         "factorio_commands_registered",
         root=factorio_group.name,
         command_count=len(factorio_group.commands),
-        phase="6.0-complete",
+        phase="7.0-discrete-enclosures",
     )
