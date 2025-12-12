@@ -161,20 +161,20 @@ class RconMetricsEngine:
     def __init__(
         self,
         rcon_client: Any,
-        collect_ups: bool = True,
-        collect_evolution: bool = True,
+        enable_ups_stat: bool = True,
+        enable_evolution_stat: bool = True,
     ) -> None:
         """
         Initialize metrics engine.
 
         Args:
             rcon_client: RconClient instance for server queries
-            collect_ups: Enable UPS collection and smoothing
-            collect_evolution: Enable evolution factor collection
+            enable_ups_stat: Enable UPS collection and smoothing
+            enable_evolution_stat: Enable evolution factor collection
         """
         self.rcon_client = rcon_client
-        self.collect_ups = collect_ups
-        self.collect_evolution = collect_evolution
+        self.enable_ups_stat = enable_ups_stat
+        self.enable_evolution_stat = enable_evolution_stat
 
         # Single UPS calculator instance (shared state)
         pause_threshold = getattr(
@@ -183,7 +183,7 @@ class RconMetricsEngine:
             5.0,
         )
         self.ups_calculator: Optional[UPSCalculator] = (
-            UPSCalculator(pause_time_threshold=pause_threshold) if collect_ups else None
+            UPSCalculator(pause_time_threshold=pause_threshold) if enable_ups_stat else None
         )
 
         # Unified EMA/SMA state (single source of truth)
@@ -199,8 +199,8 @@ class RconMetricsEngine:
             "metrics_engine_initialized",
             server_tag=rcon_client.server_tag,
             server_name=rcon_client.server_name,
-            collect_ups=collect_ups,
-            collect_evolution=collect_evolution,
+            enable_ups_stat=enable_ups_stat,
+            enable_evolution_stat=enable_evolution_stat,
             ema_alpha=self.ema_alpha,
             pause_threshold=pause_threshold,
         )
@@ -212,7 +212,7 @@ class RconMetricsEngine:
         Returns:
             UPS value, or None if first sample or server paused.
         """
-        if not self.collect_ups or not self.ups_calculator:
+        if not self.enable_ups_stat or not self.ups_calculator:
             return None
 
         return await self.ups_calculator.sample_ups(self.rcon_client)
@@ -224,7 +224,7 @@ class RconMetricsEngine:
         Returns:
             Dict mapping surface names to evolution factors (0.0-1.0).
         """
-        if not self.collect_evolution:
+        if not self.enable_evolution_stat:
             return {}
 
         try:
@@ -316,7 +316,7 @@ class RconMetricsEngine:
                 logger.warning("tick_collection_failed", error=str(e))
 
             # UPS with pause detection and smoothing
-            if self.collect_ups and self.ups_calculator:
+            if self.enable_ups_stat and self.ups_calculator:
                 ups = await self.ups_calculator.sample_ups(self.rcon_client)
 
                 metrics["is_paused"] = self.ups_calculator.is_paused
@@ -352,7 +352,7 @@ class RconMetricsEngine:
                     )
 
             # Evolution per surface
-            if self.collect_evolution:
+            if self.enable_evolution_stat:
                 evolution_by_surface = await self.get_evolution_by_surface()
                 if evolution_by_surface:
                     metrics["evolution_by_surface"] = evolution_by_surface
