@@ -397,10 +397,10 @@ def register_factorio_commands(bot: Any) -> None:
             )
 
             # Game time (from metrics engine)
-            if metrics.get("server_time"):
+            if metrics.get("play_time"):
                 embed.add_field(
                     name="🕐 Play Time",
-                    value=metrics["server_time"],
+                    value=metrics["play_time"],
                     inline=True,
                 )
 
@@ -1460,7 +1460,7 @@ def register_factorio_commands(bot: Any) -> None:
                 # Display current time
                 resp = await rcon_client.execute("/time")
                 embed = EmbedBuilder.info_embed(
-                    title="🕐 Current Game Time",
+                    title="🕐 Total Game Play Time",
                     message=resp,
                 )
             else:

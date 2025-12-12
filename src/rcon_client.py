@@ -333,14 +333,14 @@ class RconClient:
         """Alias for get_players_online() for compatibility."""
         return await self.get_players_online()
 
-    async def get_server_time(self) -> str:
-        """Get current in-game time."""
+    async def get_play_time(self) -> str:
+        """Get current in-game playtime."""
         try:
             response = await self.execute("/time")
-            logger.debug("server_time_response", response=response)
+            logger.debug("play_time_response", response=response)
             if response and response.strip():
                 return response.strip()
             return "Unknown"
         except Exception as e:
-            logger.warning("failed_to_get_server_time", error=str(e))
+            logger.warning("failed_to_get_play_time", error=str(e))
             return "Unknown"

@@ -246,7 +246,7 @@ def format_stats_text(
         server_label: Server name/tag string (e.g., "[prod] Factorio ISR")
         metrics: Dict from RconMetricsEngine.gather_all_metrics() with keys:
                  ups, ups_sma, ups_ema, is_paused, last_known_ups,
-                 player_count, players, server_time, evolution_factor,
+                 player_count, players, play_time, evolution_factor,
                  evolution_by_surface
 
     Returns:
@@ -279,7 +279,7 @@ def format_stats_text(
     lines.append(f"👥 Players Online: {metrics.get('player_count')}")
     if metrics.get("players"):
         lines.append("📝 " + ", ".join(metrics["players"]))
-    lines.append(f"⏰ Game Time: {metrics.get('server_time')}")
+    lines.append(f"⏰ Play Time: {metrics.get('play_time')}")
 
     # Evolution per surface
     evolution_by_surface = metrics.get("evolution_by_surface", {})
@@ -324,7 +324,7 @@ def format_stats_embed(
         server_label: Server name/tag string (e.g., "[prod] Factorio ISR")
         metrics: Dict from RconMetricsEngine.gather_all_metrics() with keys:
                  ups, ups_sma, ups_ema, is_paused, last_known_ups,
-                 player_count, players, server_time, evolution_factor,
+                 player_count, players, play_time, evolution_factor,
                  evolution_by_surface
 
     Returns:
@@ -376,7 +376,7 @@ def format_stats_embed(
 
     embed.add_field(
         name="⏰ Game Time",
-        value=metrics.get("server_time"),
+        value=metrics.get("play_time"),
         inline=True,
     )
 

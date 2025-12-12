@@ -284,9 +284,9 @@ class RconMetricsEngine:
         """Get count of online players."""
         return await self.rcon_client.get_player_count()
 
-    async def get_server_time(self) -> str:
+    async def get_play_time(self) -> str:
         """Get current in-game time."""
-        return await self.rcon_client.get_server_time()
+        return await self.rcon_client.get_play_time()
 
     async def gather_all_metrics(self) -> Dict[str, Any]:
         """
@@ -298,7 +298,7 @@ class RconMetricsEngine:
         Returns:
             Dict with keys: ups, ups_sma, ups_ema, is_paused, last_known_ups,
                 tick, game_time_seconds, evolution_factor, evolution_by_surface,
-                player_count, players, server_time.
+                player_count, players, play_time.
         """
         metrics: Dict[str, Any] = {
             "ups": None,
@@ -312,7 +312,7 @@ class RconMetricsEngine:
             "evolution_by_surface": {},
             "player_count": 0,
             "players": [],
-            "server_time": "Unknown",
+            "play_time": "Unknown",
         }
 
         try:
@@ -373,7 +373,7 @@ class RconMetricsEngine:
             # Players and time
             metrics["player_count"] = await self.get_player_count()
             metrics["players"] = await self.get_players()
-            metrics["server_time"] = await self.get_server_time()
+            metrics["play_time"] = await self.get_play_time()
 
             logger.debug(
                 "metrics_engine_gather_complete",
