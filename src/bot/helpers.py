@@ -19,6 +19,7 @@ Includes presence management, uptime formatting, channel utilities, game state h
 and RCON stats formatting for embeds and text messages.
 """
 
+import asyncio
 from datetime import timedelta
 from typing import Any, Optional, List, Dict
 import discord
@@ -38,9 +39,10 @@ class PresenceManager:
             bot: DiscordBot instance
         """
         self.bot = bot
+        self._presence_task: Optional[asyncio.Task] = None
 
     async def update(self) -> None:
-        """Update bot presence to reflect RCON connection status."""
+        """Update bot presence to reflect RCON connection status (one-shot)."""
         if not self.bot._connected or not hasattr(self.bot, "user") or self.bot.user is None:
             return
 
@@ -75,6 +77,45 @@ class PresenceManager:
             logger.debug("presence_updated", status=status_text)
         except Exception as e:
             logger.warning("presence_update_failed", error=str(e))
+
+    async def _update_presence_loop(self) -> None:
+        """Background loop to update presence every 5 seconds.
+        
+        This loop runs continuously while the bot is connected and automatically
+        stops when the bot disconnects. It will be restarted by on_ready() on
+        reconnection.
+        """
+        logger.info("presence_update_loop_started")
+        try:
+            while self.bot._connected:
+                await self.update()
+                await asyncio.sleep(5.0)
+        except asyncio.CancelledError:
+            logger.info("presence_update_loop_cancelled")
+            raise
+        except Exception as e:
+            logger.error("presence_update_loop_error", error=str(e), exc_info=True)
+        finally:
+            logger.info("presence_update_loop_stopped")
+
+    async def start(self) -> None:
+        """Start the presence update loop if not already running."""
+        if self._presence_task is None or self._presence_task.done():
+            self._presence_task = asyncio.create_task(self._update_presence_loop())
+            logger.info("presence_updater_started")
+        else:
+            logger.debug("presence_updater_already_running")
+
+    async def stop(self) -> None:
+        """Stop the presence update loop."""
+        if self._presence_task:
+            self._presence_task.cancel()
+            try:
+                await self._presence_task
+            except asyncio.CancelledError:
+                pass
+            self._presence_task = None
+            logger.info("presence_updater_stopped")
 
 
 # ========================================================================
