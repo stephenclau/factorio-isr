@@ -73,8 +73,8 @@ class RconAlertMonitor:
 
             self.metrics_engine = RconMetricsEngine(
                 rcon_client,
-                collect_ups=True,
-                collect_evolution=False,
+                enable_ups_stat=True,
+                enable_evolution_stat=False,
             )
         else:
             self.metrics_engine = metrics_engine

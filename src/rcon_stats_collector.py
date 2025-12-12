@@ -40,8 +40,8 @@ class RconStatsCollector:
         discord_interface: Any,
         metrics_engine: Optional[Any] = None,
         interval: int | float = 300,
-        collect_ups: bool = True,
-        collect_evolution: bool = True,
+        enable_ups_stat: bool = True,
+        enable_evolution_stat: bool = True,
     ) -> None:
         """
         Initialize stats collector.
@@ -51,8 +51,8 @@ class RconStatsCollector:
             discord_interface: Discord interface for message posting
             metrics_engine: Optional shared RconMetricsEngine (creates new if None)
             interval: Seconds between stats collection cycles (default: 300)
-            collect_ups: Enable UPS collection
-            collect_evolution: Enable evolution factor collection
+            enable_ups_stat: Enable UPS collection
+            enable_evolution_stat: Enable evolution factor collection
         """
         self.rcon_client = rcon_client
         self.discord_interface = discord_interface
@@ -64,8 +64,8 @@ class RconStatsCollector:
 
             self.metrics_engine = RconMetricsEngine(
                 rcon_client,
-                collect_ups=collect_ups,
-                collect_evolution=collect_evolution,
+                enable_ups_stat=enable_ups_stat,
+                enable_evolution_stat=enable_evolution_stat,
             )
         else:
             self.metrics_engine = metrics_engine
