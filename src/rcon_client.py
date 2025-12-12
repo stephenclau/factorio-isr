@@ -449,16 +449,16 @@ class RconStatsCollector:
         rcon_client: RconClient,
         discord_interface: Any,
         interval: int | float = 300,
-        collect_ups: bool = True,
-        collect_evolution: bool = True,
+        enable_ups_stat: bool = True,
+        enable_evolution_stat: bool = True,
     ) -> None:
         """Initialize stats collector."""
         self.rcon_client = rcon_client
         self.discord_interface = discord_interface
         self.interval = interval
 
-        self.collect_ups = collect_ups
-        self.collect_evolution = collect_evolution
+        self.enable_ups_stat = enable_ups_stat
+        self.enable_evolution_stat = enable_evolution_stat
 
         # UPS calculator with pause detection
         pause_threshold = getattr(
@@ -467,7 +467,7 @@ class RconStatsCollector:
             5.0,
         )
         self._ups_calculator: Optional[UPSCalculator] = (
-            UPSCalculator(pause_time_threshold=pause_threshold) if collect_ups else None
+            UPSCalculator(pause_time_threshold=pause_threshold) if enable_ups_stat else None
         )
 
         # Local UPS history for SMA in stats
@@ -489,8 +489,8 @@ class RconStatsCollector:
             interval=interval,
             rcon_connected=rcon_client.is_connected,
             discord_connected=getattr(discord_interface, "is_connected", None),
-            collect_ups=collect_ups,
-            collect_evolution=collect_evolution,
+            enable_ups_stat=enable_ups_stat,
+            enable_evolution_stat=enable_evolution_stat,
             ema_alpha=self.ema_alpha,
             pause_threshold=pause_threshold,
         )
@@ -589,7 +589,7 @@ class RconStatsCollector:
                 logger.warning("tick_collection_failed", error=str(e))
 
             # UPS calculation with pause detection
-            if self.collect_ups and self._ups_calculator:
+            if self.enable_ups_stat and self._ups_calculator:
                 ups = await self._ups_calculator.sample_ups(self.rcon_client)
 
                 # Capture pause state
@@ -631,7 +631,7 @@ class RconStatsCollector:
                     )
 
             # Evolution factor per surface (multi-surface support)
-            if self.collect_evolution:
+            if self.enable_evolution_stat:
                 response: Optional[str] = None
                 try:
                     # Query all surfaces for evolution factor
