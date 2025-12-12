@@ -22,7 +22,7 @@ Includes automatic reconnection with exponential backoff and optional
 context helpers for server name/tag.
 
 For metrics collection, stats posting, and alerting, see:
-- rcon_metrics_engine.py: RconMetricsEngine
+- rcon_metrics_engine.py: UPSCalculator, RconMetricsEngine
 - rcon_stats_collector.py: RconStatsCollector
 - rcon_alert_monitor.py: RconAlertMonitor
 """
@@ -30,7 +30,6 @@ For metrics collection, stats posting, and alerting, see:
 from __future__ import annotations
 
 import asyncio
-import time
 from typing import Any, List, Optional
 
 import structlog
@@ -49,129 +48,20 @@ logger = structlog.get_logger()
 
 # Backward compatibility: Re-export classes from new modules
 try:
-    from rcon_metrics_engine import RconMetricsEngine
+    from rcon_metrics_engine import UPSCalculator, RconMetricsEngine
     from rcon_stats_collector import RconStatsCollector
     from rcon_alert_monitor import RconAlertMonitor
 except ImportError:
     try:
-        from src.rcon_metrics_engine import RconMetricsEngine  # type: ignore
+        from src.rcon_metrics_engine import UPSCalculator, RconMetricsEngine  # type: ignore
         from src.rcon_stats_collector import RconStatsCollector  # type: ignore
         from src.rcon_alert_monitor import RconAlertMonitor  # type: ignore
     except ImportError:
         # Graceful degradation if modules not found
+        UPSCalculator = None  # type: ignore
         RconMetricsEngine = None  # type: ignore
         RconStatsCollector = None  # type: ignore
         RconAlertMonitor = None  # type: ignore
-
-
-class UPSCalculator:
-    """Helper class to calculate actual UPS from game.tick deltas with pause detection."""
-
-    def __init__(self, pause_time_threshold: float = 5.0) -> None:
-        """
-        Initialize UPS calculator.
-
-        Args:
-            pause_time_threshold: Seconds of 0 tick advancement to confirm pause.
-        """
-        self.last_tick: Optional[int] = None
-        self.last_sample_time: Optional[float] = None
-        self.current_ups: Optional[float] = None
-
-        # Pause detection
-        self.is_paused: bool = False
-        self.last_known_ups: Optional[float] = None
-        self.pause_time_threshold = pause_time_threshold
-
-    async def sample_ups(self, rcon_client: "RconClient") -> Optional[float]:
-        """
-        Calculate UPS by comparing tick delta to real-time delta.
-
-        Detects when server is paused (no tick advancement).
-
-        Returns:
-            UPS value, or None if first sample or paused.
-        """
-        try:
-            # Get current tick (silent command)
-            response = await rcon_client.execute("/sc rcon.print(game.tick)")
-            current_tick = int(response.strip())
-            current_time = time.time()
-
-            # Need at least 2 samples to calculate
-            if self.last_tick is None or self.last_sample_time is None:
-                self.last_tick = current_tick
-                self.last_sample_time = current_time
-                logger.debug("ups_first_sample_initialized", tick=current_tick)
-                return None
-
-            # Calculate deltas
-            delta_ticks = current_tick - self.last_tick
-            delta_seconds = current_time - self.last_sample_time
-
-            # PAUSE DETECTION: No ticks advanced over significant time
-            if delta_ticks == 0 and delta_seconds >= self.pause_time_threshold:
-                if not self.is_paused:
-                    logger.info(
-                        "server_paused_detected",
-                        last_tick=current_tick,
-                        delta_seconds=delta_seconds,
-                    )
-                self.is_paused = True
-                # Update time even when paused
-                self.last_sample_time = current_time
-                return None
-
-            # Minimal tick advancement (< 1 second game time over 5+ real seconds)
-            # Likely still paused or just recovering
-            if delta_ticks < 60 and delta_seconds >= self.pause_time_threshold:
-                logger.debug(
-                    "minimal_tick_advancement",
-                    delta_ticks=delta_ticks,
-                    delta_seconds=delta_seconds,
-                    likely_paused=True,
-                )
-                self.is_paused = True
-                self.last_tick = current_tick
-                self.last_sample_time = current_time
-                return None
-
-            # Avoid division by zero or extremely small intervals
-            if delta_seconds < 0.1:
-                logger.warning("ups_sample_too_fast", delta_seconds=delta_seconds)
-                return self.current_ups
-
-            # Normal UPS calculation
-            ups = delta_ticks / delta_seconds
-
-            # UNPAUSE DETECTION: Reasonable UPS resumed
-            if self.is_paused and ups > 10.0:
-                logger.info(
-                    "server_unpaused_detected",
-                    ups=ups,
-                    delta_ticks=delta_ticks,
-                    delta_seconds=delta_seconds,
-                )
-                self.is_paused = False
-
-            # Update state
-            self.last_tick = current_tick
-            self.last_sample_time = current_time
-            self.current_ups = ups
-            self.last_known_ups = ups  # Save for display during future pause
-
-            logger.debug(
-                "ups_calculated",
-                ups=ups,
-                delta_ticks=delta_ticks,
-                delta_seconds=delta_seconds,
-                is_paused=self.is_paused,
-            )
-            return ups
-
-        except Exception as e:
-            logger.warning("ups_calculation_failed", error=str(e))
-            return None
 
 
 class RconClient:

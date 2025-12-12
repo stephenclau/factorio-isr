@@ -17,19 +17,133 @@
 """
 Unified metrics computation layer for Factorio RCON.
 
-Provides RconMetricsEngine for consolidated UPS calculation, EMA/SMA tracking,
-evolution factor parsing, and player queries. Designed for shared use across
-stats collectors and alert monitors to ensure consistent smoothing.
+Provides UPSCalculator for pause-aware UPS sampling and RconMetricsEngine
+for consolidated metrics gathering (UPS, evolution, players). Designed for
+shared use across stats collectors and alert monitors.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Dict, List, Optional
 
 import structlog
 
 logger = structlog.get_logger()
+
+
+class UPSCalculator:
+    """Calculate actual UPS from game.tick deltas with pause detection."""
+
+    def __init__(self, pause_time_threshold: float = 5.0) -> None:
+        """
+        Initialize UPS calculator.
+
+        Args:
+            pause_time_threshold: Seconds of 0 tick advancement to confirm pause.
+        """
+        self.last_tick: Optional[int] = None
+        self.last_sample_time: Optional[float] = None
+        self.current_ups: Optional[float] = None
+
+        # Pause detection
+        self.is_paused: bool = False
+        self.last_known_ups: Optional[float] = None
+        self.pause_time_threshold = pause_time_threshold
+
+    async def sample_ups(self, rcon_client: Any) -> Optional[float]:
+        """
+        Calculate UPS by comparing tick delta to real-time delta.
+
+        Detects when server is paused (no tick advancement).
+
+        Args:
+            rcon_client: RconClient instance to query game.tick
+
+        Returns:
+            UPS value, or None if first sample or paused.
+        """
+        try:
+            # Get current tick (silent command)
+            response = await rcon_client.execute("/sc rcon.print(game.tick)")
+            current_tick = int(response.strip())
+            current_time = time.time()
+
+            # Need at least 2 samples to calculate
+            if self.last_tick is None or self.last_sample_time is None:
+                self.last_tick = current_tick
+                self.last_sample_time = current_time
+                logger.debug("ups_first_sample_initialized", tick=current_tick)
+                return None
+
+            # Calculate deltas
+            delta_ticks = current_tick - self.last_tick
+            delta_seconds = current_time - self.last_sample_time
+
+            # PAUSE DETECTION: No ticks advanced over significant time
+            if delta_ticks == 0 and delta_seconds >= self.pause_time_threshold:
+                if not self.is_paused:
+                    logger.info(
+                        "server_paused_detected",
+                        last_tick=current_tick,
+                        delta_seconds=delta_seconds,
+                    )
+                self.is_paused = True
+                # Update time even when paused
+                self.last_sample_time = current_time
+                return None
+
+            # Minimal tick advancement (< 1 second game time over 5+ real seconds)
+            # Likely still paused or just recovering
+            if delta_ticks < 60 and delta_seconds >= self.pause_time_threshold:
+                logger.debug(
+                    "minimal_tick_advancement",
+                    delta_ticks=delta_ticks,
+                    delta_seconds=delta_seconds,
+                    likely_paused=True,
+                )
+                self.is_paused = True
+                self.last_tick = current_tick
+                self.last_sample_time = current_time
+                return None
+
+            # Avoid division by zero or extremely small intervals
+            if delta_seconds < 0.1:
+                logger.warning("ups_sample_too_fast", delta_seconds=delta_seconds)
+                return self.current_ups
+
+            # Normal UPS calculation
+            ups = delta_ticks / delta_seconds
+
+            # UNPAUSE DETECTION: Reasonable UPS resumed
+            if self.is_paused and ups > 10.0:
+                logger.info(
+                    "server_unpaused_detected",
+                    ups=ups,
+                    delta_ticks=delta_ticks,
+                    delta_seconds=delta_seconds,
+                )
+                self.is_paused = False
+
+            # Update state
+            self.last_tick = current_tick
+            self.last_sample_time = current_time
+            self.current_ups = ups
+            self.last_known_ups = ups  # Save for display during future pause
+
+            logger.debug(
+                "ups_calculated",
+                ups=ups,
+                delta_ticks=delta_ticks,
+                delta_seconds=delta_seconds,
+                is_paused=self.is_paused,
+            )
+            return ups
+
+        except Exception as e:
+            logger.warning("ups_calculation_failed", error=str(e))
+            return None
 
 
 class RconMetricsEngine:
@@ -63,9 +177,6 @@ class RconMetricsEngine:
         self.collect_evolution = collect_evolution
 
         # Single UPS calculator instance (shared state)
-        # Import here to avoid circular dependency
-        from rcon_client import UPSCalculator
-
         pause_threshold = getattr(
             getattr(rcon_client, "server_config", None),
             "pause_time_threshold",
