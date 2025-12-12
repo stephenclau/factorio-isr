@@ -232,11 +232,11 @@ class ServerConfig:
     stats_interval: int = 300
     """Interval in seconds between stats collection. Default: 300s (5 min)."""
 
-    rcon_breakdown_mode: str = "transition"
-    """RCON status reporting mode: 'transition' (on state change) or 'interval' (periodic)."""
+    rcon_status_alert_mode: str = "transition"
+    """RCON status alert mode: 'transition' (on state change) or 'interval' (periodic)."""
 
-    rcon_breakdown_interval: int = 300
-    """Interval in seconds between RCON breakdown reports (for 'interval' mode). Default: 300s (5 min)."""
+    rcon_status_alert_interval: int = 300
+    """Interval in seconds between RCON status alerts (for 'interval' mode). Default: 300s (5 min)."""
 
     # Metrics collection flags
     enable_stats_collector: bool = True
@@ -286,17 +286,17 @@ class ServerConfig:
         if not self.rcon_password:
             raise ValueError(f"Server {self.tag}: RCON password cannot be empty")
 
-        # Validate breakdown mode
-        if self.rcon_breakdown_mode.lower() not in ("transition", "interval"):
+        # Validate status alert mode
+        if self.rcon_status_alert_mode.lower() not in ("transition", "interval"):
             raise ValueError(
-                f"Server {self.tag}: rcon_breakdown_mode must be 'transition' or 'interval', "
-                f"got '{self.rcon_breakdown_mode}'"
+                f"Server {self.tag}: rcon_status_alert_mode must be 'transition' or 'interval', "
+                f"got '{self.rcon_status_alert_mode}'"
             )
 
-        if self.rcon_breakdown_interval <= 0:
+        if self.rcon_status_alert_interval <= 0:
             raise ValueError(
-                f"Server {self.tag}: rcon_breakdown_interval must be > 0, "
-                f"got {self.rcon_breakdown_interval}"
+                f"Server {self.tag}: rcon_status_alert_interval must be > 0, "
+                f"got {self.rcon_status_alert_interval}"
             )
 
         # Validate alert config
@@ -494,10 +494,10 @@ def load_config() -> Config:
             description=server_data.get("description"),
             event_channel_id=server_data.get("event_channel_id"),
             stats_interval=_safe_int(server_data.get("stats_interval", 300), f"Server {tag} stats_interval", 300),
-            rcon_breakdown_mode=server_data.get("rcon_breakdown_mode", "transition"),
-            rcon_breakdown_interval=_safe_int(
-                server_data.get("rcon_breakdown_interval", 300),
-                f"Server {tag} rcon_breakdown_interval",
+            rcon_status_alert_mode=server_data.get("rcon_status_alert_mode", "transition"),
+            rcon_status_alert_interval=_safe_int(
+                server_data.get("rcon_status_alert_interval", 300),
+                f"Server {tag} rcon_status_alert_interval",
                 300,
             ),
             enable_stats_collector=server_data.get("enable_stats_collector", True),
