@@ -21,9 +21,9 @@ servers:
     rcon_password: "your-password-here"
     event_channel_id: 123456789012345678  # Discord channel ID for events
     stats_interval: 300            # Post stats every 5 minutes (in seconds)
-    # Stats Collection Control (NEW)
-    enable_stats_gather: true      # Set to false to disable stats collection
-  # Performance monitoring
+    # Stats Collection Control
+    enable_stats_collector: true   # Set to false to disable RconStatsCollector
+    # Performance monitoring
     enable_ups_stat: true
     enable_evolution_stat: true
     enable_alerts: true
@@ -43,7 +43,7 @@ servers:
   #   rcon_password: "your-staging-password"
   #   event_channel_id: 987654321098765432
   #   stats_interval: 600  # Post stats every 10 minutes
-  #   enable_stats_gather: false  # Disable noisy stats for testing
+  #   enable_stats_collector: false  # Disable noisy stats for testing
 
   # Development server - local testing
   # dev:
@@ -54,7 +54,7 @@ servers:
   #   rcon_password: "dev-password"
   #   event_channel_id: 111111111111111111
   #   stats_interval: 900  # Post stats every 15 minutes
-  #   enable_stats_gather: true  # Collect stats for dev server
+  #   enable_stats_collector: true  # Collect stats for dev server
 
 # ============================================================================
 # Configuration Reference
@@ -95,14 +95,14 @@ servers:
 #   - Default: 300 (5 minutes)
 #   - Minimum: 60 seconds to avoid rate limits
 
-# enable_stats_gather (optional):
-#   - Control whether stats collection is active for this server
-#   - Default: true (stats collection enabled)
-#   - Set to false to disable Discord stats posting
-#   - Alerts and RCON monitoring work independently (not affected by this flag)
+# enable_stats_collector (optional):
+#   - Control whether RconStatsCollector is created and started for this server
+#   - Default: true (stats collector enabled)
+#   - Set to false to completely disable stats collection and Discord posting
+#   - Alerts (RconAlertMonitor) work independently and are not affected by this flag
 #   - Useful for reducing Discord spam on dev/testing servers
 #   - Example use cases:
-#     - prod: true (full monitoring)
+#     - prod: true (full stats monitoring)
 #     - stg: false (reduce noise during testing)
 #     - dev: true (collect metrics for development)
 
@@ -145,7 +145,7 @@ servers:
 #     rcon_password: "my-password"
 #     event_channel_id: 123456789012345678
 #     stats_interval: 300
-#     enable_stats_gather: true
+#     enable_stats_collector: true
 #     enable_ups_stat: true
 #     enable_evolution_stat: true
 

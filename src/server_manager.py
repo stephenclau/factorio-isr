@@ -153,7 +153,7 @@ class ServerManager:
         Start stats collector and alert monitor for a server.
         
         Used when server was added with defer_stats=True.
-        Respects the enable_stats_gather flag for conditional collector startup.
+        Respects the enable_stats_collector flag for conditional collector startup.
 
         Args:
             tag: Server tag
@@ -172,7 +172,7 @@ class ServerManager:
         client = self.clients[tag]
 
         # Create stats collector if enabled and channel configured
-        if config.enable_stats_gather and config.event_channel_id:
+        if config.enable_stats_collector and config.event_channel_id:
             # Create a per-server interface bound to this server's channel
             server_interface = self.discord_interface.use_channel(config.event_channel_id)
             
@@ -195,12 +195,12 @@ class ServerManager:
                 ups_enabled=config.enable_ups_stat,
                 evolution_enabled=config.enable_evolution_stat,
             )
-        elif not config.enable_stats_gather:
+        elif not config.enable_stats_collector:
             logger.info(
-                "stats_gathering_disabled",
+                "stats_collector_disabled",
                 tag=config.tag,
                 server_name=config.name,
-                reason="enable_stats_gather=false in servers.yml",
+                reason="enable_stats_collector=false in servers.yml",
             )
 
         # Create alert monitor if enabled
