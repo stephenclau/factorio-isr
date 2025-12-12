@@ -40,21 +40,21 @@ try:
     from event_parser import FactorioEvent
     from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
     from discord_interface import EmbedBuilder
-    from bot.helpers import format_uptime, get_seed, get_game_uptime
+    from bot.helpers import format_uptime, get_seed, get_game_uptime, get_version
 except ImportError:
     try:
         # Fallback to package style (when installed as package)
         from src.event_parser import FactorioEvent  # type: ignore
         from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
         from src.discord_interface import EmbedBuilder  # type: ignore
-        from src.bot.helpers import format_uptime, get_seed, get_game_uptime  # type: ignore
+        from src.bot.helpers import format_uptime, get_seed, get_game_uptime, get_version  # type: ignore
     except ImportError:
         # Last resort: use relative imports from parent
         try:
             from ..event_parser import FactorioEvent  # type: ignore
             from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
             from ..discord_interface import EmbedBuilder  # type: ignore
-            from ..bot.helpers import format_uptime, get_seed, get_game_uptime  # type: ignore
+            from ..bot.helpers import format_uptime, get_seed, get_game_uptime, get_version  # type: ignore
         except ImportError:
             raise ImportError(
                 "Could not import event_parser, rate_limiting, discord_interface, or bot.helpers from any path"
@@ -392,7 +392,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="version", description="Show Factorio server version")
     async def version_command(interaction: discord.Interaction) -> None:
-        """Get Factorio server version."""
+        """Get Factorio server version using helpers.get_version()."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -409,7 +409,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            version = await rcon_client.get_version()
+            version = await get_version(rcon_client)
             embed = discord.Embed(
                 title=f"📦 {server_name} Version",
                 description=f"`{version}`",
