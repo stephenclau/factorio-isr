@@ -336,21 +336,24 @@ def register_factorio_commands(bot: Any) -> None:
                 inline=True,
             )
 
-            # ✨ Pause State (independent field, separate from UPS)
-            is_paused = metrics.get("is_paused", False)
-            pause_status = "⏸️ Paused" if is_paused else "▶️ Running"
-            embed.add_field(
-                name="🎮 Server State",
-                value=pause_status,
-                inline=True,
-            )
-
             # ✨ Performance Metrics (from metrics engine)
+            # Couple server state with UPS: show "Fetching..." initially,
+            # then update to "⏸️ Paused" or "▶️ Running" once UPS data arrives
             if metrics.get("ups") is not None:
+                # UPS data available - show actual pause state
+                is_paused = metrics.get("is_paused", False)
+                pause_status = "⏸️ Paused" if is_paused else "▶️ Running"
                 ups_str = f"{metrics['ups']:.1f}"
                 embed.add_field(
                     name="⚡ UPS (Current)",
-                    value=ups_str,
+                    value=f"{pause_status} @ {ups_str}",
+                    inline=True,
+                )
+            else:
+                # UPS data not yet available - show fetching state
+                embed.add_field(
+                    name="⚡ UPS (Current)",
+                    value="🔄 Fetching...",
                     inline=True,
                 )
             
@@ -1626,7 +1629,7 @@ def register_factorio_commands(bot: Any) -> None:
 
         help_text = (
             "**🏭 Factorio ISR Bot – Commands**\n\n"
-            "**🌐 Multi-Server**\n"
+            "**🌍 Multi-Server**\n"
             "`/factorio servers` – List available servers\n"
             "`/factorio connect <server>` – Switch to a server\n\n"
             "**📊 Server Information**\n"
@@ -1635,7 +1638,7 @@ def register_factorio_commands(bot: Any) -> None:
             "`/factorio version` – Show Factorio server version\n"
             "`/factorio seed` – Show map seed\n"
             "`/factorio evolution [target]` – Show enemy evolution\n"
-            "  └ Use 'all' for aggregate or specific surface name\n"
+            "  \n Use 'all' for aggregate or specific surface name\n"
             "`/factorio admins` – List server administrators\n"
             "`/factorio health` – Check bot and server health\n\n"
             "**👥 Player Management**\n"
@@ -1651,12 +1654,12 @@ def register_factorio_commands(bot: Any) -> None:
             "`/factorio whisper <player> <message>` – Send private message\n"
             "`/factorio save [name]` – Save the game\n"
             "`/factorio whitelist <action> [player]` – Manage whitelist\n"
-            "  └ Actions: add, remove, list, enable, disable\n\n"
+            "  \n Actions: add, remove, list, enable, disable\n\n"
             "**🎮 Game Control**\n"
             "`/factorio time [value]` – Show/set game time\n"
             "`/factorio speed <value>` – Set game speed (0.1-10.0)\n"
             "`/factorio research <technology>` – Force research tech\n\n"
-            "**🖛️ Advanced**\n"
+            "**🛠️ Advanced**\n"
             "`/factorio rcon <command>` – Run raw RCON command\n"
             "`/factorio help` – Show this help message\n\n"
             "_Most commands require RCON to be enabled._"
