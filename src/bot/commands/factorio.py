@@ -416,10 +416,9 @@ def register_factorio_commands(bot: Any) -> None:
                 embed.add_field(
                     name="🐛 Nauvis Evolution",
                     value=f"{nauvis_evo:.2f} ({nauvis_pct:.1f}%)",
-                    inline=False,
+                    inline=True,
                 )
                            
-            
             # Display gleba evolution if available
             if "gleba" in evolution_by_surface:
                 gleba_evo = evolution_by_surface["gleba"]
