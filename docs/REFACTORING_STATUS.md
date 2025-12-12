@@ -1,7 +1,7 @@
 # 🏗️ Factorio ISR Refactoring Status
 
 **Last Updated:** December 12, 2025  
-**Phase:** Discord Bot Commands Refactoring (COMPLETE) → Staging Validation (Active)  
+**Phase:** RCON Modular Refactor (COMPLETE) → Staging Validation (Active)  
 **Test Refactoring:** Deferred (will execute after staging validation)
 
 ---
@@ -15,7 +15,14 @@
 - ✅ Bot mode is now the exclusive operational mode
 - ✅ 281 lines of dead code eliminated
 
-**Impact:** Production code is clean and production-ready ✅
+### RCON Client Modularization (Phase 3) ✅
+- ✅ **RCON Protocol Layer**: `rcon_client.py` reduced to pure connection/protocol handling.
+- ✅ **Metrics Engine**: New `rcon_metrics_engine.py` handles UPS, evolution, and player count computation.
+- ✅ **Stats Collector**: New `rcon_stats_collector.py` manages periodic Discord updates.
+- ✅ **Alert Monitor**: New `rcon_alert_monitor.py` handles high-frequency polling and alerting.
+- ✅ **Config Alignment**: Renamed parameters for consistency (`enable_stats_collector`, `enable_ups_stat`).
+
+**Impact:** Production code is clean, modular, and production-ready ✅
 
 ---
 
@@ -110,7 +117,8 @@ RconStatsCollector(
 RconStatsCollector(
     rcon_client=...,
     discord_interface=...,  # ✅ CORRECT
-    ...
+    enable_ups_stat=True,    # ✅ NEW
+    enable_evolution_stat=True # ✅ NEW
 )
 ```
 
@@ -154,6 +162,7 @@ RconAlertMonitor(
 | **Discord Client** | ✅ Deleted | 170 lines removed |
 | **Discord Interface** | ✅ Refactored | Bot mode only |
 | **Discord Bot Commands** | ✅ REFACTORED | 25/25 commands, discrete enclosure |
+| **RCON Modules** | ✅ MODULARIZED | Client, Metrics, Stats, Alerts separated |
 | **Server Manager** | ✅ Correct | Uses proper `discord_interface` parameter |
 | **Bot Integration** | ✅ Active | Full bot mode operational |
 
@@ -165,6 +174,7 @@ RconAlertMonitor(
 |-------|--------|--------|-------|
 | **Webhook Removal** | ✅ Complete | Done | 281 lines eliminated |
 | **Command Refactoring** | ✅ Complete | Done | 25/25 commands migrated |
+| **RCON Modularization** | ✅ Complete | Done | 4 focused modules created |
 | **Staging Validation** | 🔄 In Progress | 4-6 hrs | Command suite testing required |
 | **Test Refactoring** | ⏸️ Deferred | 2-3 hrs | After staging passes |
 | **Coverage Verification** | ⏸️ Deferred | 1-2 hrs | Target: 91% minimum |
