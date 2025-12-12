@@ -40,6 +40,7 @@ from typing import Any, List, Optional
 from datetime import datetime, timezone
 import discord
 from discord import app_commands
+import re
 import structlog
 
 try:
@@ -1103,7 +1104,7 @@ def register_factorio_commands(bot: Any) -> None:
     @factorio_group.command(name="save", description="Save the game")
     @app_commands.describe(name="Save name (optional, defaults to auto-save)")
     async def save_command(interaction: discord.Interaction, name: Optional[str] = None) -> None:
-        """Save the game."""
+        """Save the game with optional custom save name."""
         is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -1115,33 +1116,57 @@ def register_factorio_commands(bot: Any) -> None:
         rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            save_name = name if name else "auto-save"
-            await rcon_client.execute(f'/save {save_name}')
+            # Execute save command
+            cmd = f"/save {name}" if name else "/save"
+            resp = await rcon_client.execute(cmd)
 
-            embed = discord.Embed(
+            # Determine the display label
+            if name:
+                # Custom save name provided
+                label = name
+            else:
+                # Parse save name from response using regex patterns
+                # Try full path format first: "Saving map to /path/to/LosHermanos.zip"
+                match = re.search(r"/([^/]+?)\.zip", resp)
+                if match:
+                    label = match.group(1)
+                else:
+                    # Fallback to simpler format: "Saving to _autosave1 (non-blocking)"
+                    match = re.search(r"Saving (?:map )?to ([\w-]+)", resp)
+                    label = match.group(1) if match else "current save"
+
+            # Format embed with parsed or provided save name
+            embed = EmbedBuilder.info_embed(
                 title="💾 Game Saved",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+                message=(
+                    f"Save name: **{label}**\n\n"
+                    f"Server response:\n{resp}"
+                ),
             )
-            embed.add_field(name="Save Name", value=save_name, inline=True)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
 
             logger.info(
                 "game_saved",
-                save_name=save_name,
+                save_name=label,
                 moderator=interaction.user.name,
             )
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to save game: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("save_command_failed", error=str(e))
+            logger.error(
+                "save_command_failed",
+                error=str(e),
+                name=name,
+            )
 
     @factorio_group.command(name="broadcast", description="Send message to all players")
     @app_commands.describe(message="Message to broadcast")
