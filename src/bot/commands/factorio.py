@@ -345,7 +345,7 @@ def register_factorio_commands(bot: Any) -> None:
             if is_paused:
                 # Pause state is definitive - show immediately
                 embed.add_field(
-                    name="📱 Server State",
+                    name="🖥️ Server State",
                     value="⏸️ Paused",
                     inline=True,
                 )
@@ -353,14 +353,14 @@ def register_factorio_commands(bot: Any) -> None:
                 # UPS data available and not paused - show running state
                 ups_str = f"{ups_value:.1f}"
                 embed.add_field(
-                    name="📱 Server State",
+                    name="🖥️ Server State",
                     value=f"▶️ Running @ {ups_str}",
                     inline=True,
                 )
             else:
                 # UPS data not yet available - show fetching state
                 embed.add_field(
-                    name="📱 Server State",
+                    name="🖥️ Server State",
                     value="🔄 Fetching...",
                     inline=True,
                 )
@@ -399,7 +399,7 @@ def register_factorio_commands(bot: Any) -> None:
             # Game time (from metrics engine)
             if metrics.get("play_time"):
                 embed.add_field(
-                    name="🕐 Play Time",
+                    name="🎮🕐 Total Play Time",
                     value=metrics["play_time"],
                     inline=True,
                 )
