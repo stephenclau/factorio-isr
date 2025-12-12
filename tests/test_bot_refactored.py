@@ -37,7 +37,7 @@ try:
     from bot.event_handler import EventHandler
     from bot.rcon_monitor import RconMonitor
     from bot.commands import register_factorio_commands
-    from discord_bot_refactored import DiscordBot, DiscordBotFactory
+    from discord_bot import DiscordBot, DiscordBotFactory
 except ImportError:
     # Flat layout
     pass

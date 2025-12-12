@@ -421,19 +421,19 @@ class DiscordInterfaceFactory:
         """
         # Try 1: Refactored modular version (new - preferred)
         try:
-            from discord_bot_refactored import DiscordBot
+            from discord_bot import DiscordBot
             logger.info("Using refactored DiscordBot (modular architecture)")
             return DiscordBot
         except ImportError as e:
             logger.debug(f"discord_bot_refactored not found: {e}")
         
-        # Try 2: Original version (backward compatibility)
-        try:
-            from discord_bot import DiscordBot
-            logger.info("Using original DiscordBot (fallback)")
-            return DiscordBot
-        except ImportError as e:
-            logger.debug(f"discord_bot not found: {e}")
+        # # Try 2: Original version (backward compatibility)
+        # try:
+        #     from discord_bot import DiscordBot
+        #     logger.info("Using original DiscordBot (fallback)")
+        #     return DiscordBot
+        # except ImportError as e:
+        #     logger.debug(f"discord_bot not found: {e}")
         
         # Try 3: importlib fallback
         try:
