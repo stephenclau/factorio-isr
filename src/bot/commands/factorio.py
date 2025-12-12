@@ -1456,11 +1456,20 @@ def register_factorio_commands(bot: Any) -> None:
     # GAME CONTROL COMMANDS (3/25)
     # ========================================================================
 
-    @factorio_group.command(name="time", description="Set or display game time")
-    @app_commands.describe(value="Time value (e.g., 0.5 for noon, 0 for midnight) or leave empty to view")
-    async def time_command(interaction: discord.Interaction, value: Optional[float] = None) -> None:
-        """Set or display the game time."""
-        is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
+    @factorio_group.command(name="clock", description="Set or display game daytime (0.0-1.0 scale or eternal day/night)")
+    @app_commands.describe(
+        value="'day'/'night'/'eternal-day'/'eternal-night' or float 0.0-1.0 (0=midnight, 0.5=noon), or leave empty to view"
+    )
+    async def clock_command(interaction: discord.Interaction, value: Optional[str] = None) -> None:
+        """Set or display the game clock with optional freeze_daytime.
+        
+        Parameters:
+        - No argument: Show current daytime
+        - 'day' or 'eternal-day': Set daytime to noon and freeze it
+        - 'night' or 'eternal-night': Set daytime to midnight and freeze it  
+        - Float 0.0-1.0: Set daytime (0.0=midnight, 0.5=noon, 1.0=next midnight)
+        """
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1480,27 +1489,88 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             if value is None:
-                # Display current time
-                resp = await rcon_client.execute("/time")
+                # Display current daytime
+                resp = await rcon_client.execute(
+                    '/sc local daytime = game.surfaces["nauvis"].daytime; '
+                    'local hours = math.floor(daytime * 24); '
+                    'local minutes = math.floor((daytime * 24 - hours) * 60); '
+                    'rcon.print(string.format("Current daytime: %.2f (🕐 %02d:%02d)", daytime, hours, minutes))'
+                )
                 embed = EmbedBuilder.info_embed(
-                    title="🕐 Total Game Play Time",
+                    title="🕐 Current Game Clock",
                     message=resp,
                 )
             else:
-                # Set time
-                resp = await rcon_client.execute(f'/sc game.surfaces["nauvis"].daytime = {value}')
-                time_desc = "noon" if abs(value - 0.5) < 0.1 else "midnight" if value < 0.1 else f"{value}"
-                embed = EmbedBuilder.info_embed(
-                    title="🕐 Time Changed",
-                    message=f"Game time set to: **{time_desc}**\n\nServer response:\n{resp}",
-                )
-                logger.info("time_changed", value=value, moderator=interaction.user.name)
+                # Parse value
+                value_lower = value.lower().strip()
+                
+                if value_lower in ["day", "eternal-day"]:
+                    # Eternal day: daytime = 0.5, freeze_daytime = true
+                    resp = await rcon_client.execute(
+                        '/sc game.surfaces["nauvis"].daytime = 0.5; '
+                        'game.surfaces["nauvis"].freeze_daytime = 0.5; '
+                        'rcon.print("☀️ Set to eternal day (12:00)")'
+                    )
+                    embed = EmbedBuilder.info_embed(
+                        title="☀️ Eternal Day Set",
+                        message="Game time is now permanently frozen at noon (12:00)\n\nServer response:\n" + resp,
+                    )
+                    logger.info("eternal_day_set", moderator=interaction.user.name)
+                    
+                elif value_lower in ["night", "eternal-night"]:
+                    # Eternal night: daytime = 0.0, freeze_daytime = true  
+                    resp = await rcon_client.execute(
+                        '/sc game.surfaces["nauvis"].daytime = 0.0; '
+                        'game.surfaces["nauvis"].freeze_daytime = 0.0; '
+                        'rcon.print("🌙 Set to eternal night (00:00)")'
+                    )
+                    embed = EmbedBuilder.info_embed(
+                        title="🌙 Eternal Night Set",
+                        message="Game time is now permanently frozen at midnight (00:00)\n\nServer response:\n" + resp,
+                    )
+                    logger.info("eternal_night_set", moderator=interaction.user.name)
+                    
+                else:
+                    # Parse as float
+                    try:
+                        daytime_value = float(value_lower)
+                        if not 0.0 <= daytime_value <= 1.0:
+                            raise ValueError("Value must be between 0.0 and 1.0")
+                        
+                        # Set daytime and unfreeze time progression
+                        resp = await rcon_client.execute(
+                            f'/sc game.surfaces["nauvis"].daytime = {daytime_value}; '
+                            f'game.surfaces["nauvis"].freeze_daytime = nil; '
+                            f'local hours = math.floor({daytime_value} * 24); '
+                            f'local minutes = math.floor(({daytime_value} * 24 - hours) * 60); '
+                            f'rcon.print(string.format("Set daytime to %.2f (🕐 %02d:%02d)", {daytime_value}, hours, minutes))'
+                        )
+                        
+                        time_desc = "noon" if abs(daytime_value - 0.5) < 0.05 else "midnight" if daytime_value < 0.05 else f"{daytime_value:.2f}"
+                        embed = EmbedBuilder.info_embed(
+                            title="🕐 Game Clock Updated",
+                            message=f"Game time set to: **{time_desc}**\n\nServer response:\n{resp}",
+                        )
+                        logger.info("daytime_set", value=daytime_value, moderator=interaction.user.name)
+                    
+                    except ValueError as e:
+                        embed = EmbedBuilder.error_embed(
+                            f"Invalid time value: {value}\n\n"
+                            f"Valid formats:\n"
+                            f"- 'day' or 'eternal-day' → Eternal noon\n"
+                            f"- 'night' or 'eternal-night' → Eternal midnight\n"
+                            f"- 0.0-1.0 → Custom time (0=midnight, 0.5=noon)"
+                        )
+                        await interaction.followup.send(embed=embed, ephemeral=True)
+                        return
 
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
+            
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Time command failed: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Clock command failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("time_command_failed", error=str(e), value=value)
+            logger.error("clock_command_failed", error=str(e), value=value)
 
     @factorio_group.command(name="speed", description="Set game speed")
     @app_commands.describe(value="Game speed (0.1-10.0, 1.0 = normal)")
@@ -1687,7 +1757,7 @@ def register_factorio_commands(bot: Any) -> None:
             "`/factorio whitelist <action> [player]` – Manage whitelist\n"
             "  \n Actions: add, remove, list, enable, disable\n\n"
             "**🎮 Game Control**\n"
-            "`/factorio time [value]` – Show/set game time\n"
+            "`/factorio clock [value]` – Show/set game time\n"
             "`/factorio speed <value>` – Set game speed (0.1-10.0)\n"
             "`/factorio research <technology>` – Force research tech\n\n"
             "**🛠️ Advanced**\n"

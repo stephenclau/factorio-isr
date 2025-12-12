@@ -38,3 +38,4 @@ codecov.*
 patterns/*.test.yml
 patterns/.DS_Store
 *.token
+.arch/*
