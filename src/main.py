@@ -360,10 +360,10 @@ class Application:
 
         logger.info("server_manager_wired_to_bot")
 
-        # Apply per-server breakdown configuration to the bot
-        bot._apply_server_breakdown_config()
+        # Apply per-server status alert configuration to the bot
+        bot._apply_server_status_alert_config()
 
-        logger.info("server_breakdown_config_applied_to_bot")
+        logger.info("server_status_alert_config_applied_to_bot")
 
     async def _start_multi_server_stats_collectors(self) -> None:
         """
