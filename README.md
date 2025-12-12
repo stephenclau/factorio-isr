@@ -132,11 +132,11 @@ LOG_FORMAT=json
 # Custom bot appearance for discord webhooks only (deprecated). 
 #BOT_NAME=Webhook Botter
 #BOT_AVATAR_URL=
-# RCON Breakdown Embed Configuration
+# RCON Status Alert Configuration
 # Mode: "transition" = send on server state changes, "interval" = send periodically
-RCON_BREAKDOWN_MODE=transition
+RCON_STATUS_ALERT_MODE=transition
 # Interval in seconds (only used when mode=interval)
-RCON_BREAKDOWN_INTERVAL=300
+RCON_STATUS_ALERT_INTERVAL=300
 EOF
 ```
 Run the application
