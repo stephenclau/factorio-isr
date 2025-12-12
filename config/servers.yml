@@ -21,7 +21,7 @@ servers:
     event_channel_id: 1443838551019094048  # Discord channel ID for events for THIS server.
     stats_interval: 300             # Post stat card every 5 minutes
     log_path: ./logs/test/console.log  # NEW: Per-server log path
-    
+    enable_stats_collector: false
     # Breakdown Reporting Configuration (optional - defaults shown below)
     # Breakdown reporting lets you determine when to receive metrics on server state changes
     rcon_breakdown_mode: "transition"  # "transition" = on state change, "interval" = periodic
