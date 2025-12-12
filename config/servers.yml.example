@@ -21,9 +21,11 @@ servers:
     rcon_password: "your-password-here"
     event_channel_id: 123456789012345678  # Discord channel ID for events
     stats_interval: 300            # Post stats every 5 minutes (in seconds)
-  # Performance monitoring (NEW)
-    collect_ups: true
-    collect_evolution: true
+    # Stats Collection Control (NEW)
+    enable_stats_gather: true      # Set to false to disable stats collection
+  # Performance monitoring
+    enable_ups_stat: true
+    enable_evolution_stat: true
     enable_alerts: true
     alert_check_interval: 60  # Check every 60 seconds
     alert_samples_required: 3  # 3 consecutive bad samples
@@ -41,6 +43,7 @@ servers:
   #   rcon_password: "your-staging-password"
   #   event_channel_id: 987654321098765432
   #   stats_interval: 600  # Post stats every 10 minutes
+  #   enable_stats_gather: false  # Disable noisy stats for testing
 
   # Development server - local testing
   # dev:
@@ -51,6 +54,7 @@ servers:
   #   rcon_password: "dev-password"
   #   event_channel_id: 111111111111111111
   #   stats_interval: 900  # Post stats every 15 minutes
+  #   enable_stats_gather: true  # Collect stats for dev server
 
 # ============================================================================
 # Configuration Reference
@@ -91,6 +95,31 @@ servers:
 #   - Default: 300 (5 minutes)
 #   - Minimum: 60 seconds to avoid rate limits
 
+# enable_stats_gather (optional):
+#   - Control whether stats collection is active for this server
+#   - Default: true (stats collection enabled)
+#   - Set to false to disable Discord stats posting
+#   - Alerts and RCON monitoring work independently (not affected by this flag)
+#   - Useful for reducing Discord spam on dev/testing servers
+#   - Example use cases:
+#     - prod: true (full monitoring)
+#     - stg: false (reduce noise during testing)
+#     - dev: true (collect metrics for development)
+
+# enable_ups_stat (optional):
+#   - Control whether UPS statistics are collected and posted
+#   - Default: true (UPS stat collection enabled)
+#   - Set to false to disable UPS tracking in stats
+#   - Independent control: evolution tracking works separately
+#   - Example: disable for background/utility servers
+
+# enable_evolution_stat (optional):
+#   - Control whether enemy evolution factor is collected and posted
+#   - Default: true (evolution stat collection enabled)
+#   - Set to false to disable evolution tracking in stats
+#   - Independent control: UPS tracking works separately
+#   - Example: disable for creative/PvP servers with no enemy evolution
+
 # ============================================================================
 # Getting Discord Channel IDs
 # ============================================================================
@@ -116,6 +145,9 @@ servers:
 #     rcon_password: "my-password"
 #     event_channel_id: 123456789012345678
 #     stats_interval: 300
+#     enable_stats_gather: true
+#     enable_ups_stat: true
+#     enable_evolution_stat: true
 
 # ============================================================================
 # Security Best Practices

@@ -456,20 +456,16 @@ class RconMetricsEngine:
     def __init__(
         self,
         rcon_client: RconClient,
-        collect_ups: bool = True,
-        collect_evolution: bool = True,
+        discord_interface: Any,
+        interval: int | float = 300,
+        enable_ups_stat: bool = True,
+        enable_evolution_stat: bool = True,
     ) -> None:
         """
         Initialize metrics engine.
 
-        Args:
-            rcon_client: RCON client instance (1:1 server binding preserved)
-            collect_ups: Enable UPS sampling and smoothing
-            collect_evolution: Enable evolution factor collection
-        """
-        self.rcon_client = rcon_client
-        self.collect_ups = collect_ups
-        self.collect_evolution = collect_evolution
+        self.enable_ups_stat = enable_ups_stat
+        self.enable_evolution_stat = enable_evolution_stat
 
         # Single UPS calculator instance (shared state)
         pause_threshold = getattr(
@@ -477,8 +473,8 @@ class RconMetricsEngine:
             "pause_time_threshold",
             5.0,
         )
-        self.ups_calculator: Optional[UPSCalculator] = (
-            UPSCalculator(pause_time_threshold=pause_threshold) if collect_ups else None
+        self._ups_calculator: Optional[UPSCalculator] = (
+            UPSCalculator(pause_time_threshold=pause_threshold) if enable_ups_stat else None
         )
 
         # Unified EMA/SMA state (single source of truth)
@@ -707,9 +703,10 @@ class RconStatsCollector:
             interval=interval,
             rcon_connected=rcon_client.is_connected,
             discord_connected=getattr(discord_interface, "is_connected", None),
-            collect_ups=collect_ups,
-            collect_evolution=collect_evolution,
-            shared_metrics_engine=metrics_engine is not None,
+            enable_ups_stat=enable_ups_stat,
+            enable_evolution_stat=enable_evolution_stat,
+            ema_alpha=self.ema_alpha,
+            pause_threshold=pause_threshold,
         )
 
     async def start(self) -> None:
@@ -781,6 +778,124 @@ class RconStatsCollector:
                 await asyncio.sleep(self.interval)
 
         logger.info("stats_collection_loop_exited", total_iterations=iteration)
+
+    async def _gather_extended_metrics(self) -> Dict[str, Any]:
+        """Gather extended game metrics via RCON with pause detection."""
+        metrics: Dict[str, Any] = {
+            "ups": None,
+            "ups_sma": None,
+            "ups_ema": None,
+            "is_paused": False,
+            "last_known_ups": None,
+            "tick": None,
+            "game_time_seconds": None,
+            "evolution_factor": None,
+            "evolution_by_surface": {},  # Dict[surface_name, factor]
+        }
+
+        try:
+            # Get tick and game time
+            try:
+                response = await self.rcon_client.execute("/sc rcon.print(game.tick)")
+                metrics["tick"] = int(response.strip())
+                metrics["game_time_seconds"] = metrics["tick"] / 60.0
+            except Exception as e:
+                logger.warning("tick_collection_failed", error=str(e))
+
+            # UPS calculation with pause detection
+            if self.enable_ups_stat and self._ups_calculator:
+                ups = await self._ups_calculator.sample_ups(self.rcon_client)
+
+                # Capture pause state
+                metrics["is_paused"] = self._ups_calculator.is_paused
+                metrics["last_known_ups"] = self._ups_calculator.last_known_ups
+
+                if ups is not None:
+                    metrics["ups"] = ups
+                    logger.debug("ups_collected", ups=ups, is_paused=False)
+
+                    # Update SMA window (last 5 samples)
+                    self._ups_samples_for_sma.append(ups)
+                    if len(self._ups_samples_for_sma) > 5:
+                        self._ups_samples_for_sma.pop(0)
+                    if self._ups_samples_for_sma:
+                        metrics["ups_sma"] = sum(self._ups_samples_for_sma) / len(
+                            self._ups_samples_for_sma
+                        )
+
+                    # Update EMA for stats view
+                    if self.ema_ups is None:
+                        self.ema_ups = ups
+                    else:
+                        self.ema_ups = (
+                            self.ema_alpha * ups
+                            + (1.0 - self.ema_alpha) * self.ema_ups
+                        )
+                    metrics["ups_ema"] = self.ema_ups
+                    logger.debug(
+                        "stats_ups_ema_updated",
+                        ups=ups,
+                        ema_ups=self.ema_ups,
+                        alpha=self.ema_alpha,
+                    )
+                elif self._ups_calculator.is_paused:
+                    logger.debug(
+                        "ups_not_collected_server_paused",
+                        last_known_ups=self._ups_calculator.last_known_ups,
+                    )
+
+            # Evolution factor per surface (multi-surface support)
+            if self.enable_evolution_stat:
+                response: Optional[str] = None
+                try:
+                    # Query all surfaces for evolution factor
+                    lua = (
+                        "/c "
+                        "local f = game.forces['enemy']; "
+                        "local evo_data = {}; "
+                        "for _, s in pairs(game.surfaces) do "
+                        "  if not string.find(string.lower(s.name), 'platform') then "
+                        "    evo_data[s.name] = f.get_evolution_factor(s); "
+                        "  end "
+                        "end; "
+                        "rcon.print(game.table_to_json(evo_data))"
+                    )
+                    response = await self.rcon_client.execute(lua)
+
+                    if not response or not response.strip():
+                        logger.warning("evolution_collection_failed_empty_response")
+                    else:
+                        evolution_by_surface: Dict[str, float] = json.loads(
+                            response.strip()
+                        )
+                        if evolution_by_surface:
+                            metrics["evolution_by_surface"] = evolution_by_surface
+                            # For backwards compatibility, store the first surface evolution
+                            first_surface = next(iter(evolution_by_surface.values()))
+                            metrics["evolution_factor"] = first_surface
+
+                            logger.debug(
+                                "evolution_collected_multi_surface",
+                                surfaces=list(evolution_by_surface.keys()),
+                                evolution_data=evolution_by_surface,
+                            )
+                except json.JSONDecodeError as e:
+                    logger.warning(
+                        "evolution_json_parse_failed",
+                        error=str(e),
+                        response=response[:200] if isinstance(response, str) else "",
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "evolution_collection_failed",
+                        error=str(e),
+                        exc_info=True,
+                    )
+
+        except Exception as e:
+            logger.warning("extended_metrics_partial_failure", error=str(e))
+
+        return metrics
 
     async def _collect_and_post(self) -> None:
         """Collect stats via engine and post to Discord using formatters."""

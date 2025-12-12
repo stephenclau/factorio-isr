@@ -28,8 +28,8 @@ servers:
     rcon_breakdown_interval: 300        # How often to report when mode=interval (seconds, default 300=5min)
     
     # Performance monitoring (NEW)
-    collect_ups: true
-    collect_evolution: true
+    enable_ups_stat: true
+    enable_evolution_stat: true
     enable_alerts: true
     alert_check_interval: 60  # Check every 60 seconds
     alert_samples_required: 3  # 3 consecutive bad samples
