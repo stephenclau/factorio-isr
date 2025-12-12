@@ -40,20 +40,25 @@ try:
     from event_parser import FactorioEvent
     from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
     from discord_interface import EmbedBuilder
+    from bot.helpers import format_uptime, get_game_uptime
 except ImportError:
     try:
         # Fallback to package style (when installed as package)
         from src.event_parser import FactorioEvent  # type: ignore
         from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
         from src.discord_interface import EmbedBuilder  # type: ignore
+        from src.bot.helpers import format_uptime, get_game_uptime  # type: ignore
     except ImportError:
         # Last resort: use relative imports from parent
         try:
             from ..event_parser import FactorioEvent  # type: ignore
             from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
             from ..discord_interface import EmbedBuilder  # type: ignore
+            from ..bot.helpers import format_uptime, get_game_uptime  # type: ignore
         except ImportError:
-            raise ImportError("Could not import event_parser, rate_limiting, or discord_interface from any path")
+            raise ImportError(
+                "Could not import event_parser, rate_limiting, discord_interface, or bot.helpers from any path"
+            )
 
 logger = structlog.get_logger()
 
@@ -287,12 +292,10 @@ def register_factorio_commands(bot: Any) -> None:
             state = bot.rcon_monitor.rcon_server_states.get(server_tag)
             last_connected = state.get("last_connected") if state else None
             if last_connected is not None:
-                from ..bot.helpers import format_uptime  # type: ignore
                 uptime_delta = datetime.now(timezone.utc) - last_connected
                 uptime_text = format_uptime(uptime_delta)
 
             try:
-                from ..bot.helpers import get_game_uptime  # type: ignore
                 game_uptime = await get_game_uptime(rcon_client)
                 if game_uptime != "Unknown":
                     uptime_text = game_uptime
@@ -587,7 +590,6 @@ def register_factorio_commands(bot: Any) -> None:
                     bot.user_context.get_user_server(interaction.user.id)
                 )
                 if state and state.get("last_connected"):
-                    from ..bot.helpers import format_uptime  # type: ignore
                     uptime_delta = datetime.now(timezone.utc) - state["last_connected"]
                     uptime = format_uptime(uptime_delta)
                     embed.add_field(name="Uptime", value=uptime, inline=True)
