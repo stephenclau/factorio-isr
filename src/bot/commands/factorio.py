@@ -264,7 +264,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="status", description="Show Factorio server status")
     async def status_command(interaction: discord.Interaction) -> None:
-        """Get comprehensive server status with rich embed."""
+        """Get comprehensive server status with rich embed including metrics."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -286,20 +286,14 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            # Get players
-            players_response = await rcon_client.execute("/players")
-            players = []
-            if players_response:
-                for line in players_response.split("\n"):
-                    line = line.strip()
-                    if "(online)" in line.lower():
-                        player_name = line.split("(online)")[0].strip()
-                        player_name = player_name.lstrip("-").strip()
-                        if player_name and not player_name.startswith("Player"):
-                            players.append(player_name)
-            player_count = len(players)
+            # ✨ NEW: Get shared metrics engine and gather comprehensive metrics
+            metrics_engine = bot.server_manager.get_metrics_engine(server_tag)
+            if metrics_engine is None:
+                raise RuntimeError(f"Metrics engine not available for {server_tag}")
+            
+            metrics = await metrics_engine.gather_all_metrics()
 
-            # Get uptime
+            # Get uptime (existing logic)
             uptime_text = "Unknown"
             state = bot.rcon_monitor.rcon_server_states.get(server_tag)
             last_connected = state.get("last_connected") if state else None
@@ -317,7 +311,7 @@ def register_factorio_commands(bot: Any) -> None:
                     parts.append(f"{minutes}m")
                 uptime_text = " ".join(parts) if parts else "< 1m"
 
-            # Build embed
+            # ✨ Build rich embed with comprehensive metrics
             embed = EmbedBuilder.create_base_embed(
                 title=f"🏭 {server_name} Status",
                 color=(
@@ -327,6 +321,7 @@ def register_factorio_commands(bot: Any) -> None:
                 ),
             )
 
+            # Bot and RCON status
             bot_online = bot._connected
             bot_status = "🟢 Online" if bot_online else "🔴 Offline"
             embed.add_field(name="🤖 Bot Status", value=bot_status, inline=True)
@@ -336,16 +331,62 @@ def register_factorio_commands(bot: Any) -> None:
                 inline=True,
             )
             embed.add_field(
-                name="👥 Players Online",
-                value=str(player_count),
-                inline=True,
-            )
-            embed.add_field(
                 name="⏱️ Uptime",
                 value=uptime_text,
                 inline=True,
             )
 
+            # ✨ Performance Metrics (from metrics engine)
+            pause_indicator = "⏸️" if metrics.get("is_paused") else "▶️"
+            if metrics.get("ups") is not None:
+                ups_str = f"{metrics['ups']:.1f}"
+                embed.add_field(
+                    name="⚡ UPS (Current)",
+                    value=f"{pause_indicator} {ups_str}",
+                    inline=True,
+                )
+            
+            if metrics.get("ups_sma") is not None:
+                embed.add_field(
+                    name="📊 UPS (SMA)",
+                    value=f"{metrics['ups_sma']:.1f}",
+                    inline=True,
+                )
+            
+            if metrics.get("ups_ema") is not None:
+                embed.add_field(
+                    name="📈 UPS (EMA)",
+                    value=f"{metrics['ups_ema']:.1f}",
+                    inline=True,
+                )
+
+            # ✨ Evolution Factor (from metrics engine)
+            if metrics.get("evolution_factor") is not None:
+                evo_pct = metrics["evolution_factor"] * 100
+                embed.add_field(
+                    name="🐛 Enemy Evolution",
+                    value=f"{evo_pct:.1f}%",
+                    inline=True,
+                )
+
+            # Players (from metrics engine)
+            player_count = metrics.get("player_count", 0)
+            embed.add_field(
+                name="👥 Players Online",
+                value=str(player_count),
+                inline=True,
+            )
+
+            # Game time (from metrics engine)
+            if metrics.get("server_time"):
+                embed.add_field(
+                    name="🕐 Server Time",
+                    value=metrics["server_time"],
+                    inline=True,
+                )
+
+            # Online players list (if any)
+            players = metrics.get("players", [])
             if players:
                 player_list = "\n".join(f"• {name}" for name in players[:10])
                 if len(players) > 10:
@@ -356,13 +397,20 @@ def register_factorio_commands(bot: Any) -> None:
                     inline=False,
                 )
 
-            embed.set_footer(text="Factorio ISR")
+            embed.set_footer(text="Factorio ISR | Metrics via RconMetricsEngine")
             await interaction.followup.send(embed=embed)
-            logger.info("status_command_executed", user=interaction.user.name)
+            logger.info(
+                "status_command_executed",
+                user=interaction.user.name,
+                server_tag=server_tag,
+                has_metrics=True,
+                ups=metrics.get("ups"),
+                evolution=metrics.get("evolution_factor"),
+            )
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get status: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("status_command_failed", error=str(e))
+            logger.error("status_command_failed", error=str(e), exc_info=True)
 
     @factorio_group.command(name="players", description="List players currently online")
     async def players_command(interaction: discord.Interaction) -> None:
