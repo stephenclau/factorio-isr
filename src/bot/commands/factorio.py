@@ -1244,10 +1244,10 @@ def register_factorio_commands(bot: Any) -> None:
     # GAME CONTROL COMMANDS (3/25)
     # ========================================================================
 
-    @factorio_group.command(name="time", description="Show or set game time")
-    @app_commands.describe(value="Game time value (optional, format: tick number)")
-    async def time_command(interaction: discord.Interaction, value: Optional[int] = None) -> None:
-        """Get or set game time."""
+    @factorio_group.command(name="time", description="Set or display game time")
+    @app_commands.describe(value="Time value (e.g., 0.5 for noon, 0 for midnight) or leave empty to view")
+    async def time_command(interaction: discord.Interaction, value: Optional[float] = None) -> None:
+        """Set or display the game time."""
         is_limited, retry = QUERY_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
@@ -1255,53 +1255,40 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         await interaction.response.defer()
-        server_name = bot.user_context.get_server_display_name(interaction.user.id)
-        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
+        rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            server_name = bot.user_context.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         try:
-            if value is not None:
-                await rcon_client.execute(f'/sc game.tick = {value}')
-                embed = discord.Embed(
-                    title="⏱️ Game Time Set",
-                    color=EmbedBuilder.COLOR_SUCCESS,
+            if value is None:
+                # Display current time
+                resp = await rcon_client.execute("/time")
+                embed = EmbedBuilder.info_embed(
+                    title="🕐 Current Game Time",
+                    message=resp,
                 )
-                embed.add_field(name="New Time", value=f"{value} ticks", inline=True)
             else:
-                response = await rcon_client.execute('/sc rcon.print(game.tick)')
-                current_time = 0
-                if response and response.strip():
-                    try:
-                        current_time = int(response.strip())
-                    except ValueError:
-                        logger.warning("time_parse_failed", response=response)
-                
-                minutes = current_time / 60
-                hours = minutes / 60
-                embed = discord.Embed(
-                    title="⏱️ Current Game Time",
-                    color=EmbedBuilder.COLOR_INFO,
+                # Set time
+                resp = await rcon_client.execute(f'/sc game.surfaces["nauvis"].daytime = {value}')
+                time_desc = "noon" if abs(value - 0.5) < 0.1 else "midnight" if value < 0.1 else f"{value}"
+                embed = EmbedBuilder.info_embed(
+                    title="🕐 Time Changed",
+                    message=f"Game time set to: **{time_desc}**\n\nServer response:\n{resp}",
                 )
-                embed.add_field(name="Ticks", value=str(current_time), inline=True)
-                embed.add_field(name="Minutes", value=f"{minutes:.1f}", inline=True)
-                embed.add_field(name="Hours", value=f"{hours:.1f}", inline=True)
+                logger.info("time_changed", value=value, moderator=interaction.user.name)
 
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="1 tick = 1/60 second")
             await interaction.followup.send(embed=embed)
-
-            logger.info(
-                "time_command_executed",
-                action="set" if value else "get",
-            )
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to get/set time: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Time command failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("time_command_failed", error=str(e))
+            logger.error("time_command_failed", error=str(e), value=value)
 
     @factorio_group.command(name="speed", description="Set game speed")
     @app_commands.describe(value="Game speed (0.1-10.0, 1.0 = normal)")
