@@ -24,12 +24,12 @@ import structlog
 logger = structlog.get_logger()
 
 
-class RconMonitor:
-    """Monitor RCON connection status and send notifications."""
+class RconHealthMonitor:
+    """Monitor RCON connection health and send notifications."""
 
     def __init__(self, bot: Any) -> None:
         """
-        Initialize RCON monitor.
+        Initialize RCON health monitor.
 
         Args:
             bot: DiscordBot instance with server_manager and event_channel_id
@@ -40,13 +40,13 @@ class RconMonitor:
         self._last_rcon_status_alert_sent: Optional[datetime] = None
 
     async def start(self) -> None:
-        """Start RCON status monitoring."""
+        """Start RCON health monitoring."""
         if not self.rcon_monitor_task:
             self.rcon_monitor_task = asyncio.create_task(self._monitor_rcon_status())
             logger.info("rcon_status_monitoring_started")
 
     async def stop(self) -> None:
-        """Stop RCON status monitoring."""
+        """Stop RCON health monitoring."""
         if self.rcon_monitor_task:
             self.rcon_monitor_task.cancel()
             try:
