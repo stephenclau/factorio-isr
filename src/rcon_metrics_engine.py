@@ -221,6 +221,9 @@ class RconMetricsEngine:
         """
         Fetch evolution factor per surface (multi-surface support).
 
+        Uses /sc (script command) to access game.forces API and query enemy
+        evolution factor for each non-platform surface.
+
         Returns:
             Dict mapping surface names to evolution factors (0.0-1.0).
         """
@@ -229,7 +232,7 @@ class RconMetricsEngine:
 
         try:
             lua = (
-                "/c "
+                "/sc "
                 "local f = game.forces['enemy']; "
                 "local evo_data = {}; "
                 "for _, s in pairs(game.surfaces) do "
@@ -244,6 +247,12 @@ class RconMetricsEngine:
             if not response or not response.strip():
                 logger.warning("evolution_collection_failed_empty_response")
                 return {}
+
+            # Log raw response for debugging
+            logger.debug(
+                "evolution_raw_response",
+                response_sample=response[:500] if len(response) > 500 else response,
+            )
 
             evolution_by_surface: Dict[str, float] = json.loads(response.strip())
             logger.debug(
