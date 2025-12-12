@@ -15,7 +15,7 @@
 
 """Helper utilities for Discord bot operations.
 
-Includes presence management, uptime formatting, and channel utilities.
+Includes presence management, uptime formatting, channel utilities, and game state helpers.
 """
 
 from datetime import timedelta
@@ -105,6 +105,59 @@ def format_uptime(uptime_delta: timedelta) -> str:
         parts.append(f"{minutes}m")
 
     return " ".join(parts)
+
+
+async def get_seed(rcon_client: Any) -> str:
+    """
+    Get Factorio map seed via RCON.
+
+    Queries the server for the seed value using proper Lua syntax.
+    This extracts the raw seed number from the game state.
+
+    Args:
+        rcon_client: RconClient instance to query
+
+    Returns:
+        Seed as string or "Unknown" on error
+
+    Raises:
+        Exception: Propagates RCON communication errors for caller handling
+    """
+    if not rcon_client or not rcon_client.is_connected:
+        logger.debug("get_seed_client_unavailable")
+        return "Unknown"
+
+    try:
+        # Query server seed using proper Lua syntax
+        response = await rcon_client.execute("/sc rcon.print(game.world.surface.map_gen_settings.seed)")
+
+        # Log the raw response for debugging
+        logger.debug("get_seed_response", response=response, length=len(response))
+
+        # Check if response is empty or invalid
+        if not response or not response.strip():
+            logger.warning("get_seed_empty_response")
+            return "Unknown"
+
+        # The seed should be a numeric value; validate it
+        seed_value = response.strip()
+        try:
+            # Verify it's a valid integer
+            int(seed_value)
+        except ValueError as e:
+            logger.warning(
+                "get_seed_parse_failed",
+                response=response,
+                error=str(e),
+            )
+            return "Unknown"
+
+        logger.debug("get_seed_retrieved", seed=seed_value)
+        return seed_value
+
+    except Exception as e:
+        logger.warning("get_seed_query_failed", error=str(e), exc_info=True)
+        return "Unknown"
 
 
 async def get_game_uptime(rcon_client: Any) -> str:
