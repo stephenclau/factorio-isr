@@ -550,7 +550,7 @@ def register_factorio_commands(bot: Any) -> None:
             if lower == "all":
                 # Aggregate + detailed per-surface evolution, skipping platform surfaces
                 lua = (
-                    "/c "
+                    "/sc "
                     "local f = game.forces['enemy']; "
                     "local total = 0; local count = 0; "
                     "local lines = {}; "
@@ -607,7 +607,7 @@ def register_factorio_commands(bot: Any) -> None:
             # Single-surface mode
             surface = raw
             lua = (
-                "/c "
+                "/sc "
                 f"local s = game.get_surface('{surface}'); "
                 "if not s then "
                 " rcon.print('SURFACE_NOT_FOUND'); "
