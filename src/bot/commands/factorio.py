@@ -379,19 +379,6 @@ def register_factorio_commands(bot: Any) -> None:
                     inline=True,
                 )
 
-            # ✨ Evolution Factor – Display nauvis and gleba separately if available
-            evolution_by_surface = metrics.get("evolution_by_surface", {})
-            
-            # Display nauvis evolution if available
-            if "nauvis" in evolution_by_surface:
-                nauvis_evo = evolution_by_surface["nauvis"]
-                nauvis_pct = nauvis_evo * 100
-                embed.add_field(
-                    name="🐛 Nauvis Evolution",
-                    value=f"{nauvis_evo:.2f} ({nauvis_pct:.1f}%)",
-                    inline=True,
-                )
-            
             # Players (from metrics engine)
             player_count = metrics.get("player_count", 0)
             embed.add_field(
@@ -419,6 +406,20 @@ def register_factorio_commands(bot: Any) -> None:
                     value=player_list,
                     inline=False,
                 )
+            # ✨ Evolution Factor – Display nauvis and gleba separately if available
+            evolution_by_surface = metrics.get("evolution_by_surface", {})
+            
+            # Display nauvis evolution if available
+            if "nauvis" in evolution_by_surface:
+                nauvis_evo = evolution_by_surface["nauvis"]
+                nauvis_pct = nauvis_evo * 100
+                embed.add_field(
+                    name="🐛 Nauvis Evolution",
+                    value=f"{nauvis_evo:.2f} ({nauvis_pct:.1f}%)",
+                    inline=False,
+                )
+                           
+            
             # Display gleba evolution if available
             if "gleba" in evolution_by_surface:
                 gleba_evo = evolution_by_surface["gleba"]
