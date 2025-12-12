@@ -22,8 +22,8 @@ Includes automatic reconnection with exponential backoff and optional
 context helpers for server name/tag.
 
 Also provides:
+- RconMetricsEngine for consolidated metrics computation (UPS, evolution, etc.)
 - RconStatsCollector for periodic server stats posting to Discord
-- UPSCalculator for accurate UPS measurement with pause detection
 - RconAlertMonitor for performance alerts with EMA-based thresholds
 """
 
@@ -441,8 +441,17 @@ class RconClient:
             return "Unknown"
 
 
-class RconStatsCollector:
-    """Periodically collect and post server statistics with pause detection."""
+class RconMetricsEngine:
+    """
+    Unified metrics computation layer.
+
+    Consolidates UPS calculation, EMA/SMA tracking, and evolution factor parsing.
+    Designed for shared use by RconStatsCollector and RconAlertMonitor to eliminate
+    duplicate state and ensure consistent smoothing across stats and alerts.
+
+    **Constraint:** Preserves per-server 1:1 RconClient binding and parallel
+    instantiation model. Each server gets its own metrics engine instance.
+    """
 
     def __init__(
         self,
@@ -452,15 +461,13 @@ class RconStatsCollector:
         enable_ups_stat: bool = True,
         enable_evolution_stat: bool = True,
     ) -> None:
-        """Initialize stats collector."""
-        self.rcon_client = rcon_client
-        self.discord_interface = discord_interface
-        self.interval = interval
+        """
+        Initialize metrics engine.
 
         self.enable_ups_stat = enable_ups_stat
         self.enable_evolution_stat = enable_evolution_stat
 
-        # UPS calculator with pause detection
+        # Single UPS calculator instance (shared state)
         pause_threshold = getattr(
             getattr(rcon_client, "server_config", None),
             "pause_time_threshold",
@@ -470,16 +477,223 @@ class RconStatsCollector:
             UPSCalculator(pause_time_threshold=pause_threshold) if enable_ups_stat else None
         )
 
-        # Local UPS history for SMA in stats
-        self._ups_samples_for_sma: List[float] = []
-
-        # EMA state for stats view
+        # Unified EMA/SMA state (single source of truth)
         self.ema_alpha: float = getattr(
             getattr(self.rcon_client, "server_config", None),
             "ups_ema_alpha",
             0.2,
         )
         self.ema_ups: Optional[float] = None
+        self._ups_samples_for_sma: List[float] = []
+
+        logger.info(
+            "metrics_engine_initialized",
+            server_tag=rcon_client.server_tag,
+            server_name=rcon_client.server_name,
+            collect_ups=collect_ups,
+            collect_evolution=collect_evolution,
+            ema_alpha=self.ema_alpha,
+            pause_threshold=pause_threshold,
+        )
+
+    async def sample_ups(self) -> Optional[float]:
+        """
+        Sample current UPS with pause detection.
+
+        Returns:
+            UPS value, or None if first sample or server paused.
+        """
+        if not self.collect_ups or not self.ups_calculator:
+            return None
+
+        return await self.ups_calculator.sample_ups(self.rcon_client)
+
+    async def get_evolution_by_surface(self) -> Dict[str, float]:
+        """
+        Fetch evolution factor per surface (multi-surface support).
+
+        Returns:
+            Dict mapping surface names to evolution factors (0.0-1.0).
+        """
+        if not self.collect_evolution:
+            return {}
+
+        try:
+            lua = (
+                "/c "
+                "local f = game.forces['enemy']; "
+                "local evo_data = {}; "
+                "for _, s in pairs(game.surfaces) do "
+                "  if not string.find(string.lower(s.name), 'platform') then "
+                "    evo_data[s.name] = f.get_evolution_factor(s); "
+                "  end "
+                "end; "
+                "rcon.print(game.table_to_json(evo_data))"
+            )
+            response = await self.rcon_client.execute(lua)
+
+            if not response or not response.strip():
+                logger.warning("evolution_collection_failed_empty_response")
+                return {}
+
+            evolution_by_surface: Dict[str, float] = json.loads(response.strip())
+            logger.debug(
+                "evolution_collected_multi_surface",
+                surfaces=list(evolution_by_surface.keys()),
+                evolution_data=evolution_by_surface,
+            )
+            return evolution_by_surface
+        except json.JSONDecodeError as e:
+            logger.warning(
+                "evolution_json_parse_failed",
+                error=str(e),
+                response=response[:200] if isinstance(response, str) else "",
+            )
+            return {}
+        except Exception as e:
+            logger.warning(
+                "evolution_collection_failed",
+                error=str(e),
+                exc_info=True,
+            )
+            return {}
+
+    async def get_players(self) -> List[str]:
+        """Get list of online player names."""
+        return await self.rcon_client.get_players()
+
+    async def get_player_count(self) -> int:
+        """Get count of online players."""
+        return await self.rcon_client.get_player_count()
+
+    async def get_server_time(self) -> str:
+        """Get current in-game time."""
+        return await self.rcon_client.get_server_time()
+
+    async def gather_all_metrics(self) -> Dict[str, Any]:
+        """
+        Gather all metrics in one pass (UPS, evolution, players, time).
+
+        Updates internal EMA/SMA state and returns complete metrics dict.
+        Ready for direct use by formatters (no further processing needed).
+
+        Returns:
+            Dict with keys: ups, ups_sma, ups_ema, is_paused, last_known_ups,
+                tick, game_time_seconds, evolution_factor, evolution_by_surface,
+                player_count, players, server_time.
+        """
+        metrics: Dict[str, Any] = {
+            "ups": None,
+            "ups_sma": None,
+            "ups_ema": None,
+            "is_paused": False,
+            "last_known_ups": None,
+            "tick": None,
+            "game_time_seconds": None,
+            "evolution_factor": None,
+            "evolution_by_surface": {},
+            "player_count": 0,
+            "players": [],
+            "server_time": "Unknown",
+        }
+
+        try:
+            # Get tick and game time
+            try:
+                response = await self.rcon_client.execute("/sc rcon.print(game.tick)")
+                metrics["tick"] = int(response.strip())
+                metrics["game_time_seconds"] = metrics["tick"] / 60.0
+            except Exception as e:
+                logger.warning("tick_collection_failed", error=str(e))
+
+            # UPS with pause detection and smoothing
+            if self.collect_ups and self.ups_calculator:
+                ups = await self.ups_calculator.sample_ups(self.rcon_client)
+
+                metrics["is_paused"] = self.ups_calculator.is_paused
+                metrics["last_known_ups"] = self.ups_calculator.last_known_ups
+
+                if ups is not None:
+                    metrics["ups"] = ups
+
+                    # Update SMA window (last 5 samples)
+                    self._ups_samples_for_sma.append(ups)
+                    if len(self._ups_samples_for_sma) > 5:
+                        self._ups_samples_for_sma.pop(0)
+                    if self._ups_samples_for_sma:
+                        metrics["ups_sma"] = sum(self._ups_samples_for_sma) / len(
+                            self._ups_samples_for_sma
+                        )
+
+                    # Update EMA (exponential moving average)
+                    if self.ema_ups is None:
+                        self.ema_ups = ups
+                    else:
+                        self.ema_ups = (
+                            self.ema_alpha * ups
+                            + (1.0 - self.ema_alpha) * self.ema_ups
+                        )
+                    metrics["ups_ema"] = self.ema_ups
+                    logger.debug(
+                        "metrics_engine_ups_updated",
+                        ups=ups,
+                        ema_ups=self.ema_ups,
+                        sma_ups=metrics.get("ups_sma"),
+                        alpha=self.ema_alpha,
+                    )
+
+            # Evolution per surface
+            if self.collect_evolution:
+                evolution_by_surface = await self.get_evolution_by_surface()
+                if evolution_by_surface:
+                    metrics["evolution_by_surface"] = evolution_by_surface
+                    # Backward compat: store first surface as single value
+                    metrics["evolution_factor"] = next(
+                        iter(evolution_by_surface.values())
+                    )
+
+            # Players and time
+            metrics["player_count"] = await self.get_player_count()
+            metrics["players"] = await self.get_players()
+            metrics["server_time"] = await self.get_server_time()
+
+            logger.debug(
+                "metrics_engine_gather_complete",
+                ups=metrics.get("ups"),
+                ups_ema=metrics.get("ups_ema"),
+                player_count=metrics["player_count"],
+                is_paused=metrics.get("is_paused"),
+                evolution_surfaces=list(metrics.get("evolution_by_surface", {}).keys()),
+            )
+        except Exception as e:
+            logger.warning("metrics_engine_partial_failure", error=str(e), exc_info=True)
+
+        return metrics
+
+
+class RconStatsCollector:
+    """Periodically collect and post server statistics with pause detection."""
+
+    def __init__(
+        self,
+        rcon_client: RconClient,
+        discord_interface: Any,
+        metrics_engine: Optional[RconMetricsEngine] = None,
+        interval: int | float = 300,
+        collect_ups: bool = True,
+        collect_evolution: bool = True,
+    ) -> None:
+        """Initialize stats collector."""
+        self.rcon_client = rcon_client
+        self.discord_interface = discord_interface
+        self.interval = interval
+
+        # Use shared metrics engine if provided, otherwise create one
+        self.metrics_engine = metrics_engine or RconMetricsEngine(
+            rcon_client,
+            collect_ups=collect_ups,
+            collect_evolution=collect_evolution,
+        )
 
         self.running = False
         self.task: Optional[asyncio.Task[None]] = None
@@ -684,19 +898,19 @@ class RconStatsCollector:
         return metrics
 
     async def _collect_and_post(self) -> None:
-        """Collect stats and post to Discord."""
+        """Collect stats via engine and post to Discord using formatters."""
         try:
-            player_count = await self.rcon_client.get_player_count()
-            players = await self.rcon_client.get_players_online()
-            server_time = await self.rcon_client.get_server_time()
+            # Import formatters from bot helpers
+            from bot.helpers import format_stats_embed, format_stats_text  # type: ignore[import]
 
-            metrics = await self._gather_extended_metrics()
+            # Gather all metrics via shared engine
+            metrics = await self.metrics_engine.gather_all_metrics()
 
             logger.debug(
                 "stats_gathered",
-                player_count=player_count,
-                player_list_count=len(players),
-                server_time=server_time,
+                player_count=metrics.get("player_count"),
+                player_list_count=len(metrics.get("players", [])),
+                server_time=metrics.get("server_time"),
                 ups=metrics.get("ups"),
                 ups_sma=metrics.get("ups_sma"),
                 ups_ema=metrics.get("ups_ema"),
@@ -704,15 +918,14 @@ class RconStatsCollector:
                 evolution=metrics.get("evolution_factor"),
             )
 
+            # Build server label for formatting
+            server_label = self._build_server_label()
+
+            # Format and send
             embed_sent = False
             if hasattr(self.discord_interface, "send_embed"):
                 try:
-                    embed = self._format_stats_embed(
-                        player_count,
-                        players,
-                        server_time,
-                        metrics,
-                    )
+                    embed = format_stats_embed(server_label, metrics)
                     logger.debug("stats_formatted_as_embed")
                     result = self.discord_interface.send_embed(embed)
                     embed_sent = await result
@@ -726,25 +939,18 @@ class RconStatsCollector:
                     embed_sent = False
 
             if not embed_sent:
-                message = self._format_stats_text(
-                    player_count,
-                    players,
-                    server_time,
-                    metrics,
-                )
+                message = format_stats_text(server_label, metrics)
                 logger.debug(
                     "stats_formatted_as_text",
-                    message_preview=(
-                        message[:100] if len(message) > 100 else message
-                    ),
+                    message_preview=(message[:100] if len(message) > 100 else message),
                 )
                 result = self.discord_interface.send_message(message)
                 await result
 
             logger.info(
                 "stats_posted",
-                player_count=player_count,
-                players=len(players),
+                player_count=metrics.get("player_count"),
+                players=len(metrics.get("players", [])),
                 used_embed=embed_sent,
                 ups=metrics.get("ups"),
                 ups_sma=metrics.get("ups_sma"),
@@ -763,192 +969,6 @@ class RconStatsCollector:
             parts.append(self.rcon_client.server_name)
         return " ".join(parts) if parts else "Factorio Server"
 
-    def _format_stats_text(
-        self,
-        player_count: int,
-        players: List[str],
-        server_time: str,
-        metrics: Dict[str, Any] | None = None,
-    ) -> str:
-        """Format stats as a plain text Discord message with pause detection."""
-        lines: List[str] = []
-        server_label = self._build_server_label()
-        lines.append(f"📊 **{server_label} Stats**")
-
-        # Check if paused
-        if metrics and metrics.get("is_paused"):
-            last_ups = metrics.get("last_known_ups")
-            if last_ups and last_ups > 0:
-                lines.append(f"⏸️ Status: Paused (last: {last_ups:.1f} UPS)")
-            else:
-                lines.append("⏸️ Status: Paused")
-        elif metrics and metrics.get("ups") is not None:
-            ups = float(metrics["ups"])
-            sma = metrics.get("ups_sma")
-            ema = metrics.get("ups_ema")
-            ups_emoji = "✅" if ups >= 59.0 else "⚠️"
-
-            parts = [f"Raw: {ups:.1f}/60.0"]
-            if sma is not None:
-                parts.append(f"SMA: {float(sma):.1f}")
-            if ema is not None:
-                parts.append(f"EMA: {float(ema):.1f}")
-
-            lines.append(f"{ups_emoji} UPS: " + " | ".join(parts))
-
-        lines.append(f"👥 Players Online: {player_count}")
-        if players:
-            lines.append("📝 " + ", ".join(players))
-        lines.append(f"⏰ Game Time: {server_time}")
-
-        # Evolution per surface
-        if metrics and metrics.get("evolution_by_surface"):
-            evolution_by_surface = metrics["evolution_by_surface"]
-            if len(evolution_by_surface) == 1:
-                # Single surface - compact format
-                surface_name = next(iter(evolution_by_surface.keys()))
-                evo_pct = evolution_by_surface[surface_name] * 100.0
-                evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
-                lines.append(f"🐛 Evolution: {evo_str}%")
-            else:
-                # Multiple surfaces - list format
-                lines.append("🐛 Evolution:")
-                for surface_name, factor in sorted(
-                    evolution_by_surface.items(),
-                ):
-                    evo_pct = factor * 100.0
-                    evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
-                    lines.append(f" • {surface_name}: {evo_str}%")
-        elif metrics and metrics.get("evolution_factor") is not None:
-            # Fallback for old single-surface format
-            evolution_pct = float(metrics["evolution_factor"]) * 100.0
-            evo_str = (
-                f"{evolution_pct:.2f}"
-                if evolution_pct >= 0.1
-                else f"{evolution_pct:.4f}"
-            )
-            lines.append(f"🐛 Evolution: {evo_str}%")
-
-        return "\n".join(lines)
-
-    def _format_stats_embed(
-        self,
-        player_count: int,
-        players: List[str],
-        server_time: str,
-        metrics: Dict[str, Any] | None = None,
-    ) -> Any:
-        """Format stats as Discord embed with pause detection."""
-        from discord_interface import EmbedBuilder  # type: ignore[import]
-
-        server_label = self._build_server_label()
-        title = f"📊 {server_label} Status"
-        embed = EmbedBuilder.create_base_embed(
-            title=title,
-            color=EmbedBuilder.COLOR_INFO,
-        )
-
-        # UPS or Pause status
-        if metrics and metrics.get("is_paused"):
-            last_ups = metrics.get("last_known_ups")
-            if last_ups and last_ups > 0:
-                value = f"⏸️ Paused\n(last: {last_ups:.1f} UPS)"
-            else:
-                value = "⏸️ Paused"
-            embed.add_field(
-                name="Status",
-                value=value,
-                inline=True,
-            )
-        elif metrics and metrics.get("ups") is not None:
-            ups = float(metrics["ups"])
-            sma = metrics.get("ups_sma")
-            ema = metrics.get("ups_ema")
-            ups_emoji = "✅" if ups >= 59.0 else "⚠️"
-
-            lines: List[str] = [f"Raw: {ups:.1f}/60.0"]
-            if sma is not None:
-                lines.append(f"SMA: {float(sma):.1f}")
-            if ema is not None:
-                lines.append(f"EMA: {float(ema):.1f}")
-
-            embed.add_field(
-                name=f"{ups_emoji} UPS",
-                value="\n".join(lines),
-                inline=True,
-            )
-
-        embed.add_field(
-            name="👥 Players Online",
-            value=f"{player_count}",
-            inline=True,
-        )
-
-        embed.add_field(
-            name="⏰ Game Time",
-            value=server_time,
-            inline=True,
-        )
-
-        if players:
-            players_text = "\n".join(f"• {p}" for p in players)
-            embed.add_field(
-                name="📝 Players",
-                value=(
-                    players_text
-                    if len(players_text) <= 1024
-                    else f"{players_text[:1020]}..."
-                ),
-                inline=False,
-            )
-
-        # Evolution per surface
-        if metrics and metrics.get("evolution_by_surface"):
-            evolution_by_surface = metrics["evolution_by_surface"]
-
-            if len(evolution_by_surface) == 1:
-                # Single surface - inline field
-                surface_name = next(iter(evolution_by_surface.keys()))
-                evo_pct = evolution_by_surface[surface_name] * 100.0
-                evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
-                embed.add_field(
-                    name="🐛 Evolution",
-                    value=f"{evo_str}%",
-                    inline=True,
-                )
-            else:
-                # Multiple surfaces - full-width field with list
-                evo_lines = []
-                for surface_name, factor in sorted(
-                    evolution_by_surface.items(),
-                ):
-                    evo_pct = factor * 100.0
-                    evo_str = (
-                        f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
-                    )
-                    evo_lines.append(f"**{surface_name}**: {evo_str}%")
-
-                embed.add_field(
-                    name="🐛 Evolution by Surface",
-                    value="\n".join(evo_lines),
-                    inline=False,
-                )
-        elif metrics and metrics.get("evolution_factor") is not None:
-            # Fallback for old single-surface format
-            evolution_pct = float(metrics["evolution_factor"]) * 100.0
-            evo_str = (
-                f"{evolution_pct:.2f}"
-                if evolution_pct >= 0.1
-                else f"{evolution_pct:.4f}"
-            )
-            embed.add_field(
-                name="🐛 Evolution",
-                value=f"{evo_str}%",
-                inline=True,
-            )
-
-        return embed
-
 
 class RconAlertMonitor:
     """Lightweight high-frequency UPS monitoring for performance alerts with pause detection."""
@@ -957,6 +977,7 @@ class RconAlertMonitor:
         self,
         rcon_client: RconClient,
         discord_interface: Any,
+        metrics_engine: Optional[RconMetricsEngine] = None,
         check_interval: int = 60,
         samples_before_alert: int = 3,
         ups_warning_threshold: float = 55.0,
@@ -972,13 +993,12 @@ class RconAlertMonitor:
         self.ups_recovery_threshold = ups_recovery_threshold
         self.alert_cooldown = alert_cooldown
 
-        # UPS calculator with pause detection
-        pause_threshold = getattr(
-            getattr(rcon_client, "server_config", None),
-            "pause_time_threshold",
-            5.0,
+        # Use shared metrics engine if provided, otherwise create one
+        self.metrics_engine = metrics_engine or RconMetricsEngine(
+            rcon_client,
+            collect_ups=True,
+            collect_evolution=False,
         )
-        self.ups_calculator = UPSCalculator(pause_time_threshold=pause_threshold)
 
         # Alert state
         self.alert_state: Dict[str, Any] = {
@@ -991,21 +1011,13 @@ class RconAlertMonitor:
         self.running = False
         self.task: Optional[asyncio.Task[None]] = None
 
-        # EMA for alert decisions
-        self.ema_alpha: float = getattr(
-            getattr(self.rcon_client, "server_config", None),
-            "ups_ema_alpha",
-            0.2,
-        )
-        self.ema_ups: Optional[float] = None
-
         logger.info(
             "alert_monitor_initialized",
             check_interval=check_interval,
             samples_required=samples_before_alert,
             threshold=ups_warning_threshold,
-            ema_alpha=self.ema_alpha,
-            pause_threshold=pause_threshold,
+            ema_alpha=self.metrics_engine.ema_alpha,
+            shared_metrics_engine=metrics_engine is not None,
         )
 
     async def start(self) -> None:
@@ -1050,19 +1062,26 @@ class RconAlertMonitor:
                 await asyncio.sleep(self.check_interval)
 
     async def _check_ups(self) -> None:
-        """Check current UPS using tick delta method with pause detection."""
+        """Check current UPS using shared metrics engine with pause detection."""
         if not self.rcon_client.is_connected:
             logger.debug("alert_monitor_rcon_not_connected")
             return
 
         try:
-            current_ups = await self.ups_calculator.sample_ups(self.rcon_client)
+            current_ups = await self.metrics_engine.sample_ups()
 
             # PAUSE DETECTION: Skip alert processing when server is paused
-            if self.ups_calculator.is_paused:
+            if (
+                self.metrics_engine.ups_calculator
+                and self.metrics_engine.ups_calculator.is_paused
+            ):
                 logger.debug(
                     "ups_check_skipped_server_paused",
-                    last_known_ups=self.ups_calculator.last_known_ups,
+                    last_known_ups=(
+                        self.metrics_engine.ups_calculator.last_known_ups
+                        if self.metrics_engine.ups_calculator
+                        else None
+                    ),
                 )
 
                 # Clear low UPS alert state if paused (expected behavior)
@@ -1093,23 +1112,12 @@ class RconAlertMonitor:
                 samples=len(self.alert_state["recent_ups_samples"]),
             )
 
-            # Update EMA
-            if self.ema_ups is None:
-                self.ema_ups = current_ups
-            else:
-                self.ema_ups = (
-                    self.ema_alpha * current_ups
-                    + (1.0 - self.ema_alpha) * self.ema_ups
-                )
-
-            logger.debug(
-                "ups_ema_updated",
-                current_ups=current_ups,
-                ema_ups=self.ema_ups,
-                alpha=self.ema_alpha,
+            # Use EMA from shared engine
+            ups_for_decision = (
+                self.metrics_engine.ema_ups
+                if self.metrics_engine.ema_ups is not None
+                else current_ups
             )
-
-            ups_for_decision = self.ema_ups if self.ema_ups is not None else current_ups
 
             # Low UPS condition (using EMA for threshold)
             if ups_for_decision < self.ups_warning_threshold:
@@ -1117,7 +1125,7 @@ class RconAlertMonitor:
                 logger.debug(
                     "low_ups_detected",
                     current_ups=current_ups,
-                    ema_ups=self.ema_ups,
+                    ema_ups=self.metrics_engine.ema_ups,
                     decision_ups=ups_for_decision,
                     threshold=self.ups_warning_threshold,
                     consecutive_count=self.alert_state["consecutive_bad_samples"],
@@ -1129,7 +1137,7 @@ class RconAlertMonitor:
                     >= self.samples_before_alert
                 ):
                     if self._can_send_alert():
-                        # Calculate SMA and EMA for alert
+                        # Calculate SMA and use EMA from shared engine
                         if self.alert_state["recent_ups_samples"]:
                             sma_ups = sum(self.alert_state["recent_ups_samples"]) / len(
                                 self.alert_state["recent_ups_samples"]
@@ -1138,7 +1146,9 @@ class RconAlertMonitor:
                             sma_ups = current_ups
 
                         ema_ups = (
-                            self.ema_ups if self.ema_ups is not None else sma_ups
+                            self.metrics_engine.ema_ups
+                            if self.metrics_engine.ema_ups is not None
+                            else sma_ups
                         )
                         await self._send_low_ups_alert(current_ups, sma_ups, ema_ups)
                         self.alert_state["low_ups_active"] = True
@@ -1152,7 +1162,7 @@ class RconAlertMonitor:
                     logger.debug(
                         "ups_recovery_detected",
                         current_ups=current_ups,
-                        ema_ups=self.ema_ups,
+                        ema_ups=self.metrics_engine.ema_ups,
                         decision_ups=ups_for_decision,
                         threshold=self.ups_recovery_threshold,
                     )
@@ -1166,7 +1176,11 @@ class RconAlertMonitor:
                     else:
                         sma_ups = current_ups
 
-                    ema_ups = self.ema_ups if self.ema_ups is not None else sma_ups
+                    ema_ups = (
+                        self.metrics_engine.ema_ups
+                        if self.metrics_engine.ema_ups is not None
+                        else sma_ups
+                    )
                     await self._send_ups_recovered_alert(
                         current_ups,
                         sma_ups,

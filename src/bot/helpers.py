@@ -15,11 +15,12 @@
 
 """Helper utilities for Discord bot operations.
 
-Includes presence management, uptime formatting, channel utilities, and game state helpers.
+Includes presence management, uptime formatting, channel utilities, game state helpers,
+and RCON stats formatting for embeds and text messages.
 """
 
 from datetime import timedelta
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Dict
 import discord
 import structlog
 
@@ -110,6 +111,7 @@ def format_uptime(uptime_delta: timedelta) -> str:
 
     return " ".join(parts)
 
+
 async def get_game_uptime(rcon_client: Any) -> str:
     """
     Get actual Factorio server uptime via RCON.
@@ -183,3 +185,212 @@ async def send_to_channel(bot: Any, channel_id: int, embed: discord.Embed) -> No
         logger.warning("send_to_channel_forbidden", channel_id=channel_id)
     except Exception as e:
         logger.warning("send_to_channel_failed", channel_id=channel_id, error=str(e))
+
+
+# ========================================================================
+# RCON STATS FORMATTERS (Pure formatting functions - Phase 2)
+# ========================================================================
+
+def format_stats_text(
+    server_label: str,
+    metrics: Dict[str, Any],
+) -> str:
+    """
+    Format RCON server stats as plain text for Discord message.
+
+    Pure formatting function with no state or RCON dependencies.
+    Ready for reuse in slash commands or other Discord outputs.
+
+    Args:
+        server_label: Server name/tag string (e.g., "[prod] Factorio ISR")
+        metrics: Dict from RconMetricsEngine.gather_all_metrics() with keys:
+                 ups, ups_sma, ups_ema, is_paused, last_known_ups,
+                 player_count, players, server_time, evolution_factor,
+                 evolution_by_surface
+
+    Returns:
+        Formatted text message ready for Discord
+    """
+    lines: List[str] = []
+    lines.append(f"📊 **{server_label} Stats**")
+
+    # Check if paused
+    if metrics.get("is_paused"):
+        last_ups = metrics.get("last_known_ups")
+        if last_ups and last_ups > 0:
+            lines.append(f"⏸️ Status: Paused (last: {last_ups:.1f} UPS)")
+        else:
+            lines.append("⏸️ Status: Paused")
+    elif metrics.get("ups") is not None:
+        ups = float(metrics["ups"])
+        sma = metrics.get("ups_sma")
+        ema = metrics.get("ups_ema")
+        ups_emoji = "✅" if ups >= 59.0 else "⚠️"
+
+        parts = [f"Raw: {ups:.1f}/60.0"]
+        if sma is not None:
+            parts.append(f"SMA: {float(sma):.1f}")
+        if ema is not None:
+            parts.append(f"EMA: {float(ema):.1f}")
+
+        lines.append(f"{ups_emoji} UPS: " + " | ".join(parts))
+
+    lines.append(f"👥 Players Online: {metrics.get('player_count')}")
+    if metrics.get("players"):
+        lines.append("📝 " + ", ".join(metrics["players"]))
+    lines.append(f"⏰ Game Time: {metrics.get('server_time')}")
+
+    # Evolution per surface
+    evolution_by_surface = metrics.get("evolution_by_surface", {})
+    if evolution_by_surface:
+        if len(evolution_by_surface) == 1:
+            # Single surface - compact format
+            surface_name = next(iter(evolution_by_surface.keys()))
+            evo_pct = evolution_by_surface[surface_name] * 100.0
+            evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
+            lines.append(f"🐛 Evolution: {evo_str}%")
+        else:
+            # Multiple surfaces - list format
+            lines.append("🐛 Evolution:")
+            for surface_name, factor in sorted(evolution_by_surface.items()):
+                evo_pct = factor * 100.0
+                evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
+                lines.append(f" • {surface_name}: {evo_str}%")
+    elif metrics.get("evolution_factor") is not None:
+        # Fallback for old single-surface format
+        evolution_pct = float(metrics["evolution_factor"]) * 100.0
+        evo_str = (
+            f"{evolution_pct:.2f}"
+            if evolution_pct >= 0.1
+            else f"{evolution_pct:.4f}"
+        )
+        lines.append(f"🐛 Evolution: {evo_str}%")
+
+    return "\n".join(lines)
+
+
+def format_stats_embed(
+    server_label: str,
+    metrics: Dict[str, Any],
+) -> discord.Embed:
+    """
+    Format RCON server stats as Discord embed.
+
+    Pure formatting function with no state or RCON dependencies.
+    Ready for reuse in slash commands or other Discord outputs.
+
+    Args:
+        server_label: Server name/tag string (e.g., "[prod] Factorio ISR")
+        metrics: Dict from RconMetricsEngine.gather_all_metrics() with keys:
+                 ups, ups_sma, ups_ema, is_paused, last_known_ups,
+                 player_count, players, server_time, evolution_factor,
+                 evolution_by_surface
+
+    Returns:
+        Formatted discord.Embed ready for sending
+    """
+    from discord_interface import EmbedBuilder  # type: ignore[import]
+
+    title = f"📊 {server_label} Status"
+    embed = EmbedBuilder.create_base_embed(
+        title=title,
+        color=EmbedBuilder.COLOR_INFO,
+    )
+
+    # UPS or Pause status
+    if metrics.get("is_paused"):
+        last_ups = metrics.get("last_known_ups")
+        if last_ups and last_ups > 0:
+            value = f"⏸️ Paused\n(last: {last_ups:.1f} UPS)"
+        else:
+            value = "⏸️ Paused"
+        embed.add_field(
+            name="Status",
+            value=value,
+            inline=True,
+        )
+    elif metrics.get("ups") is not None:
+        ups = float(metrics["ups"])
+        sma = metrics.get("ups_sma")
+        ema = metrics.get("ups_ema")
+        ups_emoji = "✅" if ups >= 59.0 else "⚠️"
+
+        field_lines: List[str] = [f"Raw: {ups:.1f}/60.0"]
+        if sma is not None:
+            field_lines.append(f"SMA: {float(sma):.1f}")
+        if ema is not None:
+            field_lines.append(f"EMA: {float(ema):.1f}")
+
+        embed.add_field(
+            name=f"{ups_emoji} UPS",
+            value="\n".join(field_lines),
+            inline=True,
+        )
+
+    embed.add_field(
+        name="👥 Players Online",
+        value=f"{metrics.get('player_count')}",
+        inline=True,
+    )
+
+    embed.add_field(
+        name="⏰ Game Time",
+        value=metrics.get("server_time"),
+        inline=True,
+    )
+
+    if metrics.get("players"):
+        players_text = "\n".join(f"• {p}" for p in metrics["players"])
+        embed.add_field(
+            name="📝 Players",
+            value=(
+                players_text
+                if len(players_text) <= 1024
+                else f"{players_text[:1020]}..."
+            ),
+            inline=False,
+        )
+
+    # Evolution per surface
+    evolution_by_surface = metrics.get("evolution_by_surface", {})
+    if evolution_by_surface:
+        if len(evolution_by_surface) == 1:
+            # Single surface - inline field
+            surface_name = next(iter(evolution_by_surface.keys()))
+            evo_pct = evolution_by_surface[surface_name] * 100.0
+            evo_str = f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
+            embed.add_field(
+                name="🐛 Evolution",
+                value=f"{evo_str}%",
+                inline=True,
+            )
+        else:
+            # Multiple surfaces - full-width field with list
+            evo_lines = []
+            for surface_name, factor in sorted(evolution_by_surface.items()):
+                evo_pct = factor * 100.0
+                evo_str = (
+                    f"{evo_pct:.2f}" if evo_pct >= 0.1 else f"{evo_pct:.4f}"
+                )
+                evo_lines.append(f"**{surface_name}**: {evo_str}%")
+
+            embed.add_field(
+                name="🐛 Evolution by Surface",
+                value="\n".join(evo_lines),
+                inline=False,
+            )
+    elif metrics.get("evolution_factor") is not None:
+        # Fallback for old single-surface format
+        evolution_pct = float(metrics["evolution_factor"]) * 100.0
+        evo_str = (
+            f"{evolution_pct:.2f}"
+            if evolution_pct >= 0.1
+            else f"{evolution_pct:.4f}"
+        )
+        embed.add_field(
+            name="🐛 Evolution",
+            value=f"{evo_str}%",
+            inline=True,
+        )
+
+    return embed
