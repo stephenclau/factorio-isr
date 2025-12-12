@@ -337,16 +337,24 @@ def register_factorio_commands(bot: Any) -> None:
             )
 
             # ✨ Performance Metrics (from metrics engine)
-            # Couple server state with UPS: show "Fetching..." initially,
-            # then update to "⏸️ Paused" or "▶️ Running" once UPS data arrives
-            if metrics.get("ups") is not None:
-                # UPS data available - show actual pause state
-                is_paused = metrics.get("is_paused", False)
-                pause_status = "⏸️ Paused" if is_paused else "▶️ Running"
-                ups_str = f"{metrics['ups']:.1f}"
+            # FIX: Prioritize pause state over fetching state. When is_paused=True,
+            # display that immediately without showing "Fetching..." text.
+            is_paused = metrics.get("is_paused", False)
+            ups_value = metrics.get("ups")
+            
+            if is_paused:
+                # Pause state is definitive - show immediately
                 embed.add_field(
                     name="⚡ UPS (Current)",
-                    value=f"{pause_status} @ {ups_str}",
+                    value="⏸️ Paused",
+                    inline=True,
+                )
+            elif ups_value is not None:
+                # UPS data available and not paused - show running state
+                ups_str = f"{ups_value:.1f}"
+                embed.add_field(
+                    name="⚡ UPS (Current)",
+                    value=f"▶️ Running @ {ups_str}",
                     inline=True,
                 )
             else:
