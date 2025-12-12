@@ -19,7 +19,7 @@ Tests cover:
 - UserContextManager (context switching)
 - PresenceManager (presence updates)
 - EventHandler (event delivery)
-- RconMonitor (status monitoring)
+- RconHealthMonitor (status monitoring)
 - Command registration (all 17/25 commands)
 
 Coverage target: 91%+
@@ -35,7 +35,7 @@ try:
     from bot.user_context import UserContextManager
     from bot.helpers import PresenceManager, format_uptime
     from bot.event_handler import EventHandler
-    from bot.rcon_monitor import RconMonitor
+    from bot.rcon_health_monitor import RconHealthMonitor
     from bot.commands import register_factorio_commands
     from discord_bot import DiscordBot, DiscordBotFactory
 except ImportError:
@@ -171,8 +171,8 @@ class MockServerConfig:
         self.rcon_port = 27015
         self.description = "Main server"
         self.event_channel_id = 123456789
-        self.rcon_breakdown_mode = "transition"
-        self.rcon_breakdown_interval = 300
+        self.rcon_status_alert_mode = "transition"
+        self.rcon_status_alert_interval = 300
 
 
 class MockServerManager:
@@ -531,7 +531,7 @@ async def test_error_path_invalid_server() -> None:
 # - UserContextManager: initialization, context switching, RCON routing
 # - PresenceManager: uptime formatting, display conversion
 # - EventHandler: (tested via mock patterns)
-# - RconMonitor: (tested via mock patterns)
+# - RconHealthMonitor: (tested via mock patterns)
 # - Command registration: (structural tests)
 #
 # Happy path tests verify:
