@@ -1,0 +1,269 @@
+# Copyright (c) 2025 Stephen Clau
+#
+# This file is part of Factorio ISR.
+#
+# Factorio ISR is dual-licensed:
+#
+# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
+#    See LICENSE file for full terms
+#
+# 2. Commercial License
+#    For proprietary use without AGPL requirements
+#    Contact: licensing@laudiversified.com
+#
+# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
+
+
+"""
+Unified metrics computation layer for Factorio RCON.
+
+Provides RconMetricsEngine for consolidated UPS calculation, EMA/SMA tracking,
+evolution factor parsing, and player queries. Designed for shared use across
+stats collectors and alert monitors to ensure consistent smoothing.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Dict, List, Optional
+
+import structlog
+
+logger = structlog.get_logger()
+
+
+class RconMetricsEngine:
+    """
+    Unified metrics computation layer.
+
+    Consolidates UPS calculation, EMA/SMA tracking, and evolution factor parsing.
+    Designed for shared use by RconStatsCollector and RconAlertMonitor to eliminate
+    duplicate state and ensure consistent smoothing across stats and alerts.
+
+    **Constraint:** Preserves per-server 1:1 RconClient binding and parallel
+    instantiation model. Each server gets its own metrics engine instance.
+    """
+
+    def __init__(
+        self,
+        rcon_client: Any,
+        collect_ups: bool = True,
+        collect_evolution: bool = True,
+    ) -> None:
+        """
+        Initialize metrics engine.
+
+        Args:
+            rcon_client: RconClient instance for server queries
+            collect_ups: Enable UPS collection and smoothing
+            collect_evolution: Enable evolution factor collection
+        """
+        self.rcon_client = rcon_client
+        self.collect_ups = collect_ups
+        self.collect_evolution = collect_evolution
+
+        # Single UPS calculator instance (shared state)
+        # Import here to avoid circular dependency
+        from rcon_client import UPSCalculator
+
+        pause_threshold = getattr(
+            getattr(rcon_client, "server_config", None),
+            "pause_time_threshold",
+            5.0,
+        )
+        self.ups_calculator: Optional[UPSCalculator] = (
+            UPSCalculator(pause_time_threshold=pause_threshold) if collect_ups else None
+        )
+
+        # Unified EMA/SMA state (single source of truth)
+        self.ema_alpha: float = getattr(
+            getattr(self.rcon_client, "server_config", None),
+            "ups_ema_alpha",
+            0.2,
+        )
+        self.ema_ups: Optional[float] = None
+        self._ups_samples_for_sma: List[float] = []
+
+        logger.info(
+            "metrics_engine_initialized",
+            server_tag=rcon_client.server_tag,
+            server_name=rcon_client.server_name,
+            collect_ups=collect_ups,
+            collect_evolution=collect_evolution,
+            ema_alpha=self.ema_alpha,
+            pause_threshold=pause_threshold,
+        )
+
+    async def sample_ups(self) -> Optional[float]:
+        """
+        Sample current UPS with pause detection.
+
+        Returns:
+            UPS value, or None if first sample or server paused.
+        """
+        if not self.collect_ups or not self.ups_calculator:
+            return None
+
+        return await self.ups_calculator.sample_ups(self.rcon_client)
+
+    async def get_evolution_by_surface(self) -> Dict[str, float]:
+        """
+        Fetch evolution factor per surface (multi-surface support).
+
+        Returns:
+            Dict mapping surface names to evolution factors (0.0-1.0).
+        """
+        if not self.collect_evolution:
+            return {}
+
+        try:
+            lua = (
+                "/c "
+                "local f = game.forces['enemy']; "
+                "local evo_data = {}; "
+                "for _, s in pairs(game.surfaces) do "
+                "  if not string.find(string.lower(s.name), 'platform') then "
+                "    evo_data[s.name] = f.get_evolution_factor(s); "
+                "  end "
+                "end; "
+                "rcon.print(game.table_to_json(evo_data))"
+            )
+            response = await self.rcon_client.execute(lua)
+
+            if not response or not response.strip():
+                logger.warning("evolution_collection_failed_empty_response")
+                return {}
+
+            evolution_by_surface: Dict[str, float] = json.loads(response.strip())
+            logger.debug(
+                "evolution_collected_multi_surface",
+                surfaces=list(evolution_by_surface.keys()),
+                evolution_data=evolution_by_surface,
+            )
+            return evolution_by_surface
+        except json.JSONDecodeError as e:
+            logger.warning(
+                "evolution_json_parse_failed",
+                error=str(e),
+                response=response[:200] if isinstance(response, str) else "",
+            )
+            return {}
+        except Exception as e:
+            logger.warning(
+                "evolution_collection_failed",
+                error=str(e),
+                exc_info=True,
+            )
+            return {}
+
+    async def get_players(self) -> List[str]:
+        """Get list of online player names."""
+        return await self.rcon_client.get_players()
+
+    async def get_player_count(self) -> int:
+        """Get count of online players."""
+        return await self.rcon_client.get_player_count()
+
+    async def get_server_time(self) -> str:
+        """Get current in-game time."""
+        return await self.rcon_client.get_server_time()
+
+    async def gather_all_metrics(self) -> Dict[str, Any]:
+        """
+        Gather all metrics in one pass (UPS, evolution, players, time).
+
+        Updates internal EMA/SMA state and returns complete metrics dict.
+        Ready for direct use by formatters (no further processing needed).
+
+        Returns:
+            Dict with keys: ups, ups_sma, ups_ema, is_paused, last_known_ups,
+                tick, game_time_seconds, evolution_factor, evolution_by_surface,
+                player_count, players, server_time.
+        """
+        metrics: Dict[str, Any] = {
+            "ups": None,
+            "ups_sma": None,
+            "ups_ema": None,
+            "is_paused": False,
+            "last_known_ups": None,
+            "tick": None,
+            "game_time_seconds": None,
+            "evolution_factor": None,
+            "evolution_by_surface": {},
+            "player_count": 0,
+            "players": [],
+            "server_time": "Unknown",
+        }
+
+        try:
+            # Get tick and game time
+            try:
+                response = await self.rcon_client.execute("/sc rcon.print(game.tick)")
+                metrics["tick"] = int(response.strip())
+                metrics["game_time_seconds"] = metrics["tick"] / 60.0
+            except Exception as e:
+                logger.warning("tick_collection_failed", error=str(e))
+
+            # UPS with pause detection and smoothing
+            if self.collect_ups and self.ups_calculator:
+                ups = await self.ups_calculator.sample_ups(self.rcon_client)
+
+                metrics["is_paused"] = self.ups_calculator.is_paused
+                metrics["last_known_ups"] = self.ups_calculator.last_known_ups
+
+                if ups is not None:
+                    metrics["ups"] = ups
+
+                    # Update SMA window (last 5 samples)
+                    self._ups_samples_for_sma.append(ups)
+                    if len(self._ups_samples_for_sma) > 5:
+                        self._ups_samples_for_sma.pop(0)
+                    if self._ups_samples_for_sma:
+                        metrics["ups_sma"] = sum(self._ups_samples_for_sma) / len(
+                            self._ups_samples_for_sma
+                        )
+
+                    # Update EMA (exponential moving average)
+                    if self.ema_ups is None:
+                        self.ema_ups = ups
+                    else:
+                        self.ema_ups = (
+                            self.ema_alpha * ups
+                            + (1.0 - self.ema_alpha) * self.ema_ups
+                        )
+                    metrics["ups_ema"] = self.ema_ups
+                    logger.debug(
+                        "metrics_engine_ups_updated",
+                        ups=ups,
+                        ema_ups=self.ema_ups,
+                        sma_ups=metrics.get("ups_sma"),
+                        alpha=self.ema_alpha,
+                    )
+
+            # Evolution per surface
+            if self.collect_evolution:
+                evolution_by_surface = await self.get_evolution_by_surface()
+                if evolution_by_surface:
+                    metrics["evolution_by_surface"] = evolution_by_surface
+                    # Backward compat: store first surface as single value
+                    metrics["evolution_factor"] = next(
+                        iter(evolution_by_surface.values())
+                    )
+
+            # Players and time
+            metrics["player_count"] = await self.get_player_count()
+            metrics["players"] = await self.get_players()
+            metrics["server_time"] = await self.get_server_time()
+
+            logger.debug(
+                "metrics_engine_gather_complete",
+                ups=metrics.get("ups"),
+                ups_ema=metrics.get("ups_ema"),
+                player_count=metrics["player_count"],
+                is_paused=metrics.get("is_paused"),
+                evolution_surfaces=list(metrics.get("evolution_by_surface", {}).keys()),
+            )
+        except Exception as e:
+            logger.warning("metrics_engine_partial_failure", error=str(e), exc_info=True)
+
+        return metrics
