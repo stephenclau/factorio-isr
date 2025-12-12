@@ -96,8 +96,8 @@ class DiscordBot(discord.Client):
         Args:
             token: Discord bot token
             bot_name: Display name for the bot
-            breakdown_mode: RCON breakdown mode ('transition' or 'interval')
-            breakdown_interval: Interval in seconds between RCON breakdown reports
+            breakdown_mode: RCON status alert mode ('transition' or 'interval')
+            breakdown_interval: Interval in seconds between RCON status alerts
             intents: Discord intents (auto-configured if None)
         """
         # Configure intents
@@ -128,9 +128,9 @@ class DiscordBot(discord.Client):
         # Phase 5.2: RCON status monitoring
         self.rcon_last_connected: Optional[datetime] = None
 
-        # RCON breakdown scheduling (initialized from parameters)
-        self.rcon_breakdown_mode = breakdown_mode.lower()
-        self.rcon_breakdown_interval = breakdown_interval
+        # RCON status alert scheduling (initialized from parameters)
+        self.rcon_status_alert_mode = breakdown_mode.lower()
+        self.rcon_status_alert_interval = breakdown_interval
 
         # ====================================================================
         # NEW: Modular Components (replacing inline code)
@@ -152,48 +152,48 @@ class DiscordBot(discord.Client):
             "discord_bot_initialized",
             bot_name=bot_name,
             phase="6.0-multi-server-refactored",
-            breakdown_mode=self.rcon_breakdown_mode,
-            breakdown_interval=self.rcon_breakdown_interval,
+            status_alert_mode=self.rcon_status_alert_mode,
+            status_alert_interval=self.rcon_status_alert_interval,
         )
 
-    def _apply_server_breakdown_config(self) -> None:
+    def _apply_server_status_alert_config(self) -> None:
         """
-        Apply per-server breakdown configuration to the bot.
+        Apply per-server status alert configuration to the bot.
 
-        Reads RCON breakdown settings from the first configured server
+        Reads RCON status alert settings from the first configured server
         in ServerManager and applies them globally. This is called after
         set_server_manager() to load per-server settings from ServerConfig.
 
         Per-server defaults are applied from config.py:
-        - rcon_breakdown_mode: "transition" or "interval" (default: "transition")
-        - rcon_breakdown_interval: int seconds (default: 300s / 5 minutes)
+        - rcon_status_alert_mode: "transition" or "interval" (default: "transition")
+        - rcon_status_alert_interval: int seconds (default: 300s / 5 minutes)
         """
         if not self.server_manager:
             logger.warning(
-                "_apply_server_breakdown_config called without server_manager"
+                "_apply_server_status_alert_config called without server_manager"
             )
             return
 
         servers = self.server_manager.list_servers()
         if not servers:
             logger.warning(
-                "_apply_server_breakdown_config called with no servers"
+                "_apply_server_status_alert_config called with no servers"
             )
             return
 
         # Get first server's config
         first_server = next(iter(servers.values()))
 
-        # Apply its breakdown settings
-        self.rcon_breakdown_mode = first_server.rcon_breakdown_mode.lower()
-        self.rcon_breakdown_interval = first_server.rcon_breakdown_interval
+        # Apply its status alert settings
+        self.rcon_status_alert_mode = first_server.rcon_status_alert_mode.lower()
+        self.rcon_status_alert_interval = first_server.rcon_status_alert_interval
 
         logger.info(
-            "server_breakdown_config_applied",
+            "server_status_alert_config_applied",
             server_name=first_server.name,
             server_tag=first_server.tag,
-            mode=self.rcon_breakdown_mode,
-            interval=self.rcon_breakdown_interval,
+            mode=self.rcon_status_alert_mode,
+            interval=self.rcon_status_alert_interval,
         )
 
     # ========================================================================
