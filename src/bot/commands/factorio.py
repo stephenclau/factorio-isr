@@ -392,25 +392,6 @@ def register_factorio_commands(bot: Any) -> None:
                     inline=True,
                 )
             
-            # Display gleba evolution if available
-            if "gleba" in evolution_by_surface:
-                gleba_evo = evolution_by_surface["gleba"]
-                gleba_pct = gleba_evo * 100
-                embed.add_field(
-                    name="🐛 Gleba Evolution",
-                    value=f"{gleba_evo:.2f} ({gleba_pct:.1f}%)",
-                    inline=True,
-                )
-            
-            # Fallback to single evolution_factor if multi-surface data unavailable
-            if not evolution_by_surface and metrics.get("evolution_factor") is not None:
-                evo_pct = metrics["evolution_factor"] * 100
-                embed.add_field(
-                    name="🐛 Enemy Evolution",
-                    value=f"{evo_pct:.1f}%",
-                    inline=True,
-                )
-
             # Players (from metrics engine)
             player_count = metrics.get("player_count", 0)
             embed.add_field(
@@ -437,6 +418,24 @@ def register_factorio_commands(bot: Any) -> None:
                     name="👥 Online Players",
                     value=player_list,
                     inline=False,
+                )
+            # Display gleba evolution if available
+            if "gleba" in evolution_by_surface:
+                gleba_evo = evolution_by_surface["gleba"]
+                gleba_pct = gleba_evo * 100
+                embed.add_field(
+                    name="🐛 Gleba Evolution",
+                    value=f"{gleba_evo:.2f} ({gleba_pct:.1f}%)",
+                    inline=True,
+                )
+            
+            # Fallback to single evolution_factor if multi-surface data unavailable
+            if not evolution_by_surface and metrics.get("evolution_factor") is not None:
+                evo_pct = metrics["evolution_factor"] * 100
+                embed.add_field(
+                    name="🐛 Enemy Evolution",
+                    value=f"{evo_pct:.1f}%",
+                    inline=True,
                 )
 
             embed.set_footer(text="Factorio ISR | Metrics via RconMetricsEngine")
