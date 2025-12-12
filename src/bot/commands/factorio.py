@@ -1073,27 +1073,28 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
-            await rcon_client.execute(f'/say {message}')
+            # Escape double quotes in message to prevent Lua syntax errors
+            escaped_msg = message.replace('"', '\\"')
+            # Use game.print() with pink color formatting for better visibility
+            await rcon_client.execute(f'/sc game.print("[color=pink]{escaped_msg}[/color]")')
 
-            embed = discord.Embed(
+            # Format response embed
+            embed = EmbedBuilder.info_embed(
                 title="📢 Broadcast Sent",
-                color=EmbedBuilder.COLOR_SUCCESS,
-                timestamp=discord.utils.utcnow(),
+                message=f"Message: _{message}_\n\nAll online players have been notified.",
             )
-            embed.add_field(name="Message", value=message, inline=False)
-            embed.add_field(name="Server", value=server_name, inline=True)
-            embed.set_footer(text="Action performed via Discord")
+            embed.color = EmbedBuilder.COLOR_SUCCESS
             await interaction.followup.send(embed=embed)
 
             logger.info(
-                "broadcast_sent",
-                message=message[:50],
+                "message_broadcast",
+                message=message,
                 moderator=interaction.user.name,
             )
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to send broadcast: {str(e)}")
+            embed = EmbedBuilder.error_embed(f"Broadcast failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("broadcast_command_failed", error=str(e))
+            logger.error("broadcast_command_failed", error=str(e), message=message)
 
     @factorio_group.command(name="whisper", description="Send private message to a player")
     @app_commands.describe(player="Player name", message="Message to send")
