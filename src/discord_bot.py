@@ -221,7 +221,7 @@ class DiscordBot(discord.Client):
     # ========================================================================
 
     async def on_ready(self) -> None:
-        """Called when bot is ready."""
+        """Called when bot is ready (fires on initial connect AND reconnects)."""
         if self.user is None:
             logger.error("discord_bot_ready_but_no_user")
             return
@@ -231,12 +231,15 @@ class DiscordBot(discord.Client):
             bot_name=self.user.name,
             bot_id=self.user.id,
             guilds=len(self.guilds),
-            phase="6.0-multi-server",
+            phase="7.0-discrete-enclosures",
         )
 
         # Set connected flag and signal ready
         self._connected = True
         self._ready.set()
+
+        # ✅ RESTART presence updater if not running (handles reconnects)
+        await self.presence_manager.start()
 
         try:
             # Sync commands globally
@@ -277,7 +280,7 @@ class DiscordBot(discord.Client):
     async def connect_bot(self) -> None:
         """Connect the bot to Discord with RCON monitoring."""
         try:
-            logger.info("connecting_to_discord", phase="6.0-multi-server")
+            logger.info("connecting_to_discord", phase="7.0-discrete-enclosures")
             await self.login(self.token)
             self._connection_task = asyncio.create_task(self.connect())
 
@@ -292,8 +295,9 @@ class DiscordBot(discord.Client):
                 # PHASE 5.2: Start RCON status monitoring
                 await self.rcon_monitor.start()
 
-                # Initial presence update
-                await self.presence_manager.update()
+                # ✅ Start presence updater
+                await self.presence_manager.start()
+
             except asyncio.TimeoutError:
                 logger.error("discord_bot_connection_timeout")
                 if self._connection_task is not None:
@@ -313,10 +317,13 @@ class DiscordBot(discord.Client):
     async def disconnect_bot(self) -> None:
         """Disconnect the bot from Discord and stop monitoring."""
         if self._connected or self._connection_task is not None:
-            logger.info("disconnecting_from_discord", phase="6.0-multi-server")
+            logger.info("disconnecting_from_discord", phase="7.0-discrete-enclosures")
 
             # Set flag FIRST - allows loops to exit gracefully
             self._connected = False
+
+            # ✅ Stop presence updater
+            await self.presence_manager.stop()
 
             # Send disconnection notification
             await self._send_disconnection_notification()
