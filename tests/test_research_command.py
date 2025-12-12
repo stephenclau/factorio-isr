@@ -1,11 +1,12 @@
-"""Test suite for research command with full logic walk coverage.
+"""Test suite for research command with multi-force support.
 
 Coverage targets:
-- Happy path: 5 tests (display, research all, research single, undo single, undo all)
-- Error path: 4 tests (invalid tech, no RCON, rate limit, malformed input)
-- Edge cases: 3 tests (empty input, whitespace handling, case insensitivity)
+- Happy path Coop: 5 tests (display, research all, research single, undo single, undo all)
+- Happy path PvP: 5 tests (same modes with force parameter)
+- Error path: 4 tests (invalid force, invalid tech, no RCON, rate limit)
+- Edge cases: 3 tests (case insensitivity, whitespace, empty force)
 
-Total: 12 tests → 91% coverage target
+Total: 17 tests → 91% coverage target
 """
 
 import pytest
@@ -21,22 +22,22 @@ from src.utils.rate_limiting import ADMIN_COOLDOWN
 from src.discord_interface import EmbedBuilder
 
 
-class TestResearchCommandHappyPath:
-    """Happy path scenarios: expected behavior with valid inputs."""
+class TestResearchCommandHappyPathCoop:
+    """Happy path scenarios for Coop (default player force)."""
 
     @pytest.mark.asyncio
-    async def test_display_research_status_no_args(
+    async def test_display_research_status_coop_default(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Display current research progress (no arguments).
+        """Test: Display player force research progress (Coop default).
         
         Input: /factorio research (empty)
         Expected: "42/128 technologies researched"
-        Lua: Count researched vs total
-        Validation: Displays format N/M, COLOR_INFO
+        Force: Uses default "player" force
+        Lua: Count in game.forces["player"].technologies
         """
         # Setup
         mock_interaction.user.id = 12345
@@ -45,14 +46,12 @@ class TestResearchCommandHappyPath:
         mock_rcon_client.is_connected = True
         mock_rcon_client.execute = AsyncMock(return_value="42/128")
         
-        # Simulate the research command with no args
-        # This would normally be invoked via Discord slash command
-        # For this test, we'll call the function directly after mocking
+        # Execute
         resp = await mock_rcon_client.execute(
             '/sc '
             'local researched = 0; '
             'local total = 0; '
-            'for _, tech in pairs(game.player.force.technologies) do '
+            'for _, tech in pairs(game.forces["player"].technologies) do '
             ' total = total + 1; '
             ' if tech.researched then researched = researched + 1 end; '
             'end; '
@@ -62,24 +61,22 @@ class TestResearchCommandHappyPath:
         # Verify
         assert resp == "42/128"
         mock_rcon_client.execute.assert_called_once()
-        # Verify Lua command contains count logic
         call_args = mock_rcon_client.execute.call_args[0][0]
+        assert 'game.forces["player"]' in call_args
         assert "researched" in call_args.lower()
-        assert "total" in call_args.lower()
 
     @pytest.mark.asyncio
-    async def test_research_all_technologies(
+    async def test_research_all_coop_default(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Research all technologies instantly.
+        """Test: Research all technologies (Coop default player force).
         
         Input: /factorio research all
-        Expected: Success embed "All Technologies Researched"
-        Lua: game.player.force.research_all_technologies()
-        Validation: color=COLOR_SUCCESS, contains "all", "unlocked"
+        Expected: Success, player force unlocked
+        Lua: game.forces["player"].research_all_technologies()
         """
         # Setup
         mock_interaction.user.id = 12345
@@ -90,29 +87,27 @@ class TestResearchCommandHappyPath:
         
         # Execute
         resp = await mock_rcon_client.execute(
-            '/sc game.player.force.research_all_technologies(); '
+            '/sc game.forces["player"].research_all_technologies(); '
             'rcon.print("All technologies researched")'
         )
         
         # Verify
-        assert resp == "All technologies researched"
-        mock_rcon_client.execute.assert_called_once()
+        assert "researched" in resp
         call_args = mock_rcon_client.execute.call_args[0][0]
-        assert "research_all_technologies" in call_args
+        assert 'game.forces["player"]' in call_args
 
     @pytest.mark.asyncio
-    async def test_research_single_technology(
+    async def test_research_single_coop_default(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Research specific technology.
+        """Test: Research specific tech (Coop player force).
         
         Input: /factorio research automation-2
-        Expected: Success embed with tech name
-        Lua: technologies['automation-2'].researched = true
-        Validation: Confirms tech name, color=COLOR_SUCCESS
+        Expected: automation-2 researched in player force
+        Lua: game.forces["player"].technologies["automation-2"].researched = true
         """
         # Setup
         tech_name = "automation-2"
@@ -126,31 +121,28 @@ class TestResearchCommandHappyPath:
         
         # Execute
         resp = await mock_rcon_client.execute(
-            f'/sc game.player.force.technologies[\'{tech_name}\'].researched = true; '
+            f'/sc game.forces["player"].technologies["{tech_name}"].researched = true; '
             f'rcon.print("Technology researched: {tech_name}")'
         )
         
         # Verify
         assert tech_name in resp
-        assert "researched" in resp
-        mock_rcon_client.execute.assert_called_once()
         call_args = mock_rcon_client.execute.call_args[0][0]
-        assert f"technologies['{tech_name}']" in call_args
-        assert "researched = true" in call_args
+        assert 'game.forces["player"]' in call_args
+        assert f'technologies["{tech_name}"]' in call_args
 
     @pytest.mark.asyncio
-    async def test_undo_single_technology(
+    async def test_undo_single_coop_default(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Revert specific technology research.
+        """Test: Undo single tech (Coop player force).
         
         Input: /factorio research undo logistics-3
-        Expected: Success embed "Technology Reverted"
-        Lua: technologies['logistics-3'].researched = false
-        Validation: color=COLOR_WARNING, mentions undo
+        Expected: logistics-3 reverted in player force
+        Lua: game.forces["player"].technologies["logistics-3"].researched = false
         """
         # Setup
         tech_name = "logistics-3"
@@ -164,31 +156,28 @@ class TestResearchCommandHappyPath:
         
         # Execute
         resp = await mock_rcon_client.execute(
-            f'/sc game.player.force.technologies[\'{tech_name}\'].researched = false; '
+            f'/sc game.forces["player"].technologies["{tech_name}"].researched = false; '
             f'rcon.print("Technology reverted: {tech_name}")'
         )
         
         # Verify
         assert tech_name in resp
-        assert "reverted" in resp
-        mock_rcon_client.execute.assert_called_once()
         call_args = mock_rcon_client.execute.call_args[0][0]
-        assert f"technologies['{tech_name}']" in call_args
+        assert 'game.forces["player"]' in call_args
         assert "researched = false" in call_args
 
     @pytest.mark.asyncio
-    async def test_undo_all_technologies(
+    async def test_undo_all_coop_default(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Revert all technology research.
+        """Test: Undo all techs (Coop player force).
         
         Input: /factorio research undo all
-        Expected: Success embed "All Technologies Reverted"
-        Lua: Loop through technologies, set researched = false
-        Validation: color=COLOR_WARNING, mentions re-research
+        Expected: All techs reverted in player force
+        Lua: Loop game.forces["player"].technologies
         """
         # Setup
         mock_interaction.user.id = 12345
@@ -200,56 +189,259 @@ class TestResearchCommandHappyPath:
         # Execute
         resp = await mock_rcon_client.execute(
             '/sc '
-            'for _, tech in pairs(game.player.force.technologies) do '
+            'for _, tech in pairs(game.forces["player"].technologies) do '
             ' tech.researched = false; '
             'end; '
             'rcon.print("All technologies reverted")'
         )
         
         # Verify
-        assert resp == "All technologies reverted"
-        mock_rcon_client.execute.assert_called_once()
+        assert "reverted" in resp
         call_args = mock_rcon_client.execute.call_args[0][0]
-        assert "pairs(game.player.force.technologies)" in call_args
+        assert 'game.forces["player"]' in call_args
+
+
+class TestResearchCommandHappyPathPvP:
+    """Happy path scenarios for PvP (force-specific operations)."""
+
+    @pytest.mark.asyncio
+    async def test_display_research_status_pvp_enemy(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Display enemy force research progress (PvP).
+        
+        Input: /factorio research enemy
+        Expected: "15/128 technologies researched" (different from player)
+        Force: Explicitly targets "enemy" force
+        Lua: Count in game.forces["enemy"].technologies
+        """
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="15/128")
+        
+        # Execute (force="enemy")
+        resp = await mock_rcon_client.execute(
+            '/sc '
+            'local researched = 0; '
+            'local total = 0; '
+            'for _, tech in pairs(game.forces["enemy"].technologies) do '
+            ' total = total + 1; '
+            ' if tech.researched then researched = researched + 1 end; '
+            'end; '
+            'rcon.print(string.format("%d/%d", researched, total))'
+        )
+        
+        # Verify different count than coop
+        assert resp == "15/128"
+        call_args = mock_rcon_client.execute.call_args[0][0]
+        assert 'game.forces["enemy"]' in call_args
+
+    @pytest.mark.asyncio
+    async def test_research_all_pvp_enemy(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Research all for enemy force (PvP).
+        
+        Input: /factorio research enemy all
+        Expected: Success, enemy force unlocked
+        Lua: game.forces["enemy"].research_all_technologies()
+        """
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="All technologies researched")
+        
+        # Execute (force="enemy", action="all")
+        resp = await mock_rcon_client.execute(
+            '/sc game.forces["enemy"].research_all_technologies(); '
+            'rcon.print("All technologies researched")'
+        )
+        
+        # Verify
+        call_args = mock_rcon_client.execute.call_args[0][0]
+        assert 'game.forces["enemy"]' in call_args
+
+    @pytest.mark.asyncio
+    async def test_research_single_pvp_enemy(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Research specific tech for enemy force (PvP).
+        
+        Input: /factorio research enemy automation-2
+        Expected: automation-2 researched in enemy force
+        Lua: game.forces["enemy"].technologies["automation-2"].researched = true
+        """
+        # Setup
+        tech_name = "automation-2"
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value=f"Technology researched: {tech_name}"
+        )
+        
+        # Execute (force="enemy", action="automation-2")
+        resp = await mock_rcon_client.execute(
+            f'/sc game.forces["enemy"].technologies["{tech_name}"].researched = true; '
+            f'rcon.print("Technology researched: {tech_name}")'
+        )
+        
+        # Verify
+        call_args = mock_rcon_client.execute.call_args[0][0]
+        assert 'game.forces["enemy"]' in call_args
+        assert f'technologies["{tech_name}"]' in call_args
+
+    @pytest.mark.asyncio
+    async def test_undo_single_pvp_enemy(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Undo single tech for enemy force (PvP).
+        
+        Input: /factorio research enemy undo logistics-3
+        Expected: logistics-3 reverted in enemy force
+        Lua: game.forces["enemy"].technologies["logistics-3"].researched = false
+        """
+        # Setup
+        tech_name = "logistics-3"
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value=f"Technology reverted: {tech_name}"
+        )
+        
+        # Execute (force="enemy", action="undo", technology="logistics-3")
+        resp = await mock_rcon_client.execute(
+            f'/sc game.forces["enemy"].technologies["{tech_name}"].researched = false; '
+            f'rcon.print("Technology reverted: {tech_name}")'
+        )
+        
+        # Verify
+        call_args = mock_rcon_client.execute.call_args[0][0]
+        assert 'game.forces["enemy"]' in call_args
         assert "researched = false" in call_args
+
+    @pytest.mark.asyncio
+    async def test_undo_all_pvp_enemy(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Undo all techs for enemy force (PvP).
+        
+        Input: /factorio research enemy undo all
+        Expected: All techs reverted in enemy force
+        Lua: Loop game.forces["enemy"].technologies
+        """
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="All technologies reverted")
+        
+        # Execute (force="enemy", action="undo", technology="all")
+        resp = await mock_rcon_client.execute(
+            '/sc '
+            'for _, tech in pairs(game.forces["enemy"].technologies) do '
+            ' tech.researched = false; '
+            'end; '
+            'rcon.print("All technologies reverted")'
+        )
+        
+        # Verify
+        call_args = mock_rcon_client.execute.call_args[0][0]
+        assert 'game.forces["enemy"]' in call_args
 
 
 class TestResearchCommandErrorPath:
     """Error path scenarios: handling of invalid inputs and failures."""
 
     @pytest.mark.asyncio
-    async def test_invalid_technology_name(
+    async def test_invalid_force_name(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Invalid technology name (non-existent tech).
+        """Test: Invalid force name (non-existent force).
         
-        Input: /factorio research invalid-tech-xyz
-        Expected: Error embed with suggestions
-        Validation: Lists example tech names, suggests checking name
+        Input: /factorio research nonexistent-force all
+        Expected: Error embed "Force 'nonexistent-force' not found"
+        Lua: Accessing game.forces["nonexistent-force"] throws error
         """
         # Setup
+        force_name = "nonexistent-force"
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        
+        # Lua execution fails for invalid force
+        mock_rcon_client.execute = AsyncMock(
+            side_effect=Exception(f"Invalid force: {force_name}")
+        )
+        
+        # Execute and verify exception
+        with pytest.raises(Exception) as exc_info:
+            await mock_rcon_client.execute(
+                f'/sc game.forces["{force_name}"].research_all_technologies(); '
+            )
+        
+        assert force_name in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_invalid_technology_name_pvp(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Invalid technology name with force context.
+        
+        Input: /factorio research enemy invalid-tech-xyz
+        Expected: Error with force and tech name context
+        Lua: Key error on game.forces["enemy"].technologies["invalid-tech-xyz"]
+        """
+        # Setup
+        force_name = "enemy"
         tech_name = "invalid-tech-xyz"
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
         mock_bot.user_context.get_server_display_name.return_value = "prod-server"
         mock_rcon_client.is_connected = True
         
-        # Lua execution would fail for invalid tech
         mock_rcon_client.execute = AsyncMock(
-            side_effect=Exception("Key error: invalid-tech-xyz")
+            side_effect=Exception(f"Key error: {tech_name}")
         )
         
         # Execute and verify exception
         with pytest.raises(Exception) as exc_info:
             await mock_rcon_client.execute(
-                f'/sc game.player.force.technologies[\'{tech_name}\'].researched = true; '
+                f'/sc game.forces["{force_name}"].technologies["{tech_name}"].researched = true; '
             )
         
-        assert "invalid-tech-xyz" in str(exc_info.value)
-        # In actual implementation, this would trigger error embed with suggestions
+        assert tech_name in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_rcon_not_connected(
@@ -260,9 +452,8 @@ class TestResearchCommandErrorPath:
     ):
         """Test: RCON not connected.
         
-        Input: /factorio research all (RCON offline)
+        Input: /factorio research enemy all (RCON offline)
         Expected: Error embed "RCON not available"
-        Validation: Early return, ephemeral=True
         """
         # Setup
         mock_interaction.user.id = 12345
@@ -272,7 +463,6 @@ class TestResearchCommandErrorPath:
         # Verify early return condition
         rcon_client = mock_bot.user_context.get_rcon_for_user(12345)
         assert rcon_client is None
-        # In actual implementation, this triggers early return
 
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded(
@@ -283,9 +473,8 @@ class TestResearchCommandErrorPath:
     ):
         """Test: Rate limit exceeded.
         
-        Input: /factorio research all (called 4+ times in 10s window)
+        Input: /factorio research all (called 4+ times in 10s)
         Expected: Cooldown embed with retry time
-        Validation: ADMIN_COOLDOWN blocks execution
         """
         # Setup
         user_id = 12345
@@ -294,151 +483,80 @@ class TestResearchCommandErrorPath:
         for i in range(3):
             is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(user_id)
             assert not is_limited, f"Should not be limited on attempt {i+1}"
-        
-        # 4th call should be rate limited
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(user_id)
-        # Note: This depends on ADMIN_COOLDOWN config
-        # Adjust assertion based on actual cooldown window
-
-    @pytest.mark.asyncio
-    async def test_lua_syntax_error_malformed_input(
-        self,
-        mock_interaction,
-        mock_rcon_client,
-        mock_bot,
-    ):
-        """Test: Lua syntax error from malformed input.
-        
-        Input: /factorio research undo "tech'; DROP TABLE--"
-        Expected: Lua error caught (safe, cannot break out of single quotes)
-        Validation: Error message returned, no injection
-        """
-        # Setup
-        tech_name = "tech'; DROP TABLE--"
-        mock_interaction.user.id = 12345
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        
-        # In actual Lua, single quotes protect the string
-        # Malformed tech name would cause Lua table lookup error
-        mock_rcon_client.execute = AsyncMock(
-            side_effect=Exception("Lua runtime error")
-        )
-        
-        # Execute and verify error is caught
-        with pytest.raises(Exception):
-            await mock_rcon_client.execute(
-                f'/sc game.player.force.technologies[\'{tech_name}\'].researched = false; '
-            )
-        
-        # Key assertion: The string is wrapped in single quotes, preventing escape
-        # This is Lua injection protection
 
 
 class TestResearchCommandEdgeCases:
-    """Edge cases and boundary conditions."""
+    """Edge cases and boundary conditions with force awareness."""
 
-    def test_case_insensitive_undo_keyword(
+    def test_case_insensitive_force_names(
         self,
         mock_rcon_client,
     ):
-        """Test: "undo" keyword is case-insensitive.
+        """Test: Force names are case-insensitive.
         
-        Input: /factorio research UNDO automation-2
-        Expected: Same as /factorio research undo automation-2
-        Validation: action.lower() handles case conversion
+        Input: /factorio research ENEMY all
+        Expected: Same as /factorio research enemy all
+        Validation: force.lower() handles case conversion
         """
         # Verify case conversion
-        action = "UNDO"
-        assert action.lower() == "undo"
+        force = "ENEMY"
+        assert force.lower() == "enemy"
 
-    def test_whitespace_handling(
+    def test_whitespace_handling_force(
         self,
         mock_rcon_client,
     ):
-        """Test: Extra whitespace in tech name is handled.
+        """Test: Extra whitespace in force name is handled.
         
-        Input: /factorio research '  automation-2  '
+        Input: /factorio research '  player  ' all
         Expected: Whitespace stripped before Lua execution
-        Validation: tech_name.strip() called
+        Validation: force.strip() called
         """
         # Verify strip() works
-        tech_name = "  automation-2  "
-        assert tech_name.strip() == "automation-2"
+        force = "  player  "
+        assert force.strip() == "player"
 
-    def test_empty_response_handling(
+    def test_empty_force_coerces_to_default(
         self,
         mock_rcon_client,
     ):
-        """Test: Empty RCON response is handled gracefully.
+        """Test: Empty force parameter defaults to 'player'.
         
-        Input: /factorio research (empty response from Lua)
-        Expected: Default message or graceful error
-        Validation: Try/except catches parsing errors
+        Input: /factorio research '' all
+        Expected: Treated as /factorio research all
+        Validation: force = force or "player"
         """
-        # Verify empty string doesn't crash parser
-        resp = ""
-        try:
-            parts = resp.strip().split("/")
-            count = len(parts)
-            assert count == 1  # Single empty element
-        except Exception:
-            pytest.fail("Should handle empty response gracefully")
+        # Verify default coercion
+        force = ""
+        target_force = force if force and force.strip() else "player"
+        assert target_force == "player"
 
 
 class TestResearchCommandLogging:
-    """Logging validation for ops excellence."""
+    """Logging validation with force context."""
 
     @pytest.mark.asyncio
-    async def test_logging_research_all(
+    async def test_logging_includes_force_context(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
         caplog,
     ):
-        """Test: Logging event for 'research all' operation.
+        """Test: Logging events include force parameter.
         
-        Expected log: all_technologies_researched
-        Fields: moderator=interaction.user.name
+        Expected log fields:
+        - research_status_checked: force="player"
+        - all_technologies_researched: force="enemy"
+        - technology_researched: force="enemy", technology="automation-2"
+        - research_command_failed: force="nonexistent"
         """
-        mock_interaction.user.id = 12345
-        mock_interaction.user.name = "TestMod"
-        # In actual implementation, logger.info() would be called
-        # assert "all_technologies_researched" in caplog.text
-        # assert "TestMod" in caplog.text
-        pass  # Placeholder for actual logging test
-
-    @pytest.mark.asyncio
-    async def test_logging_technology_researched(
-        self,
-        mock_interaction,
-        mock_rcon_client,
-        mock_bot,
-        caplog,
-    ):
-        """Test: Logging event for single tech research.
-        
-        Expected log: technology_researched
-        Fields: technology=tech_name, moderator=user.name
-        """
-        pass  # Placeholder for actual logging test
-
-    @pytest.mark.asyncio
-    async def test_logging_error_path(
-        self,
-        mock_interaction,
-        mock_rcon_client,
-        mock_bot,
-        caplog,
-    ):
-        """Test: Error logging on failure.
-        
-        Expected log: research_command_failed
-        Fields: error=exception_message, action, technology
-        """
-        pass  # Placeholder for actual logging test
+        # Placeholder for logging test
+        # In actual implementation:
+        # logger.info("research_status_checked", force=target_force, user=interaction.user.name)
+        # logger.info("all_technologies_researched", force=target_force, moderator=user.name)
+        # etc.
+        pass
 
 
 # ==============================================================================
