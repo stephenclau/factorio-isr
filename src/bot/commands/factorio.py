@@ -399,7 +399,7 @@ def register_factorio_commands(bot: Any) -> None:
             # Game time (from metrics engine)
             if metrics.get("server_time"):
                 embed.add_field(
-                    name="🕐 Server Time",
+                    name="🕐 Play Time",
                     value=metrics["server_time"],
                     inline=True,
                 )
