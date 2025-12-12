@@ -242,11 +242,11 @@ class ServerConfig:
     enable_stats_gather: bool = True
     """Enable stats gathering and Discord reporting. Default: True."""
 
-    collect_ups: bool = True
-    """Collect UPS metrics. Default: True."""
+    enable_ups_stat: bool = True
+    """Enable UPS stat collection. Default: True."""
 
-    collect_evolution: bool = True
-    """Collect evolution metrics. Default: True."""
+    enable_evolution_stat: bool = True
+    """Enable evolution stat collection. Default: True."""
 
     # Alert configuration
     enable_alerts: bool = True
@@ -501,8 +501,8 @@ def load_config() -> Config:
                 300,
             ),
             enable_stats_gather=server_data.get("enable_stats_gather", True),
-            collect_ups=server_data.get("collect_ups", True),
-            collect_evolution=server_data.get("collect_evolution", True),
+            enable_ups_stat=server_data.get("enable_ups_stat", True),
+            enable_evolution_stat=server_data.get("enable_evolution_stat", True),
             enable_alerts=server_data.get("enable_alerts", True),
             alert_check_interval=_safe_int(server_data.get("alert_check_interval", 60), f"Server {tag} alert_check_interval", 60),
             alert_samples_required=_safe_int(server_data.get("alert_samples_required", 3), f"Server {tag} alert_samples_required", 3),
