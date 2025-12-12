@@ -36,18 +36,24 @@ from discord import app_commands
 import structlog
 
 try:
-    # Try package-style imports first
+    # Try flat layout first (when run from src/ directory)
     from event_parser import FactorioEvent
     from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
     from discord_interface import EmbedBuilder
 except ImportError:
     try:
-        # Fallback to src. prefix
+        # Fallback to package style (when installed as package)
         from src.event_parser import FactorioEvent  # type: ignore
         from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
         from src.discord_interface import EmbedBuilder  # type: ignore
     except ImportError:
-        raise ImportError("Could not import event_parser, rate_limiting, or discord_interface")
+        # Last resort: use relative imports from parent
+        try:
+            from ..event_parser import FactorioEvent  # type: ignore
+            from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
+            from ..discord_interface import EmbedBuilder  # type: ignore
+        except ImportError:
+            raise ImportError("Could not import event_parser, rate_limiting, or discord_interface from any path")
 
 logger = structlog.get_logger()
 
