@@ -21,7 +21,7 @@ Refactored to delegate concerns to specialized modules:
 - bot.user_context: Per-user server context management
 - bot.helpers: Utilities (presence, uptime formatting)
 - bot.event_handler: Event sending with mention resolution
-- bot.rcon_monitor: RCON status monitoring and notifications
+- bot.rcon_health_monitor: RCON status monitoring and notifications
 - bot.commands.factorio: All /factorio slash commands
 
 This refactored version preserves the public API (DiscordBot class)
@@ -62,11 +62,11 @@ except ImportError:
 
 # NEW: Import modular components
 try:
-    from bot import UserContextManager, RconMonitor, EventHandler, PresenceManager
+    from bot import UserContextManager, RconHealthMonitor, EventHandler, PresenceManager
     from bot.commands import register_factorio_commands
 except ImportError:
     try:
-        from src.bot import UserContextManager, RconMonitor, EventHandler, PresenceManager  # type: ignore
+        from src.bot import UserContextManager, RconHealthMonitor, EventHandler, PresenceManager  # type: ignore
         from src.bot.commands import register_factorio_commands  # type: ignore
     except ImportError:
         raise ImportError("Could not import bot modules from bot/ or src/bot/")
@@ -145,8 +145,8 @@ class DiscordBot(discord.Client):
         # Event handling
         self.event_handler = EventHandler(bot=self)
 
-        # RCON monitoring
-        self.rcon_monitor = RconMonitor(bot=self)
+        # RCON health monitoring
+        self.rcon_monitor = RconHealthMonitor(bot=self)
 
         logger.info(
             "discord_bot_initialized",
@@ -292,7 +292,7 @@ class DiscordBot(discord.Client):
                 # Send connection notification
                 await self._send_connection_notification()
 
-                # PHASE 5.2: Start RCON status monitoring
+                # PHASE 5.2: Start RCON health monitoring
                 await self.rcon_monitor.start()
 
                 # ✅ Start presence updater
@@ -328,7 +328,7 @@ class DiscordBot(discord.Client):
             # Send disconnection notification
             await self._send_disconnection_notification()
 
-            # PHASE 5.2: Stop RCON monitoring
+            # PHASE 5.2: Stop RCON health monitoring
             await self.rcon_monitor.stop()
 
             # Cancel connection task if exists
