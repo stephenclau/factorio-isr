@@ -129,7 +129,7 @@ async def get_seed(rcon_client: Any) -> str:
 
     try:
         # Query server seed using proper Lua syntax
-        response = await rcon_client.execute("/sc rcon.print(game.world.surface.map_gen_settings.seed)")
+        response = await rcon_client.execute('/sc rcon.print(game.surfaces["nauvis"].map_gen_settings.seed)')
 
         # Log the raw response for debugging
         logger.debug("get_seed_response", response=response, length=len(response))
