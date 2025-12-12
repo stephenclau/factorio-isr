@@ -37,7 +37,7 @@ class RconMonitor:
         self.bot = bot
         self.rcon_server_states: Dict[str, Dict[str, Any]] = {}  # {tag: {"previous_status": bool | None, "last_connected": datetime | None}}
         self.rcon_monitor_task: Optional[asyncio.Task] = None
-        self._last_rcon_breakdown_sent: Optional[datetime] = None
+        self._last_rcon_status_alert_sent: Optional[datetime] = None
 
     async def start(self) -> None:
         """Start RCON status monitoring."""
@@ -92,25 +92,25 @@ class RconMonitor:
                 elif previous_any_status is None and current_any_status:
                     self.bot.rcon_last_connected = datetime.now(timezone.utc)
 
-                # RCON breakdown scheduling: check if we should send
-                should_send_breakdown = False
+                # RCON status alert scheduling: check if we should send
+                should_send_status_alert = False
 
-                if self.bot.rcon_breakdown_mode == "transition":
+                if self.bot.rcon_status_alert_mode == "transition":
                     # Send on any server transition
-                    should_send_breakdown = transitions_detected
-                elif self.bot.rcon_breakdown_mode == "interval":
+                    should_send_status_alert = transitions_detected
+                elif self.bot.rcon_status_alert_mode == "interval":
                     # Send periodically based on interval
                     now = datetime.now(timezone.utc)
-                    if self._last_rcon_breakdown_sent is None:
+                    if self._last_rcon_status_alert_sent is None:
                         # First time - send immediately
-                        should_send_breakdown = True
+                        should_send_status_alert = True
                     else:
-                        elapsed = (now - self._last_rcon_breakdown_sent).total_seconds()
-                        should_send_breakdown = elapsed >= self.bot.rcon_breakdown_interval
+                        elapsed = (now - self._last_rcon_status_alert_sent).total_seconds()
+                        should_send_status_alert = elapsed >= self.bot.rcon_status_alert_interval
 
-                if should_send_breakdown and self.bot.server_manager:
-                    await self._send_breakdown_embeds()
-                    self._last_rcon_breakdown_sent = datetime.now(timezone.utc)
+                if should_send_status_alert and self.bot.server_manager:
+                    await self._send_status_alert_embeds()
+                    self._last_rcon_status_alert_sent = datetime.now(timezone.utc)
 
                 await self.bot.presence_manager.update()
                 previous_any_status = current_any_status
@@ -153,9 +153,9 @@ class RconMonitor:
         state["previous_status"] = current_status
         return transition_detected
 
-    async def _send_breakdown_embeds(self) -> None:
+    async def _send_status_alert_embeds(self) -> None:
         """
-        Send RCON status breakdown embeds to configured channels.
+        Send RCON status alert embeds to configured channels.
         """
         try:
             from .discord_interface import EmbedBuilder  # type: ignore
@@ -163,13 +163,13 @@ class RconMonitor:
             try:
                 from discord_interface import EmbedBuilder  # type: ignore
             except ImportError:
-                logger.error("discord_interface_not_available_for_breakdown")
+                logger.error("discord_interface_not_available_for_status_alert")
                 return
 
         if not self.bot.server_manager:
             return
 
-        embed = self._build_rcon_breakdown_embed(EmbedBuilder)
+        embed = self._build_rcon_status_alert_embed(EmbedBuilder)
         if embed is None:
             return
 
@@ -180,13 +180,13 @@ class RconMonitor:
                 try:
                     await channel.send(embed=embed)
                     logger.info(
-                        "rcon_breakdown_sent",
+                        "rcon_status_alert_sent",
                         scope="global",
                         channel_id=self.bot.event_channel_id,
                     )
                 except Exception as e:
                     logger.warning(
-                        "rcon_breakdown_send_failed",
+                        "rcon_status_alert_send_failed",
                         scope="global",
                         channel_id=self.bot.event_channel_id,
                         error=str(e),
@@ -210,21 +210,21 @@ class RconMonitor:
                 try:
                     await channel.send(embed=embed)
                     logger.info(
-                        "rcon_breakdown_sent",
+                        "rcon_status_alert_sent",
                         scope="server",
                         server_tag=tag,
                         channel_id=server_channel_id,
                     )
                 except Exception as e:
                     logger.warning(
-                        "rcon_breakdown_send_failed",
+                        "rcon_status_alert_send_failed",
                         scope="server",
                         server_tag=tag,
                         channel_id=server_channel_id,
                         error=str(e),
                     )
 
-    def _build_rcon_breakdown_embed(self, EmbedBuilder: Any) -> Optional[discord.Embed]:
+    def _build_rcon_status_alert_embed(self, EmbedBuilder: Any) -> Optional[discord.Embed]:
         """Build an embed summarizing RCON connectivity for all servers."""
         if not self.bot.server_manager:
             return None
@@ -237,7 +237,7 @@ class RconMonitor:
         connected_count = sum(1 for v in status_summary.values() if v)
 
         embed = discord.Embed(
-            title="📱 RCON Connection Status",
+            title="📱 RCON Status Alert",
             color=EmbedBuilder.COLOR_INFO,
             timestamp=discord.utils.utcnow(),
         )
