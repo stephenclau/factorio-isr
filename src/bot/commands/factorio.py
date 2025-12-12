@@ -1146,7 +1146,7 @@ def register_factorio_commands(bot: Any) -> None:
 
     @factorio_group.command(name="whitelist", description="Manage server whitelist")
     @app_commands.describe(
-        action="Action: add, remove, list, enable, disable",
+        action="Action to perform (add/remove/list/enable/disable)",
         player="Player name (required for add/remove)",
     )
     async def whitelist_command(
@@ -1155,7 +1155,7 @@ def register_factorio_commands(bot: Any) -> None:
         player: Optional[str] = None,
     ) -> None:
         """Manage the server whitelist."""
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(interaction.user.id)
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = EmbedBuilder.cooldown_embed(retry)
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1166,80 +1166,85 @@ def register_factorio_commands(bot: Any) -> None:
         rcon_client = bot.user_context.get_rcon_for_user(interaction.user.id)
 
         if rcon_client is None or not rcon_client.is_connected:
-            embed = EmbedBuilder.error_embed(f"RCON not available for {server_name}.")
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                f"Use `/factorio servers` to see available servers."
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
+        action = action.lower().strip()
+
         try:
-            action_lower = action.lower().strip()
-            embed = None
-
-            if action_lower == "add" and player:
-                await rcon_client.execute(f'/whitelist add {player}')
-                embed = discord.Embed(
-                    title="✅ Player Added to Whitelist",
-                    color=EmbedBuilder.COLOR_SUCCESS,
-                )
-                embed.add_field(name="Player", value=player, inline=True)
-                embed.add_field(name="Server", value=server_name, inline=True)
-            elif action_lower == "remove" and player:
-                await rcon_client.execute(f'/whitelist remove {player}')
-                embed = discord.Embed(
-                    title="❌ Player Removed from Whitelist",
-                    color=EmbedBuilder.COLOR_WARNING,
-                )
-                embed.add_field(name="Player", value=player, inline=True)
-                embed.add_field(name="Server", value=server_name, inline=True)
-            elif action_lower == "list":
-                response = await rcon_client.execute('/whitelist list')
-                embed = discord.Embed(
-                    title="📋 Server Whitelist",
-                    color=EmbedBuilder.COLOR_INFO,
-                )
-                if response and response.strip():
-                    wl_text = response.strip()
-                    if len(wl_text) > 1024:
-                        wl_text = wl_text[:1021] + "..."
-                    embed.add_field(
-                        name="Whitelisted Players",
-                        value=wl_text,
-                        inline=False,
-                    )
-                else:
-                    embed.description = "Whitelist is empty."
-            elif action_lower == "enable":
-                await rcon_client.execute('/whitelist enable')
-                embed = discord.Embed(
-                    title="🟢 Whitelist Enabled",
-                    color=EmbedBuilder.COLOR_SUCCESS,
-                )
-                embed.add_field(name="Server", value=server_name, inline=True)
-            elif action_lower == "disable":
-                await rcon_client.execute('/whitelist disable')
-                embed = discord.Embed(
-                    title="🔴 Whitelist Disabled",
-                    color=EmbedBuilder.COLOR_WARNING,
-                )
-                embed.add_field(name="Server", value=server_name, inline=True)
-            else:
-                embed = EmbedBuilder.error_embed(
-                    "Invalid action. Valid actions: add, remove, list, enable, disable"
-                )
-
-            if embed:
-                embed.set_footer(text="Action performed via Discord")
+            # List action
+            if action == "list":
+                resp = await rcon_client.execute("/whitelist get")
+                title = "📋 Whitelist"
+                embed = EmbedBuilder.info_embed(title=title, message=resp)
                 await interaction.followup.send(embed=embed)
+                logger.info("whitelist_list", moderator=interaction.user.name)
+                return
 
-            logger.info(
-                "whitelist_command_executed",
-                action=action_lower,
-                player=player,
-                moderator=interaction.user.name,
+            # Enable action
+            if action == "enable":
+                resp = await rcon_client.execute("/whitelist enable")
+                title = "✅ Whitelist Enabled"
+                embed = EmbedBuilder.info_embed(title=title, message=resp)
+                await interaction.followup.send(embed=embed)
+                logger.info("whitelist_enabled", moderator=interaction.user.name)
+                return
+
+            # Disable action
+            if action == "disable":
+                resp = await rcon_client.execute("/whitelist disable")
+                title = "⚠️ Whitelist Disabled"
+                embed = EmbedBuilder.info_embed(title=title, message=resp)
+                await interaction.followup.send(embed=embed)
+                logger.info("whitelist_disabled", moderator=interaction.user.name)
+                return
+
+            # Add action
+            if action == "add":
+                if not player:
+                    embed = EmbedBuilder.error_embed("Player name required for 'add' action")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                resp = await rcon_client.execute(f"/whitelist add {player}")
+                title = f"✅ {player} Added to Whitelist"
+                embed = EmbedBuilder.info_embed(title=title, message=resp)
+                await interaction.followup.send(embed=embed)
+                logger.info("whitelist_add", player=player, moderator=interaction.user.name)
+                return
+
+            # Remove action
+            if action == "remove":
+                if not player:
+                    embed = EmbedBuilder.error_embed("Player name required for 'remove' action")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                resp = await rcon_client.execute(f"/whitelist remove {player}")
+                title = f"🚫 {player} Removed from Whitelist"
+                embed = EmbedBuilder.info_embed(title=title, message=resp)
+                await interaction.followup.send(embed=embed)
+                logger.info("whitelist_remove", player=player, moderator=interaction.user.name)
+                return
+
+            # Invalid action
+            embed = EmbedBuilder.error_embed(
+                f"Invalid action: {action}\n\n"
+                f"Valid actions: add, remove, list, enable, disable"
             )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Whitelist command failed: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error("whitelist_command_failed", error=str(e))
+            logger.error(
+                "whitelist_command_failed",
+                error=str(e),
+                action=action,
+                player=player,
+            )
 
     # ========================================================================
     # GAME CONTROL COMMANDS (3/25)
