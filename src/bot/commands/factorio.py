@@ -40,21 +40,21 @@ try:
     from event_parser import FactorioEvent
     from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
     from discord_interface import EmbedBuilder
-    from bot.helpers import FactorioCommandHelpers 
+    from bot.helpers import format_uptime, get_seed, get_game_uptime
 except ImportError:
     try:
         # Fallback to package style (when installed as package)
         from src.event_parser import FactorioEvent  # type: ignore
         from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
         from src.discord_interface import EmbedBuilder  # type: ignore
-        from src.bot.helpers import FactorioCommandHelpers  # type: ignore
+        from src.bot.helpers import format_uptime, get_seed, get_game_uptime  # type: ignore
     except ImportError:
         # Last resort: use relative imports from parent
         try:
             from ..event_parser import FactorioEvent  # type: ignore
             from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
             from ..discord_interface import EmbedBuilder  # type: ignore
-            from ..bot.helpers import FactorioCommandHelpers  # type: ignore
+            from ..bot.helpers import format_uptime, get_seed, get_game_uptime  # type: ignore
         except ImportError:
             raise ImportError(
                 "Could not import event_parser, rate_limiting, discord_interface, or bot.helpers from any path"
