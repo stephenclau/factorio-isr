@@ -239,6 +239,9 @@ class ServerConfig:
     """Interval in seconds between RCON breakdown reports (for 'interval' mode). Default: 300s (5 min)."""
 
     # Metrics collection flags
+    enable_stats_gather: bool = True
+    """Enable stats gathering and Discord reporting. Default: True."""
+
     collect_ups: bool = True
     """Collect UPS metrics. Default: True."""
 
@@ -497,6 +500,7 @@ def load_config() -> Config:
                 f"Server {tag} rcon_breakdown_interval",
                 300,
             ),
+            enable_stats_gather=server_data.get("enable_stats_gather", True),
             collect_ups=server_data.get("collect_ups", True),
             collect_evolution=server_data.get("collect_evolution", True),
             enable_alerts=server_data.get("enable_alerts", True),
