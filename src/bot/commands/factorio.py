@@ -269,16 +269,21 @@ def register_factorio_commands(bot: Any) -> None:
             embed = EmbedBuilder.cooldown_embed(retry)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
-
+        
+        logger.debug("status_deferring")  # ADD THIS
         await interaction.response.defer()
 
         # Per-user server context
         server_tag = bot.get_user_server(interaction.user.id)
         server_name = bot.get_server_display_name(interaction.user.id)
-
+        logger.debug("status_server_context", server_tag=server_tag, server_name=server_name) 
+        
         # User-specific RCON client
         rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        logger.debug("status_rcon_client", has_client=rcon_client is not None)
+        
         if rcon_client is None or not rcon_client.is_connected:
+            logger.warning("status_rcon_unavailable")
             embed = EmbedBuilder.error_embed(
                 f"RCON not available for {server_name}.\n"
                 "Use `/factorio servers` to see available servers."
@@ -287,6 +292,7 @@ def register_factorio_commands(bot: Any) -> None:
             return
 
         try:
+            logger.debug("status_fetching_data")
             # Bot + RCON status
             bot_online = bot._connected
             bot_status = "🟢 Online" if bot_online else "🔴 Offline"
