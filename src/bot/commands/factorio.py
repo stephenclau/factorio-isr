@@ -336,13 +336,21 @@ def register_factorio_commands(bot: Any) -> None:
                 inline=True,
             )
 
+            # ✨ Pause State (independent field, separate from UPS)
+            is_paused = metrics.get("is_paused", False)
+            pause_status = "⏸️ Paused" if is_paused else "▶️ Running"
+            embed.add_field(
+                name="🎮 Server State",
+                value=pause_status,
+                inline=True,
+            )
+
             # ✨ Performance Metrics (from metrics engine)
-            pause_indicator = "⏸️" if metrics.get("is_paused") else "▶️"
             if metrics.get("ups") is not None:
                 ups_str = f"{metrics['ups']:.1f}"
                 embed.add_field(
                     name="⚡ UPS (Current)",
-                    value=f"{pause_indicator} {ups_str}",
+                    value=ups_str,
                     inline=True,
                 )
             
@@ -406,6 +414,7 @@ def register_factorio_commands(bot: Any) -> None:
                 has_metrics=True,
                 ups=metrics.get("ups"),
                 evolution=metrics.get("evolution_factor"),
+                is_paused=metrics.get("is_paused"),
             )
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get status: {str(e)}")
