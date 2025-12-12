@@ -82,6 +82,14 @@ servers:
     # RCON Polling Interval (seconds)
     stats_interval: 300
     
+    # Stats Collection (Optional)
+    # Toggle periodic stats posting to Discord
+    enable_stats_collector: true 
+    
+    # Fine-grained Metric Toggles (Optional, default true)
+    enable_ups_stat: true        # Collect and report UPS
+    enable_evolution_stat: true  # Collect and report Evolution
+    
   space_age:
     log_path: /factorio/space_age/console.log
     rcon_host: factorio-2.internal
@@ -89,6 +97,7 @@ servers:
     rcon_password: "another_password"
     discord_channel_id: 987654321098765432
     stats_interval: 300
+    enable_stats_collector: false # Disable stats posting for this server
 ```
 
 ---
