@@ -213,6 +213,7 @@ class DiscordBot(discord.Client):
         """Called when the bot is starting up. Set up commands here."""
         # Register all /factorio commands
         register_factorio_commands(self)
+        logger.info("commands_registered") 
         logger.info("discord_bot_setup_complete")
 
     # ========================================================================

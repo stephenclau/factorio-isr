@@ -1613,8 +1613,8 @@ def register_factorio_commands(bot: Any) -> None:
 
     bot.tree.add_command(factorio_group)
     logger.info(
-        "factorio_commands_registered",
-        root=factorio_group.name,
-        command_count=len(factorio_group.commands),
-        phase="7.0-discrete-enclosures",
-    )
+            "slash_commands_registered",
+            root=factorio_group.name,
+            command_count=len(factorio_group.commands),
+            phase="7.0 discordbot refactor",
+        )
