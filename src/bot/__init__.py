@@ -16,7 +16,7 @@
 """Discord bot module - refactored components for modular architecture."""
 
 from .user_context import UserContextManager
-from .rcon_monitor import RconMonitor
+from .rcon_health_monitor import RconMonitor
 from .event_handler import EventHandler
 from .helpers import PresenceManager
 
