@@ -180,8 +180,8 @@ class ServerManager:
                 rcon_client=client,
                 discord_interface=server_interface,
                 interval=config.stats_interval,
-                collect_ups=getattr(config, 'collect_ups', True),
-                collect_evolution=getattr(config, 'collect_evolution', True),
+                enable_ups_stat=config.enable_ups_stat,
+                enable_evolution_stat=config.enable_evolution_stat,
             )
 
             await collector.start()
@@ -192,8 +192,8 @@ class ServerManager:
                 tag=config.tag,
                 channel_id=config.event_channel_id,
                 interval=config.stats_interval,
-                ups_enabled=getattr(config, 'collect_ups', True),
-                evolution_enabled=getattr(config, 'collect_evolution', True),
+                ups_enabled=config.enable_ups_stat,
+                evolution_enabled=config.enable_evolution_stat,
             )
         elif not config.enable_stats_gather:
             logger.info(
