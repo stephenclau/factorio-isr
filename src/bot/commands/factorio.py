@@ -441,9 +441,7 @@ def register_factorio_commands(bot: Any) -> None:
 
         try:
             # Execute RCON command
-            response = await rcon_client.execute(
-                '/sc rcon.print(game.active_mods["base"].version)'
-            )
+            response = await rcon_client.execute("/version")
             
             # Parse response
             version = response.strip() if response else "Unknown"
@@ -622,7 +620,7 @@ def register_factorio_commands(bot: Any) -> None:
 
             embed.set_footer(text="Factorio ISR")
             await interaction.followup.send(embed=embed)
-            logger.info("admins_command_executed", admin_count=len(admins))
+            logger.info("admins_command_executed", admin_count=len(admins), moderator=interaction.user.name)
         except Exception as e:
             embed = EmbedBuilder.error_embed(f"Failed to get admins: {str(e)}")
             await interaction.followup.send(embed=embed, ephemeral=True)
