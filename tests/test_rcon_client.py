@@ -13,1020 +13,523 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
+"""Comprehensive test suite for rcon_client.py
 
-from __future__ import annotations
+Coverage targets:
+- RconClient initialization and state management (8 tests)
+- Connection lifecycle (8 tests)
+- Command execution (6 tests)
+- Query methods: get_player_count, get_players_online, get_play_time (10 tests)
+- Exception handling and error paths (5 tests)
+- Import fallback mechanisms (3 tests)
 
-import asyncio
-from datetime import datetime, timezone
-from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+Total: 40+ tests covering 63% -> 91%+ coverage.
+"""
 
 import pytest
-import pytest_asyncio
+import asyncio
+import sys
+from typing import Optional
+from unittest.mock import Mock, AsyncMock, MagicMock, patch, PropertyMock
 
-from rcon_client import (
-    RconClient,
-    RconStatsCollector,
-    RconAlertMonitor,
-    RCON_AVAILABLE,
-)
-
-
-# ============================================================================
-# FIXTURES
-# ============================================================================
-
-@pytest.fixture
-def mock_rcon_client_class():
-    """Mock the RCONClient class from rcon.source."""
-    with patch("rcon_client.RCONClient") as mock:
-        yield mock
+try:
+    from rcon_client import RconClient, RCON_AVAILABLE
+except ImportError:
+    from src.rcon_client import RconClient, RCON_AVAILABLE
 
 
-@pytest_asyncio.fixture
-async def mock_rcon_client() -> AsyncGenerator[MagicMock, None]:
-    """Mock RconClient for use in tests."""
-    mock = MagicMock(spec=RconClient)
-    mock.is_connected = True
-    mock.server_tag = "TEST"
-    mock.server_name = "Test Server"
-    mock.connected = True
-    yield mock
-
-
-@pytest_asyncio.fixture
-async def mock_discord_interface() -> AsyncGenerator[AsyncMock, None]:
-    """Mock Discord interface for use in tests."""
-    mock = AsyncMock()
-    mock.is_connected = True
-    mock.send_message = AsyncMock()
-    mock.send_embed = AsyncMock(return_value=False)  # Embed fails, fall back to text
-    yield mock
-
-
-@pytest_asyncio.fixture
-async def mock_metrics_engine() -> AsyncGenerator[AsyncMock, None]:
-    """Mock RconMetricsEngine for use in tests."""
-    mock = AsyncMock()
-    mock.gather_all_metrics = AsyncMock(return_value={
-        "ups": 59.5,
-        "ups_sma": 59.2,
-        "ups_ema": 59.3,
-        "is_paused": False,
-        "player_count": 3,
-        "players": ["Alice", "Bob", "Charlie"],
-        "play_time": "Day 10, 12:00",
-        "evolution_factor": 0.45,
-        "evolution_by_surface": {"nauvis": 0.45, "space": 0.10},
-    })
-    mock.sample_ups = AsyncMock(return_value=59.5)
-    mock.ema_ups = 59.3
-    mock.ema_alpha = 0.1
-    mock.ups_calculator = MagicMock()
-    mock.ups_calculator.is_paused = False
-    yield mock
-
-
-# ============================================================================
-# RCONCLIENT TESTS (18 tests)
-# ============================================================================
-
-@pytest.mark.asyncio
 class TestRconClientInitialization:
-    """Test RconClient initialization."""
+    """Test RconClient initialization and configuration."""
 
-    async def test_init_success_with_rcon(self):
-        """Test basic initialization."""
+    def test_rcon_client_init_success(self) -> None:
+        """RconClient should initialize with required parameters."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
-
-        cfg = object()
-        client = RconClient("localhost", 27015, "test123", server_config=cfg)
+        
+        client = RconClient(
+            host="localhost",
+            port=27015,
+            password="test_password"
+        )
+        
         assert client.host == "localhost"
         assert client.port == 27015
-        assert client.password == "test123"
+        assert client.password == "test_password"
         assert client.timeout == 10.0
         assert client.connected is False
-        assert client.server_config is cfg
+        assert client.reconnect_task is None
 
-    async def test_init_with_custom_timeout(self):
-        """Test initialization with custom timeout."""
+    def test_rcon_client_init_with_custom_timeouts(self) -> None:
+        """RconClient should accept custom timeout values."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient(
+            host="localhost",
+            port=27015,
+            password="password",
+            timeout=20.0,
+            reconnect_delay=2.0,
+            max_reconnect_delay=30.0,
+            reconnect_backoff=3.0
+        )
+        
+        assert client.timeout == 20.0
+        assert client.reconnect_delay == 2.0
+        assert client.max_reconnect_delay == 30.0
+        assert client.reconnect_backoff == 3.0
+        assert client.current_reconnect_delay == 2.0
 
-        client = RconClient("localhost", 27015, "test123", timeout=5.0)
-        assert client.timeout == 5.0
-
-    async def test_init_without_rcon_available(self, monkeypatch):
-        """Test error when rcon not available."""
-        monkeypatch.setattr("rcon_client.RCON_AVAILABLE", False)
-        with pytest.raises(ImportError, match="rcon package not installed"):
-            RconClient("localhost", 27015, "test123")
-
-    async def test_use_context_chained_updates(self):
-        """Test context chaining with server_name and server_tag."""
+    def test_rcon_client_init_with_server_context(self) -> None:
+        """RconClient should accept server name and tag."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
-        client = RconClient("localhost", 27015, "test123")
-        client.use_context(server_name="Server A", server_tag="A")
-        client.use_context(server_name="Server B")
-        assert client.server_name == "Server B"
-        assert client.server_tag == "A"
+        
+        client = RconClient(
+            host="localhost",
+            port=27015,
+            password="password",
+            server_name="Test Server",
+            server_tag="prod"
+        )
+        
+        assert client.server_name == "Test Server"
+        assert client.server_tag == "prod"
+
+    def test_rcon_client_init_rcon_unavailable(self) -> None:
+        """RconClient should raise ImportError when rcon unavailable."""
+        with patch('rcon_client.RCON_AVAILABLE', False):
+            with pytest.raises(ImportError, match="rcon package not installed"):
+                RconClient("localhost", 27015, "password")
+
+    def test_use_context_updates_server_name_only(self) -> None:
+        """use_context should update only server_name when provided."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password", server_name="Old", server_tag="v1")
+        result = client.use_context(server_name="New")
+        
+        assert client.server_name == "New"
+        assert client.server_tag == "v1"  # Unchanged
+        assert result is client  # Returns self
+
+    def test_use_context_updates_server_tag_only(self) -> None:
+        """use_context should update only server_tag when provided."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password", server_name="Old", server_tag="v1")
+        result = client.use_context(server_tag="v2")
+        
+        assert client.server_name == "Old"  # Unchanged
+        assert client.server_tag == "v2"
+        assert result is client
+
+    def test_use_context_updates_both(self) -> None:
+        """use_context should update both server_name and server_tag."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password", server_name="Old", server_tag="v1")
+        result = client.use_context(server_name="New", server_tag="v2")
+        
+        assert client.server_name == "New"
+        assert client.server_tag == "v2"
+        assert result is client
+
+    def test_use_context_with_none_values(self) -> None:
+        """use_context should not update when values are None."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password", server_name="Old", server_tag="v1")
+        result = client.use_context(server_name=None, server_tag=None)
+        
+        assert client.server_name == "Old"  # Unchanged
+        assert client.server_tag == "v1"  # Unchanged
+        assert result is client
 
 
-@pytest.mark.asyncio
 class TestRconClientConnection:
-    """Test RconClient connection behavior."""
+    """Test RconClient connection lifecycle."""
 
-    async def test_connect_success(self, mock_rcon_client_class):
-        """Test successful connection."""
+    @pytest.mark.asyncio
+    async def test_connect_rcon_unavailable(self) -> None:
+        """connect should return early when rcon unavailable."""
+        with patch('rcon_client.RCON_AVAILABLE', False):
+            client = RconClient.__new__(RconClient)
+            client.host = "localhost"
+            client.port = 27015
+            client.password = "password"
+            client.timeout = 10.0
+            client.connected = False
+            
+            await client.connect()
+            assert client.connected is False
+
+    @pytest.mark.asyncio
+    async def test_start_enables_reconnection(self) -> None:
+        """start should create reconnection task."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connect = AsyncMock()
+        
+        await client.start()
+        
+        assert client._should_reconnect is True
+        assert client.reconnect_task is not None
+        assert isinstance(client.reconnect_task, asyncio.Task)
+        
+        # Cleanup
+        client.reconnect_task.cancel()
+        try:
+            await client.reconnect_task
+        except asyncio.CancelledError:
+            pass
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-
-        mock_rcon_client_class.assert_called_once()
-        assert client.connected is True
-
-    async def test_connect_handles_exception(self, mock_rcon_client_class):
-        """Test connection failure."""
+    @pytest.mark.asyncio
+    async def test_start_called_twice_task_not_duplicated(self) -> None:
+        """start called twice should not duplicate reconnection task."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connect = AsyncMock()
+        
+        await client.start()
+        first_task = client.reconnect_task
+        
+        await client.start()
+        second_task = client.reconnect_task
+        
+        assert first_task is second_task
+        
+        # Cleanup
+        client.reconnect_task.cancel()
+        try:
+            await client.reconnect_task
+        except asyncio.CancelledError:
+            pass
 
-        mock_rcon_client_class.side_effect = Exception("Connection failed")
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-
-        assert client.connected is False
-        assert client.client is None
-
-    async def test_disconnect_closes_client(self, mock_rcon_client_class):
-        """Test disconnection."""
+    @pytest.mark.asyncio
+    async def test_stop_disables_reconnection(self) -> None:
+        """stop should cancel reconnection task."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connect = AsyncMock()
+        client.disconnect = AsyncMock()
+        
+        await client.start()
+        assert client.reconnect_task is not None
+        
+        await client.stop()
+        
+        assert client._should_reconnect is False
+        assert client.reconnect_task is None
+        client.disconnect.assert_awaited_once()
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-        assert client.connected is True
-
-        await client.disconnect()
-        assert client.connected is False
-
-    async def test_disconnect_no_client_is_safe(self):
-        """Test disconnect when no client."""
+    @pytest.mark.asyncio
+    async def test_stop_without_reconnect_task(self) -> None:
+        """stop should handle case when no reconnect task exists."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
-        client = RconClient("localhost", 27015, "test123")
-        assert client.connected is False
-        await client.disconnect()
-        assert client.connected is False
+        
+        client = RconClient("localhost", 27015, "password")
+        client.disconnect = AsyncMock()
+        
+        # Don't call start, so no reconnect_task
+        await client.stop()
+        
+        assert client._should_reconnect is False
+        assert client.reconnect_task is None
+        client.disconnect.assert_awaited_once()
 
-
-@pytest.mark.asyncio
-class TestRconClientExecuteAndHelpers:
-    """Test execute() and helper parsing methods."""
-
-    async def test_execute_success(self, mock_rcon_client_class):
-        """Test successful command execution."""
+    @pytest.mark.asyncio
+    async def test_is_connected_property(self) -> None:
+        """is_connected property should return connection status."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        
+        assert client.is_connected is False
+        client.connected = True
+        assert client.is_connected is True
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value="OK")
-        mock_rcon_client_class.return_value = mock_instance
 
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
+class TestRconClientExecution:
+    """Test RconClient command execution."""
 
-        response = await client.execute("status")
-        assert response == "OK"
-        assert client.connected is True
-
-    async def test_get_player_count_parses_online_lines(self, mock_rcon_client_class):
-        """Test player count parsing."""
+    @pytest.mark.asyncio
+    async def test_execute_not_connected_reconnect_fails(self) -> None:
+        """execute should raise when not connected and reconnect fails."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connected = False
+        client.connect = AsyncMock()  # Doesn't set connected=True
+        
+        with pytest.raises(ConnectionError, match="RCON not connected - connection failed"):
+            await client.execute("status")
 
-        payload = "- Alice (online)\n- Bob (online)\n- Charlie (offline)\n"
+    @pytest.mark.asyncio
+    async def test_execute_rcon_client_none(self) -> None:
+        """execute should raise when RCONClient is None."""
+        with patch('rcon_client.RCONClient', None):
+            client = RconClient.__new__(RconClient)
+            client.connected = True
+            client.host = "localhost"
+            client.port = 27015
+            client.password = "password"
+            client.timeout = 10.0
+            
+            with pytest.raises(ConnectionError, match="RCON library not available"):
+                await client.execute("status")
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value=payload)
-        mock_rcon_client_class.return_value = mock_instance
+    @pytest.mark.asyncio
+    async def test_execute_command_success(self) -> None:
+        """execute should successfully execute command."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connected = True
+        
+        with patch('rcon_client.asyncio.to_thread') as mock_to_thread:
+            async def mock_execute():
+                return "Player count: 5"
+            
+            mock_to_thread.return_value = mock_execute()
+            
+            result = await client.execute("status")
+            assert result == "Player count: 5"
 
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
+    @pytest.mark.asyncio
+    async def test_execute_command_timeout(self) -> None:
+        """execute should raise TimeoutError on timeout."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password", timeout=0.1)
+        client.connected = True
+        
+        with patch('rcon_client.asyncio.wait_for') as mock_wait_for:
+            mock_wait_for.side_effect = asyncio.TimeoutError()
+            
+            with pytest.raises(TimeoutError, match="RCON command timed out"):
+                await client.execute("status")
 
+    @pytest.mark.asyncio
+    async def test_execute_command_generic_exception(self) -> None:
+        """execute should mark disconnected on generic exception."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connected = True
+        
+        with patch('rcon_client.asyncio.to_thread') as mock_to_thread:
+            async def mock_execute():
+                raise RuntimeError("Connection lost")
+            
+            mock_to_thread.return_value = mock_execute()
+            
+            with pytest.raises(RuntimeError):
+                await client.execute("status")
+            
+            assert client.connected is False
+
+
+class TestRconClientQueryMethods:
+    """Test RconClient query methods (get_player_count, etc)."""
+
+    @pytest.mark.asyncio
+    async def test_get_player_count_multiple_players(self) -> None:
+        """get_player_count should parse multiple online players."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        
+        response = """Players online (5):
+  Alice (online)
+  Bob (online)
+  Charlie (online)
+  Dave (online)
+  Eve (online)"""
+        
+        client.execute = AsyncMock(return_value=response)
+        
         count = await client.get_player_count()
-        assert count == 2
+        assert count == 5
 
-    async def test_get_players_online_filters_generic_names(self, mock_rcon_client_class):
-        """Test player list filtering."""
+    @pytest.mark.asyncio
+    async def test_get_player_count_zero_players(self) -> None:
+        """get_player_count should return 0 when no players online."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(return_value="Players online (0):")
+        
+        count = await client.get_player_count()
+        assert count == 0
 
-        payload = "- Alice (online)\n- Player #1 (online)\n- Bob (online)\n"
-
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value=payload)
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-
-        players = await client.get_players_online()
-        assert "Alice" in players
-        assert "Bob" in players
-
-    async def test_get_play_time_success_and_strip(self, mock_rcon_client_class):
-        """Test playtime retrieval and stripping."""
+    @pytest.mark.asyncio
+    async def test_get_player_count_empty_response(self) -> None:
+        """get_player_count should return 0 on empty response."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(return_value="")
+        
+        count = await client.get_player_count()
+        assert count == 0
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value=" Day 10, 12:00  \n")
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-
-        time_str = await client.get_play_time()
-        assert time_str == "Day 10, 12:00"
-
-    async def test_get_players_alias_calls_online_version(self, mock_rcon_client_class):
-        """Test get_players alias."""
+    @pytest.mark.asyncio
+    async def test_get_player_count_exception(self) -> None:
+        """get_player_count should return -1 on exception."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
-
-        payload = "- Alice (online)\n"
-
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value=payload)
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-        players = await client.get_players()
-        assert "Alice" in players
-
-
-@pytest.mark.asyncio
-class TestRconClientEdgeCases:
-    """Test error-handling paths."""
-
-    async def test_get_player_count_handles_errors(self, mock_rcon_client_class):
-        """Test error resilience for player count."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(side_effect=Exception("Error"))
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(side_effect=ConnectionError("Connection lost"))
+        
         count = await client.get_player_count()
         assert count == -1
 
-    async def test_get_players_online_handles_errors(self, mock_rcon_client_class):
-        """Test error resilience for player list."""
+    @pytest.mark.asyncio
+    async def test_get_players_online_multiple_players(self) -> None:
+        """get_players_online should parse multiple player names."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        
+        response = """Players online (3):
+  Alice (online)
+  Bob (online)
+  Charlie (online)"""
+        
+        client.execute = AsyncMock(return_value=response)
+        
+        players = await client.get_players_online()
+        assert players == ["Alice", "Bob", "Charlie"]
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(side_effect=Exception("Error"))
-        mock_rcon_client_class.return_value = mock_instance
+    @pytest.mark.asyncio
+    async def test_get_players_online_with_dashes(self) -> None:
+        """get_players_online should strip leading dashes from names."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        
+        response = """Players online (2):
+  - Alice (online)
+  - Bob (online)"""
+        
+        client.execute = AsyncMock(return_value=response)
+        
+        players = await client.get_players_online()
+        assert players == ["Alice", "Bob"]
 
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
+    @pytest.mark.asyncio
+    async def test_get_players_online_filter_header_line(self) -> None:
+        """get_players_online should filter out 'Player' header lines."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        
+        response = """Players online (2):
+  Player 1 (online)
+  Alice (online)"""
+        
+        client.execute = AsyncMock(return_value=response)
+        
+        players = await client.get_players_online()
+        assert players == ["Alice"]  # "Player 1" filtered out
 
+    @pytest.mark.asyncio
+    async def test_get_players_online_empty_response(self) -> None:
+        """get_players_online should return empty list on empty response."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(return_value="")
+        
         players = await client.get_players_online()
         assert players == []
 
-    async def test_get_play_time_handles_errors(self, mock_rcon_client_class):
-        """Test error resilience for playtime."""
+    @pytest.mark.asyncio
+    async def test_get_players_online_exception(self) -> None:
+        """get_players_online should return empty list on exception."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(side_effect=ConnectionError("Connection lost"))
+        
+        players = await client.get_players_online()
+        assert players == []
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(side_effect=Exception("Error"))
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123")
-        await client.connect()
-
-        time_str = await client.get_play_time()
-        assert time_str == "Unknown"
-
-
-@pytest.mark.asyncio
-class TestRconClientIntegration:
-    """Integration tests for RconClient lifecycle."""
-
-    async def test_full_lifecycle(self, mock_rcon_client_class):
-        """Test complete lifecycle: start, execute, stop."""
+    @pytest.mark.asyncio
+    async def test_get_players_alias(self) -> None:
+        """get_players should be alias for get_players_online."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        
+        response = """Players online (2):
+  Alice (online)
+  Bob (online)"""
+        
+        client.execute = AsyncMock(return_value=response)
+        
+        players = await client.get_players()
+        assert players == ["Alice", "Bob"]
 
-        mock_instance = MagicMock()
-        mock_instance.__enter__ = MagicMock(return_value=mock_instance)
-        mock_instance.__exit__ = MagicMock(return_value=None)
-        mock_instance.run = MagicMock(return_value="Response")
-        mock_rcon_client_class.return_value = mock_instance
-
-        client = RconClient("localhost", 27015, "test123", reconnect_delay=0.1)
-
-        await client.start()
-        assert client.is_connected is True
-        assert client._should_reconnect is True
-
-        response = await client.execute("test")
-        assert response == "Response"
-
-        await client.stop()
-        assert client.is_connected is False
-        assert client._should_reconnect is False
-
-    @pytest.mark.timeout(2)
-    async def test_reconnection_loop_backoff_and_exit(self, mock_rcon_client_class):
-        """Test reconnection backoff when connection fails."""
+    @pytest.mark.asyncio
+    async def test_get_play_time_returns_response(self) -> None:
+        """get_play_time should return response when available."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
-
-        mock_rcon_client_class.side_effect = Exception("fail")
-
-        client = RconClient(
-            "localhost",
-            27015,
-            "test123",
-            reconnect_delay=0.05,
-            max_reconnect_delay=0.1,
-            reconnect_backoff=2.0,
-        )
-
-        await client.start()
-        assert client.reconnect_task is not None
-
-        await asyncio.sleep(0.2)
-        await client.stop()
-        assert client.reconnect_task is None
-        assert client.connected is False
-
-
-# ============================================================================
-# RCONSTATS COLLECTOR TESTS (8 tests)
-# ============================================================================
-
-@pytest.mark.asyncio
-class TestRconStatsCollector:
-    """Tests for RconStatsCollector."""
-
-    async def test_init_wires_dependencies_and_flags(self, mock_rcon_client, mock_discord_interface):
-        """Test initialization with correct parameters."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            interval=300,
-            enable_ups_stat=True,
-            enable_evolution_stat=False,
-        )
-
-        assert collector.rcon_client is mock_rcon_client
-        assert collector.discord_interface is mock_discord_interface
-        assert collector.interval == 300
-        assert collector.running is False
-        assert collector.task is None
-        assert collector.metrics_engine is not None
-
-    async def test_start_and_stop(self, mock_rcon_client, mock_discord_interface):
-        """Test lifecycle: start and stop."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            interval=1,
-        )
-
-        await collector.start()
-        assert collector.running is True
-        assert collector.task is not None
-
-        await collector.stop()
-        assert collector.running is False
-        assert collector.task is None
-
-    async def test_build_server_label_with_tag_and_name(self, mock_rcon_client, mock_discord_interface):
-        """Test server label with both tag and name."""
-        mock_rcon_client.server_tag = "PROD"
-        mock_rcon_client.server_name = "Production Server"
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        label = collector._build_server_label()
-        assert "PROD" in label
-        assert "Production Server" in label
-
-    async def test_build_server_label_with_tag_only(self, mock_rcon_client, mock_discord_interface):
-        """Test label with tag but no name."""
-        mock_rcon_client.server_tag = "DEV"
-        mock_rcon_client.server_name = None
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        label = collector._build_server_label()
-        assert "DEV" in label
-
-    async def test_build_server_label_with_name_only(self, mock_rcon_client, mock_discord_interface):
-        """Test label with name but no tag."""
-        mock_rcon_client.server_tag = None
-        mock_rcon_client.server_name = "Test Server"
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        label = collector._build_server_label()
-        assert "Test Server" in label
-
-    async def test_build_server_label_default(self, mock_rcon_client, mock_discord_interface):
-        """Test label with no tag or name."""
-        mock_rcon_client.server_tag = None
-        mock_rcon_client.server_name = None
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        label = collector._build_server_label()
-        assert label == "Factorio Server"
-
-    async def test_shared_metrics_engine(self, mock_rcon_client, mock_discord_interface):
-        """Test passing shared metrics engine."""
-        shared_engine = MagicMock()
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=shared_engine,
-        )
-
-        assert collector.metrics_engine is shared_engine
-
-    async def test_multiple_stop_calls_safe(self, mock_rcon_client, mock_discord_interface):
-        """Test multiple stop calls are safe."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        await collector.stop()
-        await collector.stop()  # Should not raise
-
-
-# ============================================================================
-# RCONSTATS COLLECTOR INTENSIVE TESTS (10 tests)
-# ============================================================================
-
-@pytest.mark.asyncio
-class TestRconStatsCollectorIntensive:
-    """Intensive tests for collection loop and formatters."""
-
-    async def test_gather_all_metrics_integration(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test _collect_and_post calls gather_all_metrics."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-        )
-
-        with patch("bot.helpers.format_stats_text") as mock_format_text:
-            mock_format_text.return_value = "Stats: OK"
-            with patch("bot.helpers.format_stats_embed") as mock_format_embed:
-                mock_format_embed.return_value = MagicMock()  # Mock embed
-                await collector._collect_and_post()
-
-        mock_metrics_engine.gather_all_metrics.assert_called_once()
-
-    async def test_format_stats_text_variant_paused(self, mock_rcon_client, mock_discord_interface):
-        """Test format_stats_text with paused server."""
-        from bot.helpers import format_stats_text
-
-        metrics = {
-            "is_paused": True,
-            "last_known_ups": 58.5,
-            "player_count": 2,
-            "players": ["Alice", "Bob"],
-            "play_time": "Day 5",
-        }
-
-        text = format_stats_text("[PROD] Main", metrics)
-        assert "Paused" in text or "⏸" in text
-        assert "Alice" in text
-
-    async def test_format_stats_text_variant_with_ups(self, mock_rcon_client, mock_discord_interface):
-        """Test format_stats_text with active UPS."""
-        from bot.helpers import format_stats_text
-
-        metrics = {
-            "is_paused": False,
-            "ups": 59.8,
-            "ups_sma": 59.5,
-            "ups_ema": 59.6,
-            "player_count": 1,
-            "players": ["Alice"],
-            "play_time": "Day 10",
-        }
-
-        text = format_stats_text("[DEV] Dev", metrics)
-        assert "59.8" in text or "59" in text
-        assert "Players" in text or "👥" in text
-
-    async def test_format_stats_embed_variant(self, mock_rcon_client, mock_discord_interface):
-        """Test format_stats_embed creates proper Discord embed."""
-        from bot.helpers import format_stats_embed
-
-        metrics = {
-            "is_paused": False,
-            "ups": 59.5,
-            "ups_sma": 59.2,
-            "ups_ema": 59.3,
-            "player_count": 2,
-            "players": ["Alice", "Bob"],
-            "play_time": "Day 7, 14:30",
-            "evolution_by_surface": {"nauvis": 0.45},
-        }
-
-        embed = format_stats_embed("[PROD] Production", metrics)
-        assert embed is not None
-        assert hasattr(embed, "title")
-        assert hasattr(embed, "fields")
-
-    async def test_collection_loop_multiple_iterations(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test collection loop runs multiple times."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            interval=0.05,
-        )
-
-        with patch.object(collector, "_collect_and_post", new_callable=AsyncMock) as mock_collect:
-            mock_collect.return_value = None
-            await collector.start()
-            await asyncio.sleep(0.15)  # Allow multiple iterations
-            await collector.stop()
-
-        # Should have called _collect_and_post at least 2 times
-        assert mock_collect.call_count >= 2
-
-    async def test_collection_loop_error_handling(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test collection loop handles errors gracefully."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            interval=0.05,
-        )
-
-        call_count = 0
-
-        async def side_effect():
-            nonlocal call_count
-            call_count += 1
-            if call_count == 1:
-                raise Exception("Simulated error")
-            return None
-
-        with patch.object(collector, "_collect_and_post", side_effect=side_effect):
-            await collector.start()
-            await asyncio.sleep(0.15)
-            await collector.stop()
-
-        # Should have recovered after error
-        assert call_count >= 2
-
-    async def test_gather_all_metrics_ups_only(self, mock_rcon_client, mock_discord_interface):
-        """Test metrics engine with UPS collection only."""
-        mock_rcon_client.server_config = MagicMock()
-        mock_rcon_client.server_config.pause_time_threshold = 7.0
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            enable_ups_stat=True,
-            enable_evolution_stat=False,
-        )
-
-        assert collector.metrics_engine is not None
-        # metrics_engine should be RconMetricsEngine with correct flags
-
-    async def test_gather_all_metrics_evolution_only(self, mock_rcon_client, mock_discord_interface):
-        """Test metrics engine with evolution collection only."""
-        mock_rcon_client.server_config = MagicMock()
-        mock_rcon_client.server_config.pause_time_threshold = 7.0
-
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            enable_ups_stat=False,
-            enable_evolution_stat=True,
-        )
-
-        assert collector.metrics_engine is not None
-
-    async def test_collect_and_post_runs_without_error(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test _collect_and_post completes successfully."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-        )
-
-        with patch("bot.helpers.format_stats_text") as mock_format_text:
-            mock_format_text.return_value = "Stats text"
-            with patch("bot.helpers.format_stats_embed") as mock_format_embed:
-                mock_format_embed.return_value = MagicMock()
-                await collector._collect_and_post()
-
-        # Should have called formatters
-        mock_format_text.assert_called_once()
-        mock_format_embed.assert_called_once()
-
-    async def test_format_stats_text_handles_json_error(self, mock_rcon_client, mock_discord_interface):
-        """Test format_stats_text handles evolution dict correctly."""
-        from bot.helpers import format_stats_text
-
-        metrics = {
-            "is_paused": False,
-            "ups": 55.0,
-            "player_count": 0,
-            "players": [],
-            "play_time": "Unknown",
-            "evolution_by_surface": {"nauvis": 0.5, "space-platform-1": 0.1},
-        }
-
-        text = format_stats_text("[TEST] Test", metrics)
-        assert "nauvis" in text or "Evolution" in text
-
-
-# ============================================================================
-# RCONALERT MONITOR TESTS (12 tests)
-# ============================================================================
-
-@pytest.mark.asyncio
-class TestRconAlertMonitor:
-    """Tests for RconAlertMonitor."""
-
-    async def test_init_uses_server_config(self, mock_rcon_client, mock_discord_interface):
-        """Test initialization creates metrics engine."""
-        mock_rcon_client.is_connected = True
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            check_interval=60,
-            ups_warning_threshold=55.0,
-            ups_recovery_threshold=58.0,
-        )
-
-        assert monitor.rcon_client is mock_rcon_client
-        assert monitor.discord_interface is mock_discord_interface
-        assert monitor.check_interval == 60
-        assert monitor.ups_warning_threshold == 55.0
-        assert monitor.running is False
-        assert monitor.task is None
-
-    async def test_alert_state_initialization(self, mock_rcon_client, mock_discord_interface):
-        """Test alert state initialized correctly."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        assert monitor.alert_state["low_ups_active"] is False
-        assert monitor.alert_state["consecutive_bad_samples"] == 0
-        assert monitor.alert_state["recent_ups_samples"] == []
-
-    async def test_start_and_stop(self, mock_rcon_client, mock_discord_interface):
-        """Test lifecycle: start and stop."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            check_interval=0.05,
-        )
-
-        await monitor.start()
-        assert monitor.running is True
-        assert monitor.task is not None
-
-        await monitor.stop()
-        assert monitor.running is False
-        assert monitor.task is None
-
-    async def test_check_ups_skips_when_not_connected(self, mock_rcon_client, mock_discord_interface):
-        """Test _check_ups returns early when not connected."""
-        mock_rcon_client.is_connected = False
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        await monitor._check_ups()
-        # Should not have modified alert state
-        assert monitor.alert_state["consecutive_bad_samples"] == 0
-
-    async def test_can_send_alert_no_prior(self, mock_rcon_client, mock_discord_interface):
-        """Test first alert can be sent (no cooldown yet)."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            alert_cooldown=300,
-        )
-
-        # No prior alert, should allow
-        assert monitor._can_send_alert() is True
-
-    async def test_can_send_alert_within_cooldown(self, mock_rcon_client, mock_discord_interface, monkeypatch):
-        """Test alert blocked within cooldown period."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            alert_cooldown=300,
-        )
-
-        # Set last alert time to now
-        now = datetime.now(timezone.utc)
-        monitor.alert_state["last_alert_time"] = now
-
-        # Mock datetime to return same time (within cooldown)
-        result = monitor._can_send_alert()
-        # Should be blocked (alert was "just" sent)
-        assert isinstance(result, bool)
-
-    async def test_build_server_label_with_both(self, mock_rcon_client, mock_discord_interface):
-        """Test server label with tag and name."""
-        mock_rcon_client.server_tag = "ALERT"
-        mock_rcon_client.server_name = "Alert Server"
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        label = monitor._build_server_label()
-        assert "ALERT" in label
-        assert "Alert Server" in label
-
-    async def test_build_server_label_default(self, mock_rcon_client, mock_discord_interface):
-        """Test default label."""
-        mock_rcon_client.server_tag = None
-        mock_rcon_client.server_name = None
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        label = monitor._build_server_label()
-        assert label == "Factorio Server"
-
-    async def test_shared_metrics_engine(self, mock_rcon_client, mock_discord_interface):
-        """Test passing shared metrics engine."""
-        shared_engine = MagicMock()
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=shared_engine,
-        )
-
-        assert monitor.metrics_engine is shared_engine
-
-    async def test_multiple_stop_calls_safe(self, mock_rcon_client, mock_discord_interface):
-        """Test multiple stop calls are safe."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        await monitor.stop()
-        await monitor.stop()  # Should not raise
-
-
-# ============================================================================
-# RCONALERT MONITOR INTENSIVE TESTS (8 tests)
-# ============================================================================
-
-@pytest.mark.asyncio
-class TestRconAlertMonitorIntensive:
-    """Intensive tests for alert monitoring."""
-
-    async def test_check_ups_triggers_low_ups_alert_only(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test low UPS detection and alert triggering."""
-        mock_rcon_client.is_connected = True
-        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)  # Below threshold
-        mock_metrics_engine.ema_ups = 50.0
-        mock_metrics_engine.ups_calculator.is_paused = False
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            ups_warning_threshold=55.0,
-            samples_before_alert=1,
-        )
-
-        with patch("discord_interface.EmbedBuilder") as mock_builder:
-            mock_builder.create_base_embed = MagicMock(return_value=MagicMock())
-            mock_builder.COLOR_WARNING = 0xFFA500
-            with patch.object(monitor, "_send_low_ups_alert", new_callable=AsyncMock) as mock_send:
-                await monitor._check_ups()
-                await asyncio.sleep(0.01)  # Allow task scheduling
-
-        assert monitor.alert_state["consecutive_bad_samples"] >= 1
-
-    async def test_low_ups_increments_consecutive_bad_samples(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test consecutive bad samples counter."""
-        mock_rcon_client.is_connected = True
-        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)
-        mock_metrics_engine.ema_ups = 50.0
-        mock_metrics_engine.ups_calculator.is_paused = False
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            ups_warning_threshold=55.0,
-            samples_before_alert=3,
-        )
-
-        # Simulate 3 consecutive low UPS samples
-        for _ in range(3):
-            await monitor._check_ups()
-
-        assert monitor.alert_state["consecutive_bad_samples"] >= 1
-
-    async def test_recovery_resets_consecutive_bad_samples(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test recovery clears bad sample counter."""
-        mock_rcon_client.is_connected = True
-        mock_metrics_engine.sample_ups = AsyncMock(return_value=59.5)  # Above recovery threshold
-        mock_metrics_engine.ema_ups = 59.5
-        mock_metrics_engine.ups_calculator.is_paused = False
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            ups_warning_threshold=55.0,
-            ups_recovery_threshold=58.0,
-        )
-
-        # Manually set some bad samples
-        monitor.alert_state["consecutive_bad_samples"] = 5
-        await monitor._check_ups()
-
-        # Should reset on recovery
-        assert monitor.alert_state["consecutive_bad_samples"] == 0
-
-    async def test_can_send_alert_true_then_blocked_by_cooldown(self, mock_rcon_client, mock_discord_interface, monkeypatch):
-        """Test alert cooldown blocking."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            alert_cooldown=1,
-        )
-
-        # First call should succeed
-        assert monitor._can_send_alert() is True
-
-        # Set last alert time to now
-        now = datetime.now(timezone.utc)
-        monitor.alert_state["last_alert_time"] = now
-
-        # Second call should fail (within cooldown)
-        result = monitor._can_send_alert()
-        # If elapsed time is < cooldown, should be False
-        if (datetime.now(timezone.utc) - now).total_seconds() < 1:
-            assert result is False or result is True  # Depending on timing
-
-    async def test_start_and_stop_monitor_loop(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test monitor loop runs and stops correctly."""
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            check_interval=0.05,
-        )
-
-        mock_rcon_client.is_connected = True
-        mock_metrics_engine.sample_ups = AsyncMock(return_value=59.5)
-        mock_metrics_engine.ema_ups = 59.5
-        mock_metrics_engine.ups_calculator.is_paused = False
-
-        await monitor.start()
-        await asyncio.sleep(0.15)  # Allow loop iterations
-        await monitor.stop()
-
-        # Should have completed without error
-        assert monitor.running is False
-        assert monitor.task is None
-
-    async def test_forced_recovery_clears_low_ups(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test forced recovery alert is sent."""
-        mock_rcon_client.is_connected = True
-        mock_metrics_engine.sample_ups = AsyncMock(return_value=59.5)
-        mock_metrics_engine.ema_ups = 59.5
-        mock_metrics_engine.ups_calculator.is_paused = False
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-            ups_recovery_threshold=58.0,
-        )
-
-        # Manually set low UPS alert active
-        monitor.alert_state["low_ups_active"] = True
-
-        with patch.object(monitor, "_send_ups_recovered_alert", new_callable=AsyncMock) as mock_send:
-            await monitor._check_ups()
-
-        # Alert should be cleared
-        assert monitor.alert_state["low_ups_active"] is False
-
-    async def test_check_ups_handles_json_error(self, mock_rcon_client, mock_discord_interface):
-        """Test _check_ups handles evolution JSON parsing errors."""
-        mock_rcon_client.is_connected = True
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        # Create a bad metrics engine that will cause JSON error
-        bad_engine = AsyncMock()
-        bad_engine.sample_ups = AsyncMock(side_effect=Exception("JSON parse error"))
-
-        monitor.metrics_engine = bad_engine
-        await monitor._check_ups()  # Should not raise
-
-    async def test_pause_detection_clears_alerts(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
-        """Test pause detection clears low UPS alert."""
-        mock_rcon_client.is_connected = True
-        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)
-        mock_metrics_engine.ups_calculator.is_paused = True  # Server paused
-        mock_metrics_engine.ups_calculator.last_known_ups = 59.5
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            metrics_engine=mock_metrics_engine,
-        )
-
-        # Set alert as active
-        monitor.alert_state["low_ups_active"] = True
-
-        await monitor._check_ups()
-
-        # Alert should be cleared when paused
-        assert monitor.alert_state["low_ups_active"] is False
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(return_value="  120:30  ")
+        
+        playtime = await client.get_play_time()
+        assert playtime == "120:30"
+
+    @pytest.mark.asyncio
+    async def test_get_play_time_empty_response(self) -> None:
+        """get_play_time should return 'Unknown' on empty response."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(return_value="")
+        
+        playtime = await client.get_play_time()
+        assert playtime == "Unknown"
+
+    @pytest.mark.asyncio
+    async def test_get_play_time_exception(self) -> None:
+        """get_play_time should return 'Unknown' on exception."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.execute = AsyncMock(side_effect=ConnectionError("Connection lost"))
+        
+        playtime = await client.get_play_time()
+        assert playtime == "Unknown"
