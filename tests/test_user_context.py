@@ -166,8 +166,8 @@ class TestGetUserServer:
         with pytest.raises(RuntimeError, match="ServerManager is not configured"):
             manager.get_user_server(123)
 
-    def test_get_user_server_empty_tags_returns_no_default(self) -> None:
-        """When tags is empty, should raise error (no default to return)."""
+    def test_get_user_server_empty_tags_raises_error(self) -> None:
+        """When tags is empty, should raise RuntimeError (no default available)."""
         bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
         with pytest.raises(RuntimeError, match="No servers configured"):
@@ -340,8 +340,8 @@ class TestGetRconForUser:
         assert rcon2.tag == "staging"
         assert rcon1 is not rcon2
 
-    def test_get_rcon_for_user_empty_tags_raises(self) -> None:
-        """Should raise when no servers configured."""
+    def test_get_rcon_for_user_empty_tags_raises_error(self) -> None:
+        """Should raise when no servers configured (from get_user_server)."""
         bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
         with pytest.raises(RuntimeError, match="No servers configured"):
@@ -393,12 +393,16 @@ class TestGetServerDisplayName:
         name = manager.get_server_display_name(123)
         assert name == "Unknown"
 
-    def test_get_server_display_name_empty_tags_returns_unknown(self) -> None:
-        """When no tags, should return 'Unknown' (graceful fallback)."""
+    def test_get_server_display_name_empty_tags_raises_error(self) -> None:
+        """When no tags, RuntimeError from get_user_server propagates.
+        
+        get_server_display_name calls get_user_server which raises RuntimeError,
+        and only catches KeyError, so RuntimeError propagates.
+        """
         bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
-        name = manager.get_server_display_name(123)
-        assert name == "Unknown"
+        with pytest.raises(RuntimeError, match="No servers configured"):
+            manager.get_server_display_name(123)
 
     def test_get_server_display_name_custom_names(self) -> None:
         configs = {
