@@ -46,7 +46,7 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord import app_commands
 
-from src.bot.commands.factorio import register_factorio_commands
+from bot.commands.factorio import register_factorio_commands
 
 
 class CommandExtractor:
