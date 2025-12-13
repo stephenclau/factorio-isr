@@ -73,13 +73,14 @@ def stats_collector(
     mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
 ) -> RconStatsCollector:
     """Create a RconStatsCollector with mocks."""
-    return RconStatsCollector(
-        rcon_client=mock_rcon_client,
-        discord_interface=mock_discord_interface,
-        interval=1,  # Fast interval for testing
-        enable_ups_stat=True,
-        enable_evolution_stat=True,
-    )
+    with patch("rcon_stats_collector.RconMetricsEngine"):
+        return RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            interval=1,  # Fast interval for testing
+            enable_ups_stat=True,
+            enable_evolution_stat=True,
+        )
 
 
 @pytest.fixture
@@ -111,20 +112,21 @@ class TestRconStatsCollectorInit:
         self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
     ) -> None:
         """Initialize collector with all parameters specified."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            interval=300,
-            enable_ups_stat=True,
-            enable_evolution_stat=False,
-        )
+        with patch("rcon_stats_collector.RconMetricsEngine"):
+            collector = RconStatsCollector(
+                rcon_client=mock_rcon_client,
+                discord_interface=mock_discord_interface,
+                interval=300,
+                enable_ups_stat=True,
+                enable_evolution_stat=False,
+            )
 
-        assert collector.rcon_client is mock_rcon_client
-        assert collector.discord_interface is mock_discord_interface
-        assert collector.interval == 300
-        assert collector.running is False
-        assert collector.task is None
-        assert collector.metrics_engine is not None
+            assert collector.rcon_client is mock_rcon_client
+            assert collector.discord_interface is mock_discord_interface
+            assert collector.interval == 300
+            assert collector.running is False
+            assert collector.task is None
+            assert collector.metrics_engine is not None
 
     def test_init_creates_metrics_engine_when_not_provided(
         self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
@@ -172,12 +174,13 @@ class TestRconStatsCollectorInit:
         self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
     ) -> None:
         """Collector initializes with default interval of 300 seconds."""
-        collector = RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
+        with patch("rcon_stats_collector.RconMetricsEngine"):
+            collector = RconStatsCollector(
+                rcon_client=mock_rcon_client,
+                discord_interface=mock_discord_interface,
+            )
 
-        assert collector.interval == 300
+            assert collector.interval == 300
 
     def test_init_default_enable_flags(
         self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
@@ -356,9 +359,7 @@ class TestRconStatsCollectAndPostHappyPath:
         mock_metrics_engine: MagicMock,
     ) -> None:
         """_collect_and_post gathers metrics from engine."""
-        with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats text"
-        ):
+        with patch("bot.helpers.format_stats_text", return_value="Stats text"):
             await stats_collector_with_engine._collect_and_post()
 
         mock_metrics_engine.gather_all_metrics.assert_called_once()
@@ -371,7 +372,7 @@ class TestRconStatsCollectAndPostHappyPath:
     ) -> None:
         """_collect_and_post uses embed format when send_embed is available."""
         with patch(
-            "rcon_stats_collector.format_stats_embed", return_value={"title": "Stats"}
+            "bot.helpers.format_stats_embed", return_value={"title": "Stats"}
         ) as mock_format_embed:
             mock_discord_interface.send_embed.return_value = True
 
@@ -392,7 +393,7 @@ class TestRconStatsCollectAndPostHappyPath:
         mock_discord_interface.send_embed.return_value = False
 
         with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats text"
+            "bot.helpers.format_stats_text", return_value="Stats text"
         ) as mock_format_text:
             await stats_collector_with_engine._collect_and_post()
 
@@ -418,9 +419,7 @@ class TestRconStatsCollectAndPostHappyPath:
             interval=1,
         )
 
-        with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats text"
-        ):
+        with patch("bot.helpers.format_stats_text", return_value="Stats text"):
             await collector._collect_and_post()
 
         # Only text formatter should be called
@@ -433,7 +432,7 @@ class TestRconStatsCollectAndPostHappyPath:
     ) -> None:
         """_collect_and_post passes all metric fields to formatters."""
         with patch(
-            "rcon_stats_collector.format_stats_embed", return_value={}
+            "bot.helpers.format_stats_embed", return_value={}
         ) as mock_embed:
             mock_discord_interface.send_embed.return_value = True
             await stats_collector_with_engine._collect_and_post()
@@ -452,7 +451,7 @@ class TestRconStatsCollectAndPostHappyPath:
     ) -> None:
         """_collect_and_post includes server label in formatting."""
         with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats"
+            "bot.helpers.format_stats_text", return_value="Stats"
         ) as mock_format:
             stats_collector_with_engine.discord_interface.send_embed.return_value = False
             await stats_collector_with_engine._collect_and_post()
@@ -493,11 +492,11 @@ class TestRconStatsCollectAndPostErrorPaths:
     ) -> None:
         """_collect_and_post handles errors from format_stats_embed."""
         with patch(
-            "rcon_stats_collector.format_stats_embed",
+            "bot.helpers.format_stats_embed",
             side_effect=ValueError("Invalid metric value"),
         ):
             with patch(
-                "rcon_stats_collector.format_stats_text", return_value="Fallback text"
+                "bot.helpers.format_stats_text", return_value="Fallback text"
             ):
                 # Should not raise, falls back to text
                 await stats_collector_with_engine._collect_and_post()
@@ -516,9 +515,9 @@ class TestRconStatsCollectAndPostErrorPaths:
         )
 
         with patch(
-            "rcon_stats_collector.format_stats_embed", return_value={}
+            "bot.helpers.format_stats_embed", return_value={}
         ), patch(
-            "rcon_stats_collector.format_stats_text", return_value="Fallback text"
+            "bot.helpers.format_stats_text", return_value="Fallback text"
         ):
             # Should not raise, falls back to text
             await stats_collector_with_engine._collect_and_post()
@@ -535,7 +534,7 @@ class TestRconStatsCollectAndPostErrorPaths:
         mock_discord_interface.send_embed.return_value = False
 
         with patch(
-            "rcon_stats_collector.format_stats_text",
+            "bot.helpers.format_stats_text",
             side_effect=ValueError("Format error"),
         ):
             # Should not raise
@@ -553,7 +552,7 @@ class TestRconStatsCollectAndPostErrorPaths:
         )
 
         with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats text"
+            "bot.helpers.format_stats_text", return_value="Stats text"
         ):
             # Should not raise
             await stats_collector_with_engine._collect_and_post()
@@ -582,15 +581,13 @@ class TestServerLabelBuilding:
     def test_build_label_with_tag_only(
         self, stats_collector: RconStatsCollector
     ) -> None:
-        """Label includes tag when name is None."""
+        """Label is just tag when name is None."""
         stats_collector.rcon_client.server_tag = "prod"
         stats_collector.rcon_client.server_name = None
 
         label = stats_collector._build_server_label()
 
-        assert "[prod]" in label
-        assert label != "[prod]"
-        assert "None" not in label
+        assert label == "[prod]"
 
     def test_build_label_with_name_only(
         self, stats_collector: RconStatsCollector
@@ -683,7 +680,7 @@ class TestRconStatsCollectorIntegration:
     ) -> None:
         """Complete lifecycle: start -> collect -> stop."""
         with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats"
+            "bot.helpers.format_stats_text", return_value="Stats"
         ):
             # Start
             await stats_collector_with_engine.start()
@@ -719,7 +716,7 @@ class TestRconStatsCollectorIntegration:
         ]
 
         with patch(
-            "rcon_stats_collector.format_stats_text", return_value="Stats"
+            "bot.helpers.format_stats_text", return_value="Stats"
         ):
             await stats_collector_with_engine.start()
             await asyncio.sleep(0.2)  # Allow 2 iterations
