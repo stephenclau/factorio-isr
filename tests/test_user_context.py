@@ -166,8 +166,9 @@ class TestGetUserServer:
         with pytest.raises(RuntimeError, match="ServerManager is not configured"):
             manager.get_user_server(123)
 
-    def test_get_user_server_no_servers_configured(self) -> None:
-        bot = MockBot(MockServerManager(tags=[]))
+    def test_get_user_server_empty_tags_returns_no_default(self) -> None:
+        """When tags is empty, should raise error (no default to return)."""
+        bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
         with pytest.raises(RuntimeError, match="No servers configured"):
             manager.get_user_server(123)
@@ -339,8 +340,9 @@ class TestGetRconForUser:
         assert rcon2.tag == "staging"
         assert rcon1 is not rcon2
 
-    def test_get_rcon_for_user_no_servers_configured(self) -> None:
-        bot = MockBot(MockServerManager(tags=[]))
+    def test_get_rcon_for_user_empty_tags_raises(self) -> None:
+        """Should raise when no servers configured."""
+        bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
         with pytest.raises(RuntimeError, match="No servers configured"):
             manager.get_rcon_for_user(123)
@@ -391,8 +393,9 @@ class TestGetServerDisplayName:
         name = manager.get_server_display_name(123)
         assert name == "Unknown"
 
-    def test_get_server_display_name_no_servers_configured(self) -> None:
-        bot = MockBot(MockServerManager(tags=[]))
+    def test_get_server_display_name_empty_tags_returns_unknown(self) -> None:
+        """When no tags, should return 'Unknown' (graceful fallback)."""
+        bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
         name = manager.get_server_display_name(123)
         assert name == "Unknown"
