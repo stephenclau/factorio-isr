@@ -301,12 +301,10 @@ class TestRconClientExecution:
         client = RconClient("localhost", 27015, "password")
         client.connected = True
         
-        with patch('rcon_client.asyncio.to_thread') as mock_to_thread:
-            async def mock_execute():
-                return "Player count: 5"
-            
-            mock_to_thread.return_value = mock_execute()
-            
+        async def fake_to_thread(fn, *args, **kwargs):
+            return "Player count: 5"
+        
+        with patch("rcon_client.asyncio.to_thread", side_effect=fake_to_thread):
             result = await client.execute("status")
             assert result == "Player count: 5"
 
@@ -334,12 +332,10 @@ class TestRconClientExecution:
         client = RconClient("localhost", 27015, "password")
         client.connected = True
         
-        with patch('rcon_client.asyncio.to_thread') as mock_to_thread:
-            async def mock_execute():
-                raise RuntimeError("Connection lost")
-            
-            mock_to_thread.return_value = mock_execute()
-            
+        async def fake_to_thread(fn, *args, **kwargs):
+            raise RuntimeError("Connection lost")
+        
+        with patch("rcon_client.asyncio.to_thread", side_effect=fake_to_thread):
             with pytest.raises(RuntimeError):
                 await client.execute("status")
             
