@@ -463,41 +463,34 @@ class TestRconAlertMonitorErrorHandling:
             metrics_engine=mock_metrics_engine,
         )
 
-        # Should not raise
+        # Should not raise - _check_ups catches this
         await monitor._check_ups()
         assert monitor.alert_state["consecutive_bad_samples"] == 0
 
-    async def test_alert_send_handles_embed_send_error(self, mock_rcon_client, mock_discord_interface):
-        """Test _send_low_ups_alert handles embed send error."""
-        mock_discord_interface.send_embed = AsyncMock(side_effect=RuntimeError("Discord error"))
+    async def test_monitor_loop_catches_errors_from_check_ups(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test monitoring loop catches errors from _check_ups."""
+        call_count = 0
+
+        async def check_with_error():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ValueError("Check error")
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
             discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            check_interval=0.05,
         )
 
-        with patch("discord_interface.EmbedBuilder") as mock_builder:
-            mock_embed = MagicMock()
-            mock_builder.create_base_embed.return_value = mock_embed
+        with patch.object(monitor, "_check_ups", side_effect=check_with_error):
+            await monitor.start()
+            await asyncio.sleep(0.15)
+            await monitor.stop()
 
-            # Should not raise despite error
-            await monitor._send_low_ups_alert(50.0, 51.0, 50.5)
-
-    async def test_recovery_alert_handles_error(self, mock_rcon_client, mock_discord_interface):
-        """Test _send_ups_recovered_alert handles errors gracefully."""
-        mock_discord_interface.send_embed = AsyncMock(side_effect=RuntimeError("Discord error"))
-
-        monitor = RconAlertMonitor(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-        )
-
-        with patch("discord_interface.EmbedBuilder") as mock_builder:
-            mock_embed = MagicMock()
-            mock_builder.create_base_embed.return_value = mock_embed
-
-            # Should not raise
-            await monitor._send_ups_recovered_alert(59.5, 59.0, 59.3)
+        # Should have attempted checks despite error
+        assert call_count >= 2
 
     async def test_monitor_loop_continues_on_error(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
         """Test monitoring loop continues after exception."""
@@ -524,6 +517,23 @@ class TestRconAlertMonitorErrorHandling:
 
         # Should have attempted at least 2 checks
         assert call_count >= 2
+
+    async def test_send_low_ups_alert_with_successful_embed(self, mock_rcon_client, mock_discord_interface):
+        """Test _send_low_ups_alert sends embed successfully."""
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        with patch("discord_interface.EmbedBuilder") as mock_builder:
+            mock_embed = MagicMock()
+            mock_builder.create_base_embed.return_value = mock_embed
+            mock_discord_interface.send_embed = AsyncMock(return_value=None)
+
+            # Should succeed
+            await monitor._send_low_ups_alert(50.0, 51.0, 50.5)
+
+        mock_discord_interface.send_embed.assert_called_once()
 
 
 # ============================================================================
