@@ -123,14 +123,28 @@ class UserContextManager:
             user_id: Discord user ID
 
         Returns:
-            Server display name or "Unknown"
+            Server display name or "Unknown" if unavailable
+            
+        Note:
+            Returns "Unknown" gracefully on any error (KeyError, manager broken, etc.)
+            Never raises to ensure robust operation.
         """
         if not self.bot.server_manager:
             return "Unknown"
 
-        server_tag = self.get_user_server(user_id)
         try:
+            server_tag = self.get_user_server(user_id)
             config = self.bot.server_manager.get_config(server_tag)
             return config.name
-        except KeyError:
+        except (KeyError, RuntimeError, AttributeError, Exception) as e:
+            # Gracefully handle:
+            # - KeyError: server_tag not in configs
+            # - RuntimeError: from get_user_server when manager broken
+            # - AttributeError: config missing .name attribute
+            # - Generic Exception: any other manager failures
+            logger.debug(
+                "get_server_display_name_fallback",
+                user_id=user_id,
+                error=str(e),
+            )
             return "Unknown"
