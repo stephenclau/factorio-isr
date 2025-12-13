@@ -307,7 +307,7 @@ def register_factorio_commands(bot: Any) -> None:
                     parts.append(f"{days}d")
                 if hours > 0:
                     parts.append(f"{hours}h")
-                if minutes > 0 or (days == 0 and hours == 0):
+                if minutes > 0:
                     parts.append(f"{minutes}m")
                 uptime_text = " ".join(parts) if parts else "< 1m"
 
@@ -858,7 +858,7 @@ def register_factorio_commands(bot: Any) -> None:
                         parts.append(f"{days}d")
                     if hours > 0:
                         parts.append(f"{hours}h")
-                    if minutes > 0 or (days == 0 and hours == 0):
+                    if minutes > 0:
                         parts.append(f"{minutes}m")
                     uptime = " ".join(parts) if parts else "< 1m"
                     embed.add_field(name="Uptime", value=uptime, inline=True)
