@@ -304,7 +304,7 @@ class TestRconAlertMonitorUpsCheck:
 
 
 # ============================================================================
-# ALERT TRIGGERING TESTS (4 tests)
+# ALERT TRIGGERING TESTS (6 tests)
 # ============================================================================
 
 
@@ -423,6 +423,108 @@ class TestRconAlertMonitorAlertTriggering:
         call_kwargs = mock_builder.create_base_embed.call_args.kwargs
         assert "Recovered" in call_kwargs["title"]
 
+    async def test_alert_with_fallback_text_message(self, mock_rcon_client, mock_discord_interface):
+        """Test alert falls back to text when embed is not available."""
+        # Remove send_embed method to simulate unavailable
+        del mock_discord_interface.send_embed
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        await monitor._send_low_ups_alert(
+            current_ups=50.0,
+            sma_ups=51.0,
+            ema_ups=50.5,
+        )
+
+        # Should have called send_message (fallback)
+        mock_discord_interface.send_message.assert_called_once()
+
+
+# ============================================================================
+# ERROR HANDLING TESTS (4 tests)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+class TestRconAlertMonitorErrorHandling:
+    """Test error handling in alert monitor."""
+
+    async def test_check_ups_handles_sample_ups_error(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test _check_ups handles errors from sample_ups."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(side_effect=RuntimeError("Metrics error"))
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+        )
+
+        # Should not raise
+        await monitor._check_ups()
+        assert monitor.alert_state["consecutive_bad_samples"] == 0
+
+    async def test_alert_send_handles_embed_send_error(self, mock_rcon_client, mock_discord_interface):
+        """Test _send_low_ups_alert handles embed send error."""
+        mock_discord_interface.send_embed = AsyncMock(side_effect=RuntimeError("Discord error"))
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        with patch("discord_interface.EmbedBuilder") as mock_builder:
+            mock_embed = MagicMock()
+            mock_builder.create_base_embed.return_value = mock_embed
+
+            # Should not raise despite error
+            await monitor._send_low_ups_alert(50.0, 51.0, 50.5)
+
+    async def test_recovery_alert_handles_error(self, mock_rcon_client, mock_discord_interface):
+        """Test _send_ups_recovered_alert handles errors gracefully."""
+        mock_discord_interface.send_embed = AsyncMock(side_effect=RuntimeError("Discord error"))
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        with patch("discord_interface.EmbedBuilder") as mock_builder:
+            mock_embed = MagicMock()
+            mock_builder.create_base_embed.return_value = mock_embed
+
+            # Should not raise
+            await monitor._send_ups_recovered_alert(59.5, 59.0, 59.3)
+
+    async def test_monitor_loop_continues_on_error(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test monitoring loop continues after exception."""
+        call_count = 0
+
+        async def check_with_error():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise ValueError("First check error")
+            # Second call succeeds
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            check_interval=0.05,
+        )
+
+        with patch.object(monitor, "_check_ups", side_effect=check_with_error):
+            await monitor.start()
+            await asyncio.sleep(0.15)
+            await monitor.stop()
+
+        # Should have attempted at least 2 checks
+        assert call_count >= 2
+
 
 # ============================================================================
 # SERVER LABEL TESTS (2 tests)
@@ -508,6 +610,98 @@ class TestRecentSamplesTracking:
         )
 
         assert abs(sma - 57.0) < 0.01  # Average of [58, 57.5, 57, 56.5, 56]
+
+
+# ============================================================================
+# EDGE CASE TESTS (4 tests)
+# ============================================================================
+
+
+@pytest.mark.asyncio
+class TestRconAlertMonitorEdgeCases:
+    """Test edge cases and boundary conditions."""
+
+    async def test_check_ups_with_none_sample_skips_processing(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test _check_ups skips when sample_ups returns None."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=None)  # First sample
+        mock_metrics_engine.ema_ups = None
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+        )
+
+        await monitor._check_ups()
+
+        # Should skip processing
+        assert monitor.alert_state["consecutive_bad_samples"] == 0
+        assert len(monitor.alert_state["recent_ups_samples"]) == 0
+
+    async def test_ups_exactly_at_warning_threshold(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test behavior when UPS is exactly at warning threshold."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=55.0)  # Exactly at threshold
+        mock_metrics_engine.ema_ups = 55.0
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_warning_threshold=55.0,
+        )
+
+        await monitor._check_ups()
+
+        # At threshold should not trigger (must be BELOW)
+        assert monitor.alert_state["consecutive_bad_samples"] == 0
+
+    async def test_ups_exactly_at_recovery_threshold(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test behavior when UPS is exactly at recovery threshold."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=58.0)  # Exactly at recovery
+        mock_metrics_engine.ema_ups = 58.0
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_warning_threshold=55.0,
+            ups_recovery_threshold=58.0,
+        )
+
+        # Manually set alert active
+        monitor.alert_state["low_ups_active"] = True
+        monitor.alert_state["consecutive_bad_samples"] = 3
+
+        with patch.object(monitor, "_send_ups_recovered_alert", new_callable=AsyncMock):
+            await monitor._check_ups()
+
+        # At recovery should trigger recovery (must be >= recovery threshold)
+        assert monitor.alert_state["low_ups_active"] is False
+
+    async def test_check_ups_with_none_ema_falls_back_to_current(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test _check_ups uses current UPS when EMA is None."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)
+        mock_metrics_engine.ema_ups = None  # No EMA yet
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_warning_threshold=55.0,
+        )
+
+        await monitor._check_ups()
+
+        # Should use current UPS (50.0) for decision
+        assert monitor.alert_state["consecutive_bad_samples"] == 1
 
 
 # ============================================================================
