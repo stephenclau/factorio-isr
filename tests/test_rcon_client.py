@@ -872,9 +872,12 @@ class TestRconAlertMonitorIntensive:
             samples_before_alert=1,
         )
 
-        with patch.object(monitor, "_send_low_ups_alert", new_callable=AsyncMock) as mock_send:
-            await monitor._check_ups()
-            await asyncio.sleep(0.01)  # Allow task scheduling
+        with patch("discord_interface.EmbedBuilder") as mock_builder:
+            mock_builder.create_base_embed = MagicMock(return_value=MagicMock())
+            mock_builder.COLOR_WARNING = 0xFFA500
+            with patch.object(monitor, "_send_low_ups_alert", new_callable=AsyncMock) as mock_send:
+                await monitor._check_ups()
+                await asyncio.sleep(0.01)  # Allow task scheduling
 
         assert monitor.alert_state["consecutive_bad_samples"] >= 1
 
