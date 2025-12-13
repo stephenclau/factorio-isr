@@ -3,8 +3,6 @@ layout: default
 title: Deployment
 ---
 
-
-
 # Production Deployment Guide
 
 Complete guide for deploying Factorio ISR to production.
@@ -164,43 +162,9 @@ ls -la .secrets/
 
 ### Method 1: Docker Compose (Recommended)
 
-#### Step 1: Create Dockerfile
+#### Step 1: Prepare docker-compose.yml
 
-```dockerfile
-# Dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application
-COPY src/ ./src/
-COPY patterns/ ./patterns/
-COPY config/ ./config/
-
-# Create non-root user
-RUN useradd -m -u 1000 factorio-isr && \
-    chown -R factorio-isr:factorio-isr /app
-USER factorio-isr
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-CMD ["python", "-m", "src.main"]
-```
-
----
-
-#### Step 2: Create docker-compose.yml
+Configure `docker-compose.yml` with your environment settings:
 
 ```yaml
 version: '3.8'
@@ -228,13 +192,9 @@ services:
       - rcon_password
 
     volumes:
-      # Mount Factorio logs (read-only)
       - /path/to/factorio/logs:/factorio:ro
-      # Mount patterns
       - ./patterns:/app/patterns:ro
-      # Mount config (servers.yml, mentions.yml, secmon.yml)
       - ./config:/app/config:ro
-      # Application logs
       - ./logs:/app/logs
 
     ports:
@@ -260,9 +220,7 @@ networks:
     driver: bridge
 ```
 
----
-
-#### Step 3: Deploy
+#### Step 2: Deploy
 
 ```bash
 # Build image
@@ -278,9 +236,7 @@ docker-compose logs -f
 docker-compose ps
 ```
 
----
-
-#### Step 4: Verify
+#### Step 3: Verify
 
 ```bash
 # Check health endpoint
@@ -333,28 +289,17 @@ docker logs -f factorio-isr
 
 ## Systemd Deployment
 
-For deployments without Docker:
+For deployments without Docker, follow your organization's standard systemd service deployment patterns.
 
-### Step 1: Install Dependencies
+### Requirements
 
-```bash
-# Create virtual environment
-cd /opt/factorio-isr
-python3.11 -m venv venv
+- Python 3.11+ virtual environment
+- Service start command: `python -m src.main`
+- Working directory: `/opt/factorio-isr`
+- Environment file: `.env` with required variables
+- Restart policy: `always`
 
-# Activate and install
-source venv/bin/activate
-pip install -r requirements.txt
-deactivate
-```
-
----
-
-### Step 2: Create Service File
-
-```bash
-sudo nano /etc/systemd/system/factorio-isr.service
-```
+### Basic Service Structure
 
 ```ini
 [Unit]
@@ -367,67 +312,16 @@ Type=simple
 User=factorio
 Group=factorio
 WorkingDirectory=/opt/factorio-isr
-
-# Set environment
-Environment="PATH=/opt/factorio-isr/venv/bin"
 EnvironmentFile=/opt/factorio-isr/.env
-
-# Start command
 ExecStart=/opt/factorio-isr/venv/bin/python -m src.main
-
-# Restart policy
 Restart=always
 RestartSec=10
-StartLimitBurst=5
-StartLimitIntervalSec=300
-
-# Security hardening
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/opt/factorio-isr/logs
-
-# Resource limits
-MemoryLimit=512M
-CPUQuota=50%
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=factorio-isr
 
 [Install]
 WantedBy=multi-user.target
 ```
 
----
-
-### Step 3: Create User
-
-```bash
-# Create service user
-sudo useradd -r -s /bin/false factorio
-
-# Set ownership
-sudo chown -R factorio:factorio /opt/factorio-isr
-
-# Verify permissions
-ls -la /opt/factorio-isr
-```
-
----
-
-### Step 4: Enable and Start
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable factorio-isr
-sudo systemctl start factorio-isr
-
-# Check status
-sudo systemctl status factorio-isr
-```
+For production hardening guidance, contact [licensing@laudiversified.com](mailto:licensing@laudiversified.com).
 
 ---
 
@@ -505,7 +399,7 @@ sudo systemctl restart factorio-isr
 - **No events in Discord:**
   - Verify `FACTORIO_LOG_PATH` is correct and readable
   - Confirm Factorio is writing to `console.log`
-  - Run with `LOG_LEVEL=debug` and `LOG_FORMAT=console`
+  - Run with `LOG_LEVEL=debug`
 
 - **RCON stats not updating:**
   - Verify `RCON_ENABLED=true`
@@ -513,14 +407,14 @@ sudo systemctl restart factorio-isr
   - Confirm RCON is enabled in Factorio server config
 
 - **Health check failing:**
-  - Check logs for stack traces
+  - Check logs for errors
   - Ensure `HEALTH_CHECK_PORT` not in use
 
 For more details, see:
 - [Configuration Guide](configuration.md)
 - [Troubleshooting Guide](TROUBLESHOOTING.md)
-- [Architecture Guide](architecture.md)
 
+---
 
 > **📄 Licensing Information**
 > 
