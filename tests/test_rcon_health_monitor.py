@@ -151,13 +151,13 @@ class MockEmbedBuilder:
 class MockEmbed:
     """Mock Discord embed."""
 
-    def __init__(self, title: str = "", description: str = "", color: int = 0):
+    def __init__(self, title: str = "", description: str = "", color: int = 0, timestamp=None):
         self.title = title
         self.description = description
         self.color = color
+        self.timestamp = timestamp
         self.fields = []
         self.footer = None
-        self.timestamp = None
 
     def add_field(self, name: str, value: str, inline: bool = True) -> None:
         self.fields.append({"name": name, "value": value, "inline": inline})
