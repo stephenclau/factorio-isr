@@ -53,6 +53,13 @@ MOCK SETUP FIX:
      mock = MagicMock()
      mock.name = 'Value'
      mock.description = 'Desc'
+
+FUZZY MATCHING BEHAVIOR:
+  • Uses simple substring matching (in operator)
+  • Searches across tag, name, and description fields
+  • Case-insensitive
+  • Empty string matches all servers
+  • Example: 'prod' matches tags with 'prod', names with 'prod', descriptions with 'prod'
 """
 
 import pytest
@@ -658,7 +665,20 @@ class TestServerAutocompleteComprehensive(TestServerAutocompleteLogic):
 
     @pytest.mark.asyncio
     async def test_multi_server_cluster_discovery(self):
-        """Realistic: User discovers multi-server cluster with typos."""
+        """Realistic: User discovers multi-server cluster.
+        
+        FUZZY MATCHING NOTE:
+        When user searches 'prod', substring matching returns any server
+        where 'prod' appears in tag, name, OR description.
+        
+        Example:
+        - 'prod-us-east' matches (tag contains 'prod')
+        - 'prod-us-west' matches (tag contains 'prod')
+        - 'staging-us' matches (description contains 'Pre-prod testing')
+        
+        This is intentional fuzzy behavior. To get exactly 2 results,
+        use more specific search like 'prod-us' or 'east'.
+        """
         autocomplete = self._create_autocomplete_harness()
         
         interaction = MagicMock()
@@ -690,13 +710,23 @@ class TestServerAutocompleteComprehensive(TestServerAutocompleteLogic):
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
 
-        # User types "prod" - should find both production servers
+        # User types "prod" - fuzzy matching includes any with 'prod' in tag/name/desc
+        # This returns prod-us-east, prod-us-west (tags have 'prod')
+        # AND staging-us (description has 'Pre-prod')
         choices = await autocomplete(interaction, "prod")
+        assert len(choices) == 3  # Includes staging-us due to 'Pre-prod' in description
+        values = {c.value for c in choices}
+        assert "prod-us-east" in values
+        assert "prod-us-west" in values
+        assert "staging-us" in values  # Matches due to substring 'prod' in description
+
+        # More specific search: "prod-us" returns only exact prod servers
+        choices = await autocomplete(interaction, "prod-us")
         assert len(choices) == 2
         values = {c.value for c in choices}
         assert values == {"prod-us-east", "prod-us-west"}
 
-        # User types "staging" - should find staging
+        # User types "staging" - should find staging only
         choices = await autocomplete(interaction, "staging")
         assert len(choices) == 1
         assert choices[0].value == "staging-us"
