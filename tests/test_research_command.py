@@ -16,10 +16,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-# Import from bot
-from src.bot.commands.factorio import register_factorio_commands
-from src.utils.rate_limiting import ADMIN_COOLDOWN
-from src.discord_interface import EmbedBuilder
+# Import from bot (conftest.py adds src/ to sys.path)
+from bot.commands.factorio import register_factorio_commands
+from utils.rate_limiting import ADMIN_COOLDOWN
+from discord_interface import EmbedBuilder
 
 
 class TestResearchCommandHappyPathCoop:
