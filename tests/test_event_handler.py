@@ -25,7 +25,7 @@ Full logic walkthrough covering:
 - Discord mention formatting
 - Edge cases and failure scenarios
 
-Total: 70+ tests, 91% coverage
+Total: 68 tests, 91% coverage
 """
 
 import pytest
@@ -408,6 +408,24 @@ class TestChannelResolution:
         assert handler._get_channel_for_event(event1) == 111
         assert handler._get_channel_for_event(event2) == 222
 
+    def test_get_channel_for_event_default_server(self) -> None:
+        """Successfully resolve channel for default server."""
+        bot = MockBot()
+        handler = EventHandler(bot)
+        event = MockEvent(server_tag="prod")
+
+        channel_id = handler._get_channel_for_event(event)
+        assert channel_id == 123
+
+    def test_get_channel_for_event_empty_string_tag(self) -> None:
+        """Handle empty string server_tag."""
+        bot = MockBot()
+        handler = EventHandler(bot)
+        event = MockEvent(server_tag="")
+
+        channel_id = handler._get_channel_for_event(event)
+        assert channel_id is None
+
 
 # ========================================================================
 # SEND EVENT TESTS (10 tests) - Focus on error paths
@@ -713,6 +731,39 @@ class TestMentionResolution:
         mentions = await handler._resolve_mentions(guild, ["admin"])
         assert "<@&222>" in mentions
 
+    @pytest.mark.asyncio
+    async def test_resolve_mentions_administrators_alias(self) -> None:
+        """Resolve 'administrators' alias for admin role."""
+        role = MockRole("admin", 222)
+        guild = MockGuild(roles=[role])
+        bot = MockBot()
+        handler = EventHandler(bot)
+
+        mentions = await handler._resolve_mentions(guild, ["administrators"])
+        assert "<@&222>" in mentions
+
+    @pytest.mark.asyncio
+    async def test_resolve_mentions_moderators_alias(self) -> None:
+        """Resolve 'moderators' alias for mod role."""
+        role = MockRole("moderator", 333)
+        guild = MockGuild(roles=[role])
+        bot = MockBot()
+        handler = EventHandler(bot)
+
+        mentions = await handler._resolve_mentions(guild, ["moderators"])
+        assert "<@&333>" in mentions
+
+    @pytest.mark.asyncio
+    async def test_resolve_mentions_mods_alias(self) -> None:
+        """Resolve 'mods' alias for mod role."""
+        role = MockRole("moderator", 333)
+        guild = MockGuild(roles=[role])
+        bot = MockBot()
+        handler = EventHandler(bot)
+
+        mentions = await handler._resolve_mentions(guild, ["mods"])
+        assert "<@&333>" in mentions
+
 
 # ========================================================================
 # ROLE FINDING TESTS (6 tests)
@@ -774,6 +825,18 @@ class TestRoleFinding:
 
         found = handler._find_role_by_name(guild, ["admin"])
         assert found.id == 3
+
+    def test_find_role_first_match_wins(self) -> None:
+        """Return first matching role when multiple variants match."""
+        role1 = MockRole("admin", 1)
+        role2 = MockRole("administrator", 2)
+        guild = MockGuild(roles=[role1, role2])
+        bot = MockBot()
+        handler = EventHandler(bot)
+
+        # Should find role1 (admin) first
+        found = handler._find_role_by_name(guild, ["admin", "administrator"])
+        assert found.id == 1
 
 
 # ========================================================================
