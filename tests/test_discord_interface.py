@@ -211,7 +211,8 @@ class TestEmbedBuilder:
         field_names = [f.name for f in embed.fields]
         assert "Server Response" in field_names
         response_field = next(f for f in embed.fields if f.name == "Server Response")
-        assert "..." in response_field.value or len(response_field.value) <= 1010
+        # Response should be truncated (with code block wrapping)
+        assert "..." in response_field.value
 
     def test_admin_action_embed_response_exactly_1000(self) -> None:
         """admin_action_embed should not truncate response of exactly 1000 chars."""
@@ -221,8 +222,11 @@ class TestEmbedBuilder:
         resp = "x" * 1000
         embed = EmbedBuilder.admin_action_embed("Ban", "p", "m", response=resp)
         field = next(f for f in embed.fields if f.name == "Server Response")
-        assert field.value.count("x") == 1000
-        assert not field.value.endswith("...")
+        # Count x's in the value (account for code block wrapping)
+        x_count = field.value.count("x")
+        assert x_count == 1000
+        # Should not have ellipsis for exactly 1000 chars
+        assert "..." not in field.value
 
     def test_admin_action_embed_response_1001(self) -> None:
         """admin_action_embed should truncate response of 1001 chars."""
@@ -232,8 +236,11 @@ class TestEmbedBuilder:
         resp = "x" * 1001
         embed = EmbedBuilder.admin_action_embed("Ban", "p", "m", response=resp)
         field = next(f for f in embed.fields if f.name == "Server Response")
-        assert field.value.endswith("...")
-        assert len(field.value) == 1003  # 1000 chars + "..."
+        # Should contain truncation ellipsis
+        assert "..." in field.value
+        # Count x's (should be 1000, not 1001)
+        x_count = field.value.count("x")
+        assert x_count == 1000
 
     def test_error_embed(self) -> None:
         """error_embed should create error embed with red color."""
