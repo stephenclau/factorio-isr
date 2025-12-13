@@ -775,10 +775,10 @@ async def test_happy_path_get_status() -> None:
 @pytest.mark.asyncio
 async def test_happy_path_player_management() -> None:
     rcon = MockRconClient()
-    initial_players = await rcon.get_players()
+    initial_player_count = len(await rcon.get_players())
     await rcon.kick_player("Alice", "Test")
-    after_kick = await rcon.get_players()
-    assert len(after_kick) < len(initial_players)
+    after_kick_count = len(await rcon.get_players())
+    assert after_kick_count < initial_player_count, "Player should be removed after kick"
     await rcon.promote_player("Bob")
     admins = await rcon.get_admins()
     assert "Bob" in admins
