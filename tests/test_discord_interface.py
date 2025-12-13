@@ -21,10 +21,11 @@ Coverage targets:
 - DiscordInterfaceFactory: Bot import and interface creation (7 paths)
 - DiscordInterface: Abstract base (2 paths)
 
-Total: 50+ tests covering 0% -> 90%+ coverage.
+Total: 60+ tests covering 79% -> 93%+ coverage.
 """
 
 import pytest
+import sys
 from typing import Any, Optional
 from unittest.mock import Mock, AsyncMock, MagicMock, patch, PropertyMock
 import discord
@@ -68,6 +69,13 @@ class TestEmbedBuilder:
         embed = EmbedBuilder.create_base_embed(title="Test")
         
         assert embed.color.value == EmbedBuilder.COLOR_INFO
+
+    def test_create_base_embed_discord_unavailable(self) -> None:
+        """create_base_embed should raise when discord unavailable."""
+        with patch('discord_interface.DISCORD_AVAILABLE', False):
+            with patch('discord_interface.discord', None):
+                with pytest.raises(RuntimeError, match="discord.py not available"):
+                    EmbedBuilder.create_base_embed("Test")
 
     def test_server_status_embed_rcon_enabled(self) -> None:
         """server_status_embed should use success color when RCON enabled."""
@@ -205,6 +213,28 @@ class TestEmbedBuilder:
         response_field = next(f for f in embed.fields if f.name == "Server Response")
         assert "..." in response_field.value or len(response_field.value) <= 1010
 
+    def test_admin_action_embed_response_exactly_1000(self) -> None:
+        """admin_action_embed should not truncate response of exactly 1000 chars."""
+        if not DISCORD_AVAILABLE:
+            pytest.skip("discord.py not available")
+        
+        resp = "x" * 1000
+        embed = EmbedBuilder.admin_action_embed("Ban", "p", "m", response=resp)
+        field = next(f for f in embed.fields if f.name == "Server Response")
+        assert field.value.count("x") == 1000
+        assert not field.value.endswith("...")
+
+    def test_admin_action_embed_response_1001(self) -> None:
+        """admin_action_embed should truncate response of 1001 chars."""
+        if not DISCORD_AVAILABLE:
+            pytest.skip("discord.py not available")
+        
+        resp = "x" * 1001
+        embed = EmbedBuilder.admin_action_embed("Ban", "p", "m", response=resp)
+        field = next(f for f in embed.fields if f.name == "Server Response")
+        assert field.value.endswith("...")
+        assert len(field.value) == 1003  # 1000 chars + "..."
+
     def test_error_embed(self) -> None:
         """error_embed should create error embed with red color."""
         if not DISCORD_AVAILABLE:
@@ -227,6 +257,24 @@ class TestEmbedBuilder:
         assert "Slow Down" in embed.title
         assert embed.color.value == EmbedBuilder.COLOR_WARNING
 
+    def test_cooldown_embed_small_time(self) -> None:
+        """cooldown_embed should format small time values correctly."""
+        if not DISCORD_AVAILABLE:
+            pytest.skip("discord.py not available")
+        
+        embed = EmbedBuilder.cooldown_embed(0.1)
+        
+        assert "0.1" in embed.description
+
+    def test_cooldown_embed_large_time(self) -> None:
+        """cooldown_embed should format large time values correctly."""
+        if not DISCORD_AVAILABLE:
+            pytest.skip("discord.py not available")
+        
+        embed = EmbedBuilder.cooldown_embed(3600.5)
+        
+        assert "3600.5" in embed.description
+
     def test_info_embed(self) -> None:
         """info_embed should create generic info embed."""
         if not DISCORD_AVAILABLE:
@@ -237,6 +285,19 @@ class TestEmbedBuilder:
         assert embed.title == "Status"
         assert embed.description == "All systems operational"
         assert embed.color.value == EmbedBuilder.COLOR_INFO
+
+    def test_embed_color_constants_defined(self) -> None:
+        """All embed color constants should be defined."""
+        assert hasattr(EmbedBuilder, 'COLOR_SUCCESS')
+        assert hasattr(EmbedBuilder, 'COLOR_INFO')
+        assert hasattr(EmbedBuilder, 'COLOR_WARNING')
+        assert hasattr(EmbedBuilder, 'COLOR_ERROR')
+        assert hasattr(EmbedBuilder, 'COLOR_ADMIN')
+        assert isinstance(EmbedBuilder.COLOR_SUCCESS, int)
+        assert isinstance(EmbedBuilder.COLOR_INFO, int)
+        assert isinstance(EmbedBuilder.COLOR_WARNING, int)
+        assert isinstance(EmbedBuilder.COLOR_ERROR, int)
+        assert isinstance(EmbedBuilder.COLOR_ADMIN, int)
 
 
 class TestBotDiscordInterface:
@@ -427,6 +488,46 @@ class TestBotDiscordInterface:
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_send_message_discord_unavailable(self) -> None:
+        """send_message should return False when discord unavailable."""
+        mock_bot = MagicMock()
+        mock_bot.is_connected = True
+        mock_bot.event_channel_id = 123
+        
+        with patch('discord_interface.DISCORD_AVAILABLE', False):
+            with patch('discord_interface.discord', None):
+                interface = BotDiscordInterface(mock_bot)
+                result = await interface.send_message("test")
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_uses_global_channel_when_unbound(self) -> None:
+        """send_message should use global channel when not bound."""
+        mock_bot = MagicMock()
+        mock_bot.is_connected = True
+        mock_bot.event_channel_id = 111
+        mock_channel = AsyncMock(spec=discord.TextChannel)
+        mock_bot.get_channel = MagicMock(return_value=mock_channel)
+        
+        interface = BotDiscordInterface(mock_bot)  # channel_id is None
+        await interface.send_message("test")
+        mock_bot.get_channel.assert_called_with(111)
+
+    @pytest.mark.asyncio
+    async def test_send_message_bound_channel_takes_priority(self) -> None:
+        """send_message should use bound channel over global."""
+        mock_bot = MagicMock()
+        mock_bot.is_connected = True
+        mock_bot.event_channel_id = 111
+        mock_channel = AsyncMock(spec=discord.TextChannel)
+        mock_bot.get_channel = MagicMock(return_value=mock_channel)
+        
+        interface = BotDiscordInterface(mock_bot)
+        bound = interface.use_channel(222)
+        await bound.send_message("test")
+        mock_bot.get_channel.assert_called_with(222)
+
+    @pytest.mark.asyncio
     async def test_send_embed_when_disconnected(self) -> None:
         """send_embed should return False when not connected."""
         mock_bot = MagicMock()
@@ -554,6 +655,46 @@ class TestBotDiscordInterface:
         assert result is False
 
     @pytest.mark.asyncio
+    async def test_send_embed_discord_unavailable(self) -> None:
+        """send_embed should return False when discord unavailable."""
+        mock_bot = MagicMock()
+        mock_bot.is_connected = True
+        mock_bot.event_channel_id = 123
+        
+        with patch('discord_interface.DISCORD_AVAILABLE', False):
+            with patch('discord_interface.discord', None):
+                interface = BotDiscordInterface(mock_bot)
+                result = await interface.send_embed(MagicMock(spec=discord.Embed))
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_embed_uses_global_channel_when_unbound(self) -> None:
+        """send_embed should use global channel when not bound."""
+        mock_bot = MagicMock()
+        mock_bot.is_connected = True
+        mock_bot.event_channel_id = 111
+        mock_channel = AsyncMock(spec=discord.TextChannel)
+        mock_bot.get_channel = MagicMock(return_value=mock_channel)
+        
+        interface = BotDiscordInterface(mock_bot)  # channel_id is None
+        await interface.send_embed(MagicMock(spec=discord.Embed))
+        mock_bot.get_channel.assert_called_with(111)
+
+    @pytest.mark.asyncio
+    async def test_send_embed_bound_channel_takes_priority(self) -> None:
+        """send_embed should use bound channel over global."""
+        mock_bot = MagicMock()
+        mock_bot.is_connected = True
+        mock_bot.event_channel_id = 111
+        mock_channel = AsyncMock(spec=discord.TextChannel)
+        mock_bot.get_channel = MagicMock(return_value=mock_channel)
+        
+        interface = BotDiscordInterface(mock_bot)
+        bound = interface.use_channel(222)
+        await bound.send_embed(MagicMock(spec=discord.Embed))
+        mock_bot.get_channel.assert_called_with(222)
+
+    @pytest.mark.asyncio
     async def test_test_connection(self) -> None:
         """test_connection should return bot connection status."""
         mock_bot = MagicMock()
@@ -571,23 +712,6 @@ class TestBotDiscordInterface:
         interface = BotDiscordInterface(mock_bot)
         
         assert interface.is_connected is True
-
-    @pytest.mark.asyncio
-    async def test_use_channel_with_send_message(self) -> None:
-        """Bound channel should be used for send_message."""
-        mock_bot = MagicMock()
-        mock_bot.is_connected = True
-        mock_bot.event_channel_id = 111111111
-        
-        mock_channel = AsyncMock(spec=discord.TextChannel)
-        mock_bot.get_channel = MagicMock(return_value=mock_channel)
-        
-        interface = BotDiscordInterface(mock_bot)
-        bound = interface.use_channel(222222222)
-        
-        await bound.send_message("test")
-        
-        mock_bot.get_channel.assert_called_with(222222222)
 
 
 class TestDiscordInterfaceFactory:
@@ -628,12 +752,53 @@ class TestDiscordInterfaceFactory:
             with pytest.raises(ImportError, match="Could not import DiscordBot"):
                 DiscordInterfaceFactory.create_interface(mock_config)
 
+    def test_import_discord_bot_fallback_to_importlib(self) -> None:
+        """_import_discord_bot should fallback to importlib when direct import fails."""
+        with patch.dict(sys.modules, {'discord_bot': None}):
+            with patch.object(
+                DiscordInterfaceFactory,
+                '_import_with_importlib',
+                return_value=MagicMock()
+            ) as mock_importlib:
+                result = DiscordInterfaceFactory._import_discord_bot()
+                mock_importlib.assert_called()
+                assert result is mock_importlib.return_value
+
+    def test_import_with_importlib_no_current_path(self) -> None:
+        """_import_with_importlib should raise if __file__ not available."""
+        with patch('discord_interface.__file__', None):
+            with pytest.raises(ImportError, match="Could not determine module path"):
+                DiscordInterfaceFactory._import_with_importlib('test_module', 'TestClass')
+
+    def test_import_with_importlib_no_spec(self) -> None:
+        """_import_with_importlib should raise if spec_from_file_location fails."""
+        import importlib.util
+        with patch('importlib.util.spec_from_file_location', return_value=None):
+            with pytest.raises(ImportError, match="Could not load"):
+                DiscordInterfaceFactory._import_with_importlib('test_module', 'TestClass')
+
+    def test_import_with_importlib_success(self) -> None:
+        """_import_with_importlib should successfully import module."""
+        # This test creates a minimal mock module structure
+        mock_spec = MagicMock()
+        mock_loader = MagicMock()
+        mock_spec.loader = mock_loader
+        
+        mock_module = MagicMock()
+        mock_module.TestClass = MagicMock()
+        mock_loader.exec_module = MagicMock()
+        
+        with patch('importlib.util.spec_from_file_location', return_value=mock_spec):
+            with patch('importlib.util.module_from_spec', return_value=mock_module):
+                result = DiscordInterfaceFactory._import_with_importlib('test_module', 'TestClass')
+                assert result is mock_module.TestClass
+
 
 class TestDiscordInterfaceAbstract:
     """Test DiscordInterface abstract base."""
 
     def test_send_embed_default_implementation(self) -> None:
-        """send_embed should have default implementation that returns False."""
+        """send_embed should have default implementation that returns False coroutine."""
         class TestInterface(DiscordInterface):
             async def connect(self) -> None:
                 pass
