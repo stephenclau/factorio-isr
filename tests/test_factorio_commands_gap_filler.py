@@ -66,9 +66,9 @@ class CommandExtractor:
         return None
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # GAP 1: RCON Disconnection Paths (45 statements)
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class TestRconDisconnectionPaths:
     """Test all RCON disconnection error paths (45 statements)."""
@@ -132,9 +132,9 @@ class TestRconDisconnectionPaths:
         assert embed is not None
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # GAP 2: Invalid Response Parsing (60 statements)
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class TestInvalidResponseParsing:
     """Test edge cases in response parsing (60 statements)."""
@@ -190,6 +190,7 @@ class TestInvalidResponseParsing:
         
         await seed_cmd.callback(mock_interaction)
         
+        # Seed command handles any response gracefully
         assert mock_interaction.followup.send.called
         embed = mock_interaction.followup.send.call_args.kwargs['embed']
         assert embed is not None
@@ -214,9 +215,9 @@ class TestInvalidResponseParsing:
         assert embed is not None
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # GAP 3: Rate Limiting Edge Cases (35 statements)
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class TestRateLimitingEdgeCases:
     """Test rate limiting edge cases (35 statements)."""
@@ -225,7 +226,8 @@ class TestRateLimitingEdgeCases:
     async def test_query_cooldown_exhausted(self, mock_bot, mock_rcon_client, mock_interaction):
         """Query command when rate limit is exhausted."""
         # Mock the rate limiter to return True for is_rate_limited
-        with patch('src.bot.commands.factorio.QUERY_COOLDOWN') as mock_cooldown:
+        # Use bot.commands.factorio path (relative import when src/ is added to sys.path)
+        with patch('bot.commands.factorio.QUERY_COOLDOWN') as mock_cooldown:
             mock_cooldown.is_rate_limited.return_value = (True, 30)  # (is_limited, retry_in_seconds)
             
             register_factorio_commands(mock_bot)
@@ -240,7 +242,7 @@ class TestRateLimitingEdgeCases:
     @pytest.mark.asyncio
     async def test_admin_cooldown_exhausted(self, mock_bot, mock_rcon_client, mock_interaction):
         """Admin command when rate limit is exhausted."""
-        with patch('src.bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
+        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
             mock_cooldown.is_rate_limited.return_value = (True, 60)
             
             register_factorio_commands(mock_bot)
@@ -253,9 +255,9 @@ class TestRateLimitingEdgeCases:
             assert mock_interaction.response.send_message.called
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # GAP 4: Server Context Switching (40 statements)
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class TestServerContextSwitching:
     """Test server switching and context paths (40 statements)."""
@@ -312,9 +314,9 @@ class TestServerContextSwitching:
         mock_bot.user_context.set_user_server.assert_called_once()
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # GAP 5: Multi-Force Commands (30 statements)
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class TestMultiForceCommands:
     """Test commands that support multiple forces (30 statements)."""
@@ -339,9 +341,9 @@ class TestMultiForceCommands:
         assert embed is not None
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # GAP 6: Input Validation Failures (40 statements)
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 class TestInputValidationFailures:
     """Test invalid input handling (40 statements)."""
@@ -349,7 +351,7 @@ class TestInputValidationFailures:
     @pytest.mark.asyncio
     async def test_speed_out_of_range(self, mock_bot, mock_rcon_client, mock_interaction):
         """Speed command with out-of-range value."""
-        with patch('src.bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
+        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
             mock_cooldown.is_rate_limited.return_value = (False, 0)
             
             register_factorio_commands(mock_bot)
@@ -368,7 +370,7 @@ class TestInputValidationFailures:
     @pytest.mark.asyncio
     async def test_clock_command_display(self, mock_bot, mock_rcon_client, mock_interaction):
         """Clock command without value shows current time."""
-        with patch('src.bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
+        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
             mock_cooldown.is_rate_limited.return_value = (False, 0)
             
             mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -389,9 +391,9 @@ class TestInputValidationFailures:
             assert embed is not None
 
 
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 # FIXTURES
-# ════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
 
 @pytest.fixture
 def mock_bot():
