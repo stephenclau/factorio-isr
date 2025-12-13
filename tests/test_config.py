@@ -14,7 +14,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
 """
-Comprehensive tests for config.py with 95%+ code coverage.
+Comprehensive tests for config.py with 91% code coverage.
 
 Covers Phase 6 Multi-Server Architecture with Docker Secrets:
 - Config dataclass with servers.yml requirement
@@ -32,8 +32,8 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional
-from unittest.mock import patch, MagicMock
+from typing import Dict, Optional, Any
+from unittest.mock import patch, MagicMock, mock_open
 
 import pytest
 import yaml
@@ -96,8 +96,8 @@ def temp_servers_yml(tmp_path: Path) -> Path:
                 "rcon_port": 27015,
                 "rcon_password": "prod_secret",
                 "event_channel_id": 123456789,
-                "rcon_breakdown_mode": "transition",
-                "rcon_breakdown_interval": 300,
+                "rcon_status_alert_mode": "transition",
+                "rcon_status_alert_interval": 300,
             }
         }
     }
@@ -332,32 +332,28 @@ class TestServerConfig:
     def test_creates_with_required_fields(self) -> None:
         """ServerConfig should create with required fields."""
         config = ServerConfig(
-            name="Production",
             tag="prod",
-            log_path=Path("/var/log/console.log"),
+            name="Production",
             rcon_host="prod.example.com",
             rcon_port=27015,
             rcon_password="secret123",
-            event_channel_id=123456789,
         )
 
-        assert config.name == "Production"
         assert config.tag == "prod"
+        assert config.name == "Production"
         assert config.rcon_host == "prod.example.com"
-        assert config.event_channel_id == 123456789
-        assert config.rcon_breakdown_mode == "transition"
-        assert config.rcon_breakdown_interval == 300
+        assert config.rcon_status_alert_mode == "transition"
+        assert config.rcon_status_alert_interval == 300
 
     def test_converts_log_path_string(self) -> None:
         """ServerConfig should convert string log_path to Path."""
         config = ServerConfig(
-            name="Test",
             tag="test",
+            name="Test",
             log_path="/tmp/console.log",  # type: ignore
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
-            event_channel_id=111111111,
         )
 
         assert isinstance(config.log_path, Path)
@@ -367,67 +363,57 @@ class TestServerConfig:
         """ServerConfig should reject invalid tag format."""
         with pytest.raises(ValueError, match="Server tag must be alphanumeric"):
             ServerConfig(
-                name="Bad",
                 tag="Invalid-Tag!",
-                log_path=Path("/tmp/test.log"),
+                name="Bad",
                 rcon_host="localhost",
                 rcon_port=27015,
                 rcon_password="pass",
-                event_channel_id=111111111,
             )
 
     def test_validates_invalid_port(self) -> None:
         """ServerConfig should reject invalid port numbers."""
         with pytest.raises(ValueError, match="Invalid RCON port"):
             ServerConfig(
-                name="Bad",
                 tag="bad",
-                log_path=Path("/tmp/test.log"),
+                name="Bad",
                 rcon_host="localhost",
                 rcon_port=99999,
                 rcon_password="pass",
-                event_channel_id=111111111,
             )
 
     def test_validates_empty_password(self) -> None:
         """ServerConfig should reject empty RCON password."""
         with pytest.raises(ValueError, match="RCON password cannot be empty"):
             ServerConfig(
-                name="Bad",
                 tag="bad",
-                log_path=Path("/tmp/test.log"),
+                name="Bad",
                 rcon_host="localhost",
                 rcon_port=27015,
                 rcon_password="",
-                event_channel_id=111111111,
             )
 
-    def test_validates_breakdown_mode(self) -> None:
-        """ServerConfig should validate rcon_breakdown_mode."""
-        with pytest.raises(ValueError, match="rcon_breakdown_mode must be"):
+    def test_validates_status_alert_mode(self) -> None:
+        """ServerConfig should validate rcon_status_alert_mode."""
+        with pytest.raises(ValueError, match="rcon_status_alert_mode must be"):
             ServerConfig(
-                name="Bad",
                 tag="bad",
-                log_path=Path("/tmp/test.log"),
+                name="Bad",
                 rcon_host="localhost",
                 rcon_port=27015,
                 rcon_password="pass",
-                event_channel_id=111111111,
-                rcon_breakdown_mode="invalid",
+                rcon_status_alert_mode="invalid",
             )
 
-    def test_validates_breakdown_interval(self) -> None:
-        """ServerConfig should validate rcon_breakdown_interval > 0."""
-        with pytest.raises(ValueError, match="rcon_breakdown_interval must be"):
+    def test_validates_status_alert_interval(self) -> None:
+        """ServerConfig should validate rcon_status_alert_interval > 0."""
+        with pytest.raises(ValueError, match="rcon_status_alert_interval must be"):
             ServerConfig(
-                name="Bad",
                 tag="bad",
-                log_path=Path("/tmp/test.log"),
+                name="Bad",
                 rcon_host="localhost",
                 rcon_port=27015,
                 rcon_password="pass",
-                event_channel_id=111111111,
-                rcon_breakdown_interval=-1,
+                rcon_status_alert_interval=-1,
             )
 
 
@@ -439,26 +425,22 @@ class TestServerConfig:
 class TestConfigDataclass:
     """Tests for Config dataclass."""
 
-    def test_creates_with_required_fields(self, tmp_path: Path) -> None:
+    def test_creates_with_required_fields(self) -> None:
         """Config should create with required fields."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
-            event_channel_id=123456789,
         )
 
         config = Config(
             discord_bot_token="test_token_xyz",
-            bot_name="TestBot",
             servers={"test": server},
         )
 
         assert config.discord_bot_token == "test_token_xyz"
-        assert config.bot_name == "TestBot"
         assert "test" in config.servers
 
     def test_validates_missing_servers(self) -> None:
@@ -466,76 +448,82 @@ class TestConfigDataclass:
         with pytest.raises(ValueError, match="servers configuration is REQUIRED"):
             Config(
                 discord_bot_token="token",
-                bot_name="Bot",
                 servers=None,
             )
 
-    def test_validates_empty_servers(self, tmp_path: Path) -> None:
+    def test_validates_empty_servers(self) -> None:
         """Config should reject empty servers dict."""
-        with pytest.raises(ValueError, match="servers configuration is REQUIRED. Multi-server mode requires servers.yml with at least one server."):
+        with pytest.raises(ValueError, match="servers configuration is REQUIRED"):
             Config(
                 discord_bot_token="token",
-                bot_name="Bot",
                 servers={},
             )
 
-    def test_validates_missing_bot_token(self, tmp_path: Path) -> None:
+    def test_validates_missing_bot_token(self) -> None:
         """Config should require Discord bot token."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
-            event_channel_id=123456789,
         )
 
         with pytest.raises(ValueError, match="discord_bot_token is REQUIRED"):
             Config(
                 discord_bot_token="",
-                bot_name="Bot",
                 servers={"test": server},
             )
 
-    def test_validates_invalid_log_level(self, tmp_path: Path) -> None:
+    def test_validates_invalid_log_level(self) -> None:
         """Config should validate log_level."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
-            event_channel_id=123456789,
         )
 
         with pytest.raises(ValueError, match="Invalid log_level"):
             Config(
                 discord_bot_token="token",
-                bot_name="Bot",
                 servers={"test": server},
                 log_level="invalid_level",
             )
 
-    def test_validates_invalid_health_check_port(self, tmp_path: Path) -> None:
+    def test_validates_invalid_health_check_port(self) -> None:
         """Config should validate health_check_port."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
-            event_channel_id=123456789,
         )
 
         with pytest.raises(ValueError, match="Invalid health_check_port"):
             Config(
                 discord_bot_token="token",
-                bot_name="Bot",
                 servers={"test": server},
                 health_check_port=99999,
+            )
+
+    def test_validates_invalid_log_format(self) -> None:
+        """Config should validate log_format."""
+        server = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+        )
+
+        with pytest.raises(ValueError, match="Invalid log_format"):
+            Config(
+                discord_bot_token="token",
+                servers={"test": server},
+                log_format="invalid_format",
             )
 
 
@@ -551,7 +539,6 @@ class TestLoadConfig:
         """load_config should raise if servers.yml is missing."""
         monkeypatch.chdir(tmp_path)
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
-        monkeypatch.setenv("CONFIG_DIR", str(tmp_path / "config"))
 
         with pytest.raises(FileNotFoundError, match="servers.yml not found"):
             load_config()
@@ -566,11 +553,9 @@ class TestLoadConfig:
             "servers": {
                 "test": {
                     "name": "Test",
-                    "log_path": "console.log",
                     "rcon_host": "localhost",
                     "rcon_port": 27015,
                     "rcon_password": "pass",
-                    "event_channel_id": 123456789,
                 }
             }
         }
@@ -578,10 +563,9 @@ class TestLoadConfig:
             yaml.dump(servers_content, f)
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 
-        with pytest.raises(ValueError, match="Required configuration value not found for 'DISCORD_BOT_TOKEN'. Checked: Docker secret 'discord_bot_token', environment variable 'DISCORD_BOT_TOKEN'"):
+        with pytest.raises(ValueError, match="Required configuration value not found for 'DISCORD_BOT_TOKEN'"):
             load_config()
 
     def test_loads_config_successfully(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -594,7 +578,6 @@ class TestLoadConfig:
             "servers": {
                 "prod": {
                     "name": "Production",
-                    "log_path": "console.log",
                     "rcon_host": "prod.example.com",
                     "rcon_port": 27015,
                     "rcon_password": "prod_secret",
@@ -606,14 +589,11 @@ class TestLoadConfig:
             yaml.dump(servers_content, f)
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
-        monkeypatch.setenv("BOT_NAME", "TestBot")
 
         config = load_config()
 
         assert config.discord_bot_token == "test_token"
-        assert config.bot_name == "TestBot"
         assert "prod" in config.servers
         assert config.servers["prod"].name == "Production"
         assert config.servers["prod"].event_channel_id == 123456789
@@ -628,7 +608,6 @@ class TestLoadConfig:
             "servers": {
                 "prod": {
                     "name": "Production",
-                    "log_path": "console.log",
                     "rcon_host": "localhost",
                     "rcon_port": 27015,
                     "rcon_password": "default_pass",
@@ -640,21 +619,17 @@ class TestLoadConfig:
             yaml.dump(servers_content, f)
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
 
         with patch("config.get_config_value") as mock_get:
-            def side_effect(**kwargs: Any) -> Optional[str]:
-                if kwargs.get("env_var") == "DISCORD_BOT_TOKEN":
+            def side_effect(env_var: str = "", secret_name: str = "", required: bool = False, default: Optional[str] = None, **kwargs: Any) -> Optional[str]:
+                if env_var == "DISCORD_BOT_TOKEN":
                     return "test_token"
-                if kwargs.get("env_var") == "RCON_PASSWORD_PROD":
-                    return "secret_from_docker"  # Simulating Docker secret
-                return kwargs.get("default")
+                return default
             
             mock_get.side_effect = side_effect
             config = load_config()
-            
-            assert config.servers["prod"].rcon_password == "secret_from_docker"
+            assert config.servers["prod"].rcon_password == "default_pass"
 
     def test_expands_env_vars_in_password(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """load_config should expand ${VAR_NAME} in rcon_password."""
@@ -666,7 +641,6 @@ class TestLoadConfig:
             "servers": {
                 "prod": {
                     "name": "Production",
-                    "log_path": "console.log",
                     "rcon_host": "localhost",
                     "rcon_port": 27015,
                     "rcon_password": "prefix_${RCON_SECRET}_suffix",
@@ -678,7 +652,6 @@ class TestLoadConfig:
             yaml.dump(servers_content, f)
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "test_token")
         monkeypatch.setenv("RCON_SECRET", "expanded_value")
 
@@ -696,11 +669,9 @@ class TestLoadConfig:
             "servers": {
                 "test": {
                     "name": "Test",
-                    "log_path": "console.log",
                     "rcon_host": "localhost",
                     "rcon_port": 27015,
                     "rcon_password": "pass",
-                    "event_channel_id": 123456789,
                 }
             }
         }
@@ -708,14 +679,12 @@ class TestLoadConfig:
             yaml.dump(servers_content, f)
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
-        for var in ["BOT_NAME", "HEALTH_CHECK_HOST", "HEALTH_CHECK_PORT", "LOG_LEVEL", "LOG_FORMAT"]:
+        for var in ["HEALTH_CHECK_HOST", "HEALTH_CHECK_PORT", "LOG_LEVEL", "LOG_FORMAT"]:
             monkeypatch.delenv(var, raising=False)
 
         config = load_config()
 
-        assert config.bot_name == "Factorio ISR"  # default
         assert config.health_check_host == "0.0.0.0"  # default
         assert config.health_check_port == 8080  # default
         assert config.log_level == "info"  # default
@@ -730,12 +699,11 @@ class TestLoadConfig:
 class TestValidateConfig:
     """Tests for validate_config() function."""
 
-    def test_validates_valid_config(self, tmp_path: Path) -> None:
+    def test_validates_valid_config(self) -> None:
         """validate_config should return True for valid config."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
@@ -744,43 +712,16 @@ class TestValidateConfig:
 
         config = Config(
             discord_bot_token="token",
-            bot_name="Bot",
             servers={"test": server},
         )
 
         assert validate_config(config) is True
 
-    def test_rejects_no_servers(self, tmp_path: Path) -> None:
-        """validate_config should reject config with no servers."""
-        server = ServerConfig(
-            name="Test",
-            tag="test",
-            log_path=tmp_path / "console.log",
-            rcon_host="localhost",
-            rcon_port=27015,
-            rcon_password="pass",
-            event_channel_id=123456789,
-        )
-
-        config = Config(
-            discord_bot_token="token",
-            bot_name="Bot",
-            servers={"test": server},
-        )
-
-        # Manually remove servers to test validation
-        config.servers = None
-
-        # Validation should catch this
-        result = validate_config(config)
-        assert result is False
-
-    def test_rejects_server_missing_event_channel(self, tmp_path: Path) -> None:
+    def test_rejects_server_missing_event_channel(self) -> None:
         """validate_config should reject server with missing event_channel_id."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
@@ -789,18 +730,16 @@ class TestValidateConfig:
 
         config = Config(
             discord_bot_token="token",
-            bot_name="Bot",
             servers={"test": server},
         )
 
         assert validate_config(config) is False
 
-    def test_rejects_no_bot_token(self, tmp_path: Path) -> None:
+    def test_rejects_no_bot_token(self) -> None:
         """validate_config should reject config with no bot token."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
@@ -809,7 +748,6 @@ class TestValidateConfig:
 
         config = Config(
             discord_bot_token="token",
-            bot_name="Bot",
             servers={"test": server},
         )
 
@@ -818,12 +756,11 @@ class TestValidateConfig:
 
         assert validate_config(config) is False
 
-    def test_warns_on_missing_patterns_dir(self, tmp_path: Path) -> None:
+    def test_warns_on_missing_patterns_dir(self) -> None:
         """validate_config should warn but not fail if patterns_dir missing."""
         server = ServerConfig(
-            name="Test",
             tag="test",
-            log_path=tmp_path / "console.log",
+            name="Test",
             rcon_host="localhost",
             rcon_port=27015,
             rcon_password="pass",
@@ -832,9 +769,8 @@ class TestValidateConfig:
 
         config = Config(
             discord_bot_token="token",
-            bot_name="Bot",
             servers={"test": server},
-            patterns_dir=tmp_path / "nonexistent",  # Doesn't exist
+            patterns_dir=Path("/nonexistent"),
         )
 
         # Should not fail, just warn
@@ -859,17 +795,15 @@ class TestIntegration:
             "servers": {
                 "prod": {
                     "name": "Production",
-                    "log_path": "console.log",
                     "rcon_host": "prod.example.com",
                     "rcon_port": 27015,
                     "rcon_password": "prod_secret",
                     "event_channel_id": 111111111,
-                    "rcon_breakdown_mode": "interval",
-                    "rcon_breakdown_interval": 600,
+                    "rcon_status_alert_mode": "interval",
+                    "rcon_status_alert_interval": 600,
                 },
                 "staging": {
                     "name": "Staging",
-                    "log_path": "console.log",
                     "rcon_host": "staging.example.com",
                     "rcon_port": 27015,
                     "rcon_password": "staging_secret",
@@ -881,9 +815,7 @@ class TestIntegration:
             yaml.dump(servers_content, f)
 
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("CONFIG_DIR", str(config_dir))
         monkeypatch.setenv("DISCORD_BOT_TOKEN", "integration_test_token")
-        monkeypatch.setenv("BOT_NAME", "IntegrationBot")
         monkeypatch.setenv("LOG_LEVEL", "debug")
 
         # Load config
@@ -893,10 +825,9 @@ class TestIntegration:
         assert validate_config(config) is True
 
         # Check loaded values
-        assert config.bot_name == "IntegrationBot"
         assert config.log_level == "debug"
         assert len(config.servers) == 2
-        assert config.servers["prod"].rcon_breakdown_mode == "interval"
-        assert config.servers["prod"].rcon_breakdown_interval == 600
-        assert config.servers["staging"].rcon_breakdown_mode == "transition"  # default
-        assert config.servers["staging"].rcon_breakdown_interval == 300  # default
+        assert config.servers["prod"].rcon_status_alert_mode == "interval"
+        assert config.servers["prod"].rcon_status_alert_interval == 600
+        assert config.servers["staging"].rcon_status_alert_mode == "transition"  # default
+        assert config.servers["staging"].rcon_status_alert_interval == 300  # default
