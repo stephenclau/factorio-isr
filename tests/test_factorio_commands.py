@@ -46,6 +46,7 @@ from datetime import datetime, timedelta, timezone
 import discord
 from discord import app_commands
 from typing import Optional
+import time
 
 # Import from bot (conftest.py adds src/ to sys.path)
 from bot.commands.factorio import register_factorio_commands
@@ -695,59 +696,110 @@ class TestGameControlCommandsHappyPath:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# ERROR PATH: Rate Limiting
+# ERROR PATH: Rate Limiting (Token Bucket Algorithm)
 # ════════════════════════════════════════════════════════════════════════════
 
 class TestErrorPathRateLimiting:
-    """Error path: Rate limiting enforcement."""
+    """Error path: Rate limiting enforcement with token bucket algorithm.
+    
+    Note: Uses CommandCooldown token-bucket implementation:
+    - QUERY_COOLDOWN:  5 queries per 30 seconds
+    - ADMIN_COOLDOWN:  3 actions per 60 seconds
+    - DANGER_COOLDOWN: 1 action per 120 seconds
+    """
 
-    def test_query_cooldown_applied_to_query_commands(
+    def test_query_cooldown_allows_multiple_queries_within_window(
         self,
     ):
-        """Test: Query commands (status, players, version) use QUERY_COOLDOWN.
+        """Test: QUERY_COOLDOWN (5 queries/30s) allows 5 queries without blocking.
         
-        Cooldown: 5 seconds
-        Expected: After 3+ queries in <5s, rate limited
+        Token Bucket Algorithm:
+        - Up to 5 tokens available in 30s window
+        - Each call consumes 1 token
+        - Older calls expire after 30s
         """
         user_id = 12345
+        cooldown = QUERY_COOLDOWN  # 5 per 30s
 
-        # First call should succeed
-        is_limited, retry = QUERY_COOLDOWN.is_rate_limited(user_id)
-        assert not is_limited
+        # Reset any prior state
+        cooldown.reset(user_id)
 
-        # Subsequent calls within 5s should be limited
-        is_limited, retry = QUERY_COOLDOWN.is_rate_limited(user_id)
-        assert is_limited
-        assert isinstance(retry, (int, float, str))
+        # First 5 calls should succeed (consume tokens)
+        for i in range(5):
+            is_limited, retry = cooldown.is_rate_limited(user_id)
+            assert not is_limited, f"Call {i+1} should not be limited"
 
-    def test_admin_cooldown_applied_to_management_commands(
+        # 6th call should be rate limited (no tokens left)
+        is_limited, retry = cooldown.is_rate_limited(user_id)
+        assert is_limited, "6th call should be rate limited"
+        assert retry > 0, "Should have positive retry time"
+
+        # Cleanup
+        cooldown.reset(user_id)
+
+    def test_admin_cooldown_enforces_3_per_minute(
         self,
     ):
-        """Test: Management commands (kick, mute, save) use ADMIN_COOLDOWN.
-        
-        Cooldown: 10 seconds
-        Expected: Rate limited after N calls
-        """
+        """Test: ADMIN_COOLDOWN (3 actions/60s) enforces rate limit."""
         user_id = 12346
+        cooldown = ADMIN_COOLDOWN  # 3 per 60s
 
-        # First call
-        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(user_id)
-        # May or may not be limited depending on cooldown state
-        assert isinstance(is_limited, bool)
+        # Reset state
+        cooldown.reset(user_id)
 
-    def test_danger_cooldown_applied_to_destructive_commands(
+        # First 3 calls succeed
+        for i in range(3):
+            is_limited, retry = cooldown.is_rate_limited(user_id)
+            assert not is_limited, f"Admin call {i+1} should succeed"
+
+        # 4th call is blocked
+        is_limited, retry = cooldown.is_rate_limited(user_id)
+        assert is_limited, "4th admin action should be rate limited"
+
+        # Cleanup
+        cooldown.reset(user_id)
+
+    def test_danger_cooldown_enforces_1_per_2min(
         self,
     ):
-        """Test: Dangerous commands (ban, rcon) use DANGER_COOLDOWN.
-        
-        Cooldown: 30 seconds
-        Expected: Strict rate limiting
-        """
+        """Test: DANGER_COOLDOWN (1 action/120s) is strictest."""
         user_id = 12347
+        cooldown = DANGER_COOLDOWN  # 1 per 120s
 
-        # First call
-        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(user_id)
-        assert isinstance(is_limited, bool)
+        # Reset state
+        cooldown.reset(user_id)
+
+        # First call succeeds
+        is_limited, retry = cooldown.is_rate_limited(user_id)
+        assert not is_limited, "First danger action should succeed"
+
+        # 2nd call is blocked (only 1 per 2min)
+        is_limited, retry = cooldown.is_rate_limited(user_id)
+        assert is_limited, "2nd danger action should be rate limited"
+        assert retry > 100, "Retry should be ~120s minus execution time"
+
+        # Cleanup
+        cooldown.reset(user_id)
+
+    def test_rate_limit_retry_time_calculation(
+        self,
+    ):
+        """Test: Retry time is calculated correctly."""
+        user_id = 12348
+        cooldown = QUERY_COOLDOWN  # 5 per 30s
+
+        cooldown.reset(user_id)
+
+        # Exhaust tokens
+        for _ in range(5):
+            cooldown.is_rate_limited(user_id)
+
+        # Check retry time
+        is_limited, retry = cooldown.is_rate_limited(user_id)
+        assert is_limited
+        assert 0 < retry <= 30, "Retry should be between 0 and window size (30s)"
+
+        cooldown.reset(user_id)
 
 
 # ════════════════════════════════════════════════════════════════════════════
