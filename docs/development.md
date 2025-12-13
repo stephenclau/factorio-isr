@@ -37,48 +37,23 @@ pip install -r requirements-dev.txt
 pip install -e .
 ```
 
-## Project Structure
-
-```text
-factorio-isr/
-├── src/
-│   ├── __init__.py
-│   ├── main.py                  # Application entry point
-│   ├── config.py                # Configuration loader
-│   ├── event_parser.py          # Event parsing with security hardening
-│   ├── pattern_loader.py        # YAML pattern configuration loader
-│   ├── discord_bot.py           # Discord bot with slash commands
-│   ├── discord_interface.py     # Unified Discord interface
-│   ├── log_tailer.py            # Real-time log monitoring
-│   ├── rcon_client.py           # RCON client with metrics/stats
-│   ├── server_manager.py        # Multi-server coordination
-│   ├── security_monitor.py      # Security monitoring and rate limiting
-│   ├── mention_resolver.py      # @mention parsing and resolution
-│   └── health.py                # Health check server
-├── tests/
-│   ├── test_main.py
-│   ├── ...                      # Comprehensive test suite
-├── patterns/                    # YAML event patterns
-├── config/                      # Configuration files
-│   ├── servers.yml              # Multi-server configuration
-│   ├── mentions.yml             # Role mention vocabulary
-│   └── secmon.yml               # Security monitor settings
-└── docs/                        # Documentation
-```
-
 ## Running Tests
 
-### Coverage Target
+Factorio ISR maintains comprehensive test coverage through automated test suites.
 
-We maintain a strict code coverage standard. The default target for code coverage is **91%**.
+### Run Tests
 
-### Run with Coverage
+```bash
+pytest
+```
+
+### Run with Coverage Report
 
 ```bash
 pytest --cov=src --cov-report=html --cov-report=term
 ```
 
-View coverage report:
+View the generated coverage report:
 
 ```bash
 open htmlcov/index.html      # macOS
@@ -92,7 +67,9 @@ pytest tests/test_event_parser.py -v
 pytest tests/test_discord_bot.py -v
 ```
 
-## Code Style and Linting
+## Code Quality
+
+The project uses industry-standard Python tools for code formatting and quality checks.
 
 ### Format Code with Black
 
@@ -138,7 +115,7 @@ HEALTH_CHECK_PORT=8080
 
 ### Configuration Setup
 
-Local development mimics the production environment by using relative paths for configuration:
+Local development uses relative paths for configuration:
 
 1. Ensure `config/servers.yml` exists and is configured.
 2. Ensure `patterns/` contains valid YAML pattern files.
@@ -155,7 +132,7 @@ python -m src.main
 # Build local image
 docker build -t factorio-isr:dev .
 
-# Run container (mounting config and patterns to /app/...)
+# Run container
 docker run --rm \
   --env-file .env \
   -v /path/to/factorio/logs:/factorio/logs:ro \
@@ -163,24 +140,6 @@ docker run --rm \
   -v $(pwd)/config:/app/config:ro \
   -p 8080:8080 \
   factorio-isr:dev
-```
-
-## Working with the Discord Bot
-
-### Local Bot Smoke Test
-
-```python
-import asyncio
-from discord_bot import DiscordBot
-
-async def main():
-    bot = DiscordBot(token="YOUR_TEST_TOKEN")
-    await bot.connect_bot()
-    # Let it run briefly
-    await asyncio.sleep(10)
-    await bot.disconnect_bot()
-
-asyncio.run(main())
 ```
 
 ## Debugging
@@ -210,7 +169,9 @@ Create `.vscode/launch.json`:
 
 ## Contributing
 
-### Workflow
+Contributions are welcome! Factorio ISR is dual-licensed under AGPL-3.0 and commercial licensing.
+
+### Contribution Workflow
 
 1. **Create a feature branch**
    ```bash
@@ -218,10 +179,11 @@ Create `.vscode/launch.json`:
    ```
 
 2. **Make changes**
-   - Follow existing style and type hints.
-   - Add tests for new behavior (maintain >91% coverage).
+   - Follow existing code style and type hints
+   - Add tests for new functionality
+   - Ensure all tests pass
 
-3. **Run checks**
+3. **Run quality checks**
    ```bash
    pytest
    black src/ tests/
@@ -229,16 +191,22 @@ Create `.vscode/launch.json`:
    mypy src/
    ```
 
-4. **Commit**
+4. **Commit your changes**
    ```bash
    git add .
-   git commit -m "feat(rcon): add UPS monitoring and alerts"
+   git commit -m "feat(feature-name): brief description"
    ```
 
-5. **Push and open PR**
+5. **Push and open a pull request**
    ```bash
    git push origin feature/amazing-feature
    ```
+
+### Licensing
+
+By contributing to this project, you agree to license your contributions under the same AGPL-3.0 / Commercial dual-license terms.
+
+For commercial licensing questions or proprietary enhancement licensing, contact [licensing@laudiversified.com](mailto:licensing@laudiversified.com).
 
 ---
 
