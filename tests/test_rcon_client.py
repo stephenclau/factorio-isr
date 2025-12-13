@@ -28,7 +28,6 @@ from rcon_client import (
     RconClient,
     RconStatsCollector,
     RconAlertMonitor,
-    UPSCalculator,
     RCON_AVAILABLE,
 )
 
@@ -61,142 +60,6 @@ async def connected_client(
     await client.connect()
     yield client
     await client.disconnect()
-
-
-# ============================================================================
-# UPSCALCULATOR TESTS (BRANCH-LEVEL)
-# ============================================================================
-
-@pytest.mark.asyncio
-class TestUPSCalculator:
-    """Exercise UPSCalculator behaviors and branches."""
-
-    async def test_first_sample_initializes_and_returns_none(self):
-        calc = UPSCalculator(pause_time_threshold=5.0)
-        mock_client = AsyncMock(spec=RconClient)
-        mock_client.execute = AsyncMock(return_value="100")
-
-        result = await calc.sample_ups(mock_client)
-        assert result is None
-        assert calc.last_tick == 100
-        assert calc.last_sample_time is not None
-        assert calc.current_ups is None
-
-    async def test_normal_ups_calculation_and_last_known_ups(self, monkeypatch):
-        calc = UPSCalculator(pause_time_threshold=5.0)
-        mock_client = AsyncMock(spec=RconClient)
-        # First tick 0, second tick 60
-        times = [1000.0, 1001.0]
-        ticks = ["0", "60"]
-
-        async def exec_side_effect(cmd):
-            return ticks.pop(0)
-
-        mock_client.execute = AsyncMock(side_effect=exec_side_effect)
-        monkeypatch.setattr("time.time", lambda: times.pop(0))
-
-        # First sample initializes
-        assert await calc.sample_ups(mock_client) is None
-        # Second sample computes UPS=60
-        ups = await calc.sample_ups(mock_client)
-        assert ups is not None
-        assert calc.current_ups == ups
-        assert calc.last_known_ups == ups
-        assert calc.is_paused is False
-
-    async def test_pause_detection_no_tick_advance(self, monkeypatch):
-        calc = UPSCalculator(pause_time_threshold=1.0)
-        mock_client = AsyncMock(spec=RconClient)
-
-        # First sample tick=100 at t=0
-        ticks = ["100", "100"]
-        times = [0.0, 2.0]
-
-        async def exec_side_effect(cmd):
-            return ticks.pop(0)
-
-        mock_client.execute = AsyncMock(side_effect=exec_side_effect)
-        monkeypatch.setattr("time.time", lambda: times.pop(0))
-
-        assert await calc.sample_ups(mock_client) is None
-        # No tick advance, time >= threshold -> pause
-        result = await calc.sample_ups(mock_client)
-        assert result is None
-        assert calc.is_paused is True
-
-    async def test_minimal_tick_advancement_marks_paused(self, monkeypatch):
-        calc = UPSCalculator(pause_time_threshold=1.0)
-        mock_client = AsyncMock(spec=RconClient)
-
-        ticks = ["100", "101"]
-        times = [0.0, 2.0]  # delta_seconds=2 >= threshold
-
-        async def exec_side_effect(cmd):
-            return ticks.pop(0)
-
-        mock_client.execute = AsyncMock(side_effect=exec_side_effect)
-        monkeypatch.setattr("time.time", lambda: times.pop(0))
-
-        assert await calc.sample_ups(mock_client) is None
-        result = await calc.sample_ups(mock_client)
-        assert result is None
-        assert calc.is_paused is True
-
-    async def test_sample_too_fast_returns_previous_ups(self, monkeypatch):
-        calc = UPSCalculator(pause_time_threshold=5.0)
-        mock_client = AsyncMock(spec=RconClient)
-
-        ticks = ["0", "120", "180"]
-        # First delta: 1s, second delta: 0.01s (too fast)
-        times = [0.0, 1.0, 1.01]
-
-        async def exec_side_effect(cmd):
-            return ticks.pop(0)
-
-        mock_client.execute = AsyncMock(side_effect=exec_side_effect)
-        monkeypatch.setattr("time.time", lambda: times.pop(0))
-
-        # First sample
-        assert await calc.sample_ups(mock_client) is None
-        # Second sample: valid UPS=120
-        ups1 = await calc.sample_ups(mock_client)
-        assert ups1 is not None
-        # Third sample: too fast, should return current_ups
-        ups2 = await calc.sample_ups(mock_client)
-        assert ups2 == ups1
-
-    async def test_unpause_detection_from_paused(self, monkeypatch):
-        calc = UPSCalculator(pause_time_threshold=1.0)
-        mock_client = AsyncMock(spec=RconClient)
-
-        ticks = ["0", "0", "600"]
-        times = [0.0, 2.0, 5.0]
-
-        async def exec_side_effect(cmd):
-            return ticks.pop(0)
-
-        mock_client.execute = AsyncMock(side_effect=exec_side_effect)
-        monkeypatch.setattr("time.time", lambda: times.pop(0))
-
-        # First sample
-        assert await calc.sample_ups(mock_client) is None
-        # Second: pause
-        assert await calc.sample_ups(mock_client) is None
-        assert calc.is_paused is True
-        # Third: large tick advance, should unpause and compute UPS
-        ups = await calc.sample_ups(mock_client)
-        assert ups is not None
-        assert calc.is_paused is False
-
-    async def test_ups_calculation_handles_execute_error(self):
-        calc = UPSCalculator()
-        mock_client = AsyncMock(spec=RconClient)
-        mock_client.execute = AsyncMock(side_effect=Exception("boom"))
-
-        result = await calc.sample_ups(mock_client)
-        assert result is None
-        # State should remain unset
-        assert calc.last_tick is None
 
 
 # ============================================================================
@@ -277,6 +140,9 @@ class TestRconClientConnection:
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
+        assert client.connected is False
+
+        assert client.client is None
         assert client.connected is False
 
     async def test_disconnect_closes_client(self, mock_rcon_client_class):
@@ -446,6 +312,8 @@ class TestRconClientExecuteAndHelpers:
         assert players == []
 
     async def test_get_play_time_success_and_strip(self, mock_rcon_client_class):
+    async def test_get_play_time_success_and_strip(self, mock_rcon_client_class):
+        """Test get_play_time (renamed from get_server_time)."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
 
@@ -459,8 +327,10 @@ class TestRconClientExecuteAndHelpers:
         await client.connect()
 
         time_str = await client.get_play_time()
+        time_str = await client.get_play_time()
         assert time_str == "Day 10, 12:00"
 
+    async def test_get_play_time_empty_returns_unknown(self, mock_rcon_client_class):
     async def test_get_play_time_empty_returns_unknown(self, mock_rcon_client_class):
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
@@ -474,6 +344,7 @@ class TestRconClientExecuteAndHelpers:
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
+        time_str = await client.get_play_time()
         time_str = await client.get_play_time()
         assert time_str == "Unknown"
 
@@ -537,6 +408,7 @@ class TestRconClientEdgeCases:
         assert players == []
 
     async def test_get_play_time_handles_errors(self, mock_rcon_client_class):
+    async def test_get_play_time_handles_errors(self, mock_rcon_client_class):
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
 
@@ -549,6 +421,7 @@ class TestRconClientEdgeCases:
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
+        time_str = await client.get_play_time()
         time_str = await client.get_play_time()
         assert time_str == "Unknown"
 
@@ -633,17 +506,30 @@ class TestRconStatsCollector:
         mock_rcon.server_tag = "PROD"
         mock_rcon.server_name = "Production"
         mock_discord = AsyncMock()
+    async def test_init_wires_dependencies_and_flags(self):
+        """Test initialization with correct discord_interface parameter."""
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.server_tag = "TEST"
+        mock_rcon_client.server_name = "Test Server"
+        mock_rcon_client.is_connected = True
+        mock_discord_interface = AsyncMock()
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon,
             discord_interface=mock_discord,
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
             interval=300,
+            enable_ups_stat=True,
+            enable_evolution_stat=False,
             enable_ups_stat=True,
             enable_evolution_stat=False,
         )
 
         assert collector.rcon_client is mock_rcon
         assert collector.discord_interface is mock_discord
+        assert collector.rcon_client is mock_rcon_client
+        assert collector.discord_interface is mock_discord_interface
         assert collector.interval == 300
         assert collector.running is False
         assert collector.task is None
@@ -654,10 +540,15 @@ class TestRconStatsCollector:
         mock_rcon = MagicMock(spec=RconClient)
         mock_rcon.is_connected = True
         mock_discord = AsyncMock()
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.is_connected = True
+        mock_discord_interface = AsyncMock()
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon,
             discord_interface=mock_discord,
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
             interval=1,
         )
 
@@ -729,6 +620,22 @@ class TestRconStatsCollector:
 
         assert collector.metrics_engine is shared_engine
 
+    async def test_build_server_label(self):
+        """Test _build_server_label() method."""
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.server_tag = "PROD"
+        mock_rcon_client.server_name = "Production Server"
+        mock_discord_interface = AsyncMock()
+
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        label = collector._build_server_label()
+        assert "PROD" in label
+        assert "Production Server" in label
+
 
 # ============================================================================
 # ALERT MONITOR (CORRECT API)
@@ -745,6 +652,12 @@ class TestRconAlertMonitor:
         mock_rcon.server_tag = "PROD"
         mock_rcon.server_name = "Production"
         mock_discord = AsyncMock()
+    async def test_init_creates_metrics_engine(self):
+        """Test initialization with correct discord_interface parameter."""
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.server_config = MagicMock(pause_time_threshold=7.0)
+        mock_rcon_client.is_connected = True
+        mock_discord_interface = AsyncMock()
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon,
@@ -761,10 +674,88 @@ class TestRconAlertMonitor:
         assert monitor.running is False
         assert monitor.task is None
         assert monitor.alert_state["low_ups_active"] is False
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            check_interval=10,
+            ups_warning_threshold=55.0,
+            ups_recovery_threshold=58.0,
+            samples_before_alert=2,
+        )
+
+        assert monitor.rcon_client is mock_rcon_client
+        assert monitor.discord_interface is mock_discord_interface
+        assert monitor.check_interval == 10
+        assert monitor.ups_warning_threshold == 55.0
+        assert monitor.running is False
+
+    async def test_check_ups_skips_when_not_connected(self):
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.is_connected = False
+        mock_discord_interface = AsyncMock()
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        # Just ensure it doesn't crash when not connected
+        await monitor._check_ups()
         assert monitor.alert_state["consecutive_bad_samples"] == 0
+
+    async def test_alert_state_initialization(self):
+        """Test that alert_state is properly initialized."""
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.is_connected = True
+        mock_discord_interface = AsyncMock()
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        assert monitor.alert_state["low_ups_active"] is False
+        assert monitor.alert_state["consecutive_bad_samples"] == 0
+        assert monitor.alert_state["recent_ups_samples"] == []
 
     async def test_start_and_stop(self):
         """Test lifecycle: start and stop."""
+    async def test_can_send_alert_cooldown_logic(self, monkeypatch):
+        """Test _can_send_alert() cooldown logic."""
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_discord_interface = AsyncMock()
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            check_interval=5,
+            alert_cooldown=10,
+        )
+
+        # First alert should always be sendable
+        assert monitor._can_send_alert() is True
+
+    async def test_build_server_label(self):
+        """Test _build_server_label() method."""
+        mock_rcon_client = MagicMock(spec=RconClient)
+        mock_rcon_client.server_tag = "ALERT"
+        mock_rcon_client.server_name = "Alert Server"
+        mock_discord_interface = AsyncMock()
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        label = monitor._build_server_label()
+        assert "ALERT" in label
+        assert "Alert Server" in label
+
+
+@pytest.mark.asyncio
+class TestRconAlertMonitorLifecycle:
+    """Test RconAlertMonitor start/stop lifecycle."""
+
+    async def test_start_and_stop(self):
         mock_rcon = MagicMock(spec=RconClient)
         mock_rcon.is_connected = True
         mock_discord = AsyncMock()
@@ -774,17 +765,27 @@ class TestRconAlertMonitor:
             discord_interface=mock_discord,
             check_interval=1,
         )
+            discord_interface=mock_discord,
+            check_interval=0.05,
+        )
 
         await monitor.start()
+        assert monitor.running is True
+        assert monitor.task is not None
+
         assert monitor.running is True
         assert monitor.task is not None
 
         await monitor.stop()
         assert monitor.running is False
         assert monitor.task is None
+        assert monitor.running is False
+        assert monitor.task is None
 
     async def test_check_ups_skips_when_not_connected(self):
         """Test that _check_ups returns early when not connected."""
+    async def test_multiple_stop_calls_safe(self):
+        """Multiple stop() calls should be safe."""
         mock_rcon = MagicMock(spec=RconClient)
         mock_rcon.is_connected = False
         mock_discord = AsyncMock()
@@ -870,6 +871,13 @@ class TestRconAlertMonitor:
         )
 
         assert monitor.metrics_engine is shared_engine
+            discord_interface=mock_discord,
+        )
+
+        await monitor.start()
+        await monitor.stop()
+        # Second stop should not raise
+        await monitor.stop()
 
 
 if __name__ == "__main__":
