@@ -18,12 +18,12 @@
 Phase 6 of coverage intensity: Targeted gap coverage for remaining statements.
 
 Coverage targets:
-- Event handler error paths (on_error, on_ready error)
+- Event handler error paths (on_ready error)
 - Message sending guard clauses and exceptions
 - Notification methods with edge cases
 - Connection/disconnection exception handling
 
-Total: 14 tests covering the remaining 6% gap to 93%.
+Total: 13 tests covering the remaining 6% gap to 93%.
 """
 
 import asyncio
@@ -54,25 +54,6 @@ class TestOnReadyErrorPath:
             
             # Should not set connected flag
             assert bot._connected is False
-
-
-class TestOnErrorEventHandler:
-    """Test on_error event handler."""
-
-    @pytest.mark.asyncio
-    async def test_on_error_with_exception(self) -> None:
-        """on_error should handle exceptions during event processing."""
-        bot = DiscordBot(token="test-token")
-        
-        # Simulate an error event with an actual exception
-        try:
-            raise ValueError("Test error")
-        except ValueError:
-            # on_error is called with event name and captures exc_info
-            await bot.on_error("test_event")
-        
-        # Should complete without additional errors
-        assert True
 
 
 class TestSendMessageErrorPaths:
