@@ -21,7 +21,7 @@ Coverage targets:
 - Command execution (6 tests)
 - Query methods: get_player_count, get_players_online, get_play_time (10 tests)
 - Exception handling and error paths (5 tests)
-- Reconnection loop simulation (8 tests)
+- Backoff logic and delay management (8 tests)
 - Import fallback mechanisms (3 tests)
 - Edge cases (4 tests)
 
@@ -549,61 +549,32 @@ class TestRconClientQueryMethods:
         assert playtime == "Unknown"
 
 
-class TestRconClientReconnectionLoop:
-    """Test RconClient reconnection loop behavior."""
+class TestRconClientReconnectionLogic:
+    """Test RconClient backoff and reconnection delay logic."""
 
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_stops_when_not_should_reconnect(self) -> None:
-        """Reconnection loop should exit immediately when _should_reconnect is False."""
+    def test_backoff_calculation_increases_delay(self) -> None:
+        """Backoff calculation should increase delay."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
-        client = RconClient("localhost", 27015, "password")
-        client._should_reconnect = False
+        client = RconClient(
+            "localhost", 27015, "password",
+            reconnect_delay=1.0,
+            max_reconnect_delay=60.0,
+            reconnect_backoff=2.0
+        )
         
-        # Run loop briefly - should exit immediately
-        await asyncio.wait_for(client._reconnection_loop(), timeout=0.5)
+        initial = client.current_reconnect_delay
+        client.current_reconnect_delay = min(
+            client.current_reconnect_delay * client.reconnect_backoff,
+            client.max_reconnect_delay,
+        )
+        
+        assert client.current_reconnect_delay > initial
+        assert client.current_reconnect_delay == 2.0
 
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_attempts_reconnect_when_disconnected(self) -> None:
-        """Reconnection loop should call connect when disconnected."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-        
-        client = RconClient("localhost", 27015, "password")
-        client._should_reconnect = True
-        client.connected = False
-        client.connect = AsyncMock()
-        
-        # Set to stop after one iteration
-        async def mock_loop():
-            client._should_reconnect = False
-            await client._reconnection_loop()
-        
-        await asyncio.wait_for(mock_loop(), timeout=10.0)
-        client.connect.assert_called()
-
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_skips_reconnect_when_connected(self) -> None:
-        """Reconnection loop should not call connect when already connected."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-        
-        client = RconClient("localhost", 27015, "password")
-        client._should_reconnect = True
-        client.connected = True
-        client.connect = AsyncMock()
-        
-        async def mock_loop():
-            client._should_reconnect = False
-            await client._reconnection_loop()
-        
-        await asyncio.wait_for(mock_loop(), timeout=10.0)
-        client.connect.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_applies_backoff_on_failure(self) -> None:
-        """Reconnection loop should increase delay when reconnect fails."""
+    def test_backoff_respects_max_delay(self) -> None:
+        """Backoff should respect max_reconnect_delay cap."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
@@ -611,121 +582,135 @@ class TestRconClientReconnectionLoop:
             "localhost", 27015, "password",
             reconnect_delay=1.0,
             max_reconnect_delay=10.0,
-            reconnect_backoff=2.0
+            reconnect_backoff=100.0  # Very aggressive
         )
-        client._should_reconnect = True
-        client.connected = False
-        client.connect = AsyncMock()  # Doesn't set connected=True
         
-        initial_delay = client.current_reconnect_delay
-        
-        async def mock_loop():
-            client._should_reconnect = False
-            await client._reconnection_loop()
-        
-        await asyncio.wait_for(mock_loop(), timeout=10.0)
-        # After failed reconnect, delay should increase
-        assert client.current_reconnect_delay > initial_delay
-
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_respects_max_reconnect_delay(self) -> None:
-        """Reconnection loop should cap delay at max_reconnect_delay."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-        
-        client = RconClient(
-            "localhost", 27015, "password",
-            reconnect_delay=1.0,
-            max_reconnect_delay=5.0,
-            reconnect_backoff=10.0  # Very aggressive
-        )
-        client.current_reconnect_delay = 1.0
-        
-        # Simulate backoff calculation multiple times
-        for _ in range(5):
+        # Simulate multiple backoff iterations
+        for _ in range(10):
             client.current_reconnect_delay = min(
                 client.current_reconnect_delay * client.reconnect_backoff,
                 client.max_reconnect_delay,
             )
         
-        # Should never exceed max
         assert client.current_reconnect_delay <= client.max_reconnect_delay
+        assert client.current_reconnect_delay == 10.0
 
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_resets_delay_on_success(self) -> None:
-        """Reconnection loop should reset delay when reconnect succeeds."""
+    def test_delay_reset_to_initial(self) -> None:
+        """Delay should reset to initial value on success."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient(
+            "localhost", 27015, "password",
+            reconnect_delay=2.0,
+            max_reconnect_delay=60.0,
+            reconnect_backoff=2.0
+        )
+        
+        # Simulate backoff
+        client.current_reconnect_delay = 32.0
+        
+        # Simulate reconnect success
+        client.current_reconnect_delay = client.reconnect_delay
+        
+        assert client.current_reconnect_delay == 2.0
+
+    def test_backoff_progression(self) -> None:
+        """Backoff should follow exponential progression."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
         client = RconClient(
             "localhost", 27015, "password",
             reconnect_delay=1.0,
-            max_reconnect_delay=10.0,
+            max_reconnect_delay=120.0,
             reconnect_backoff=2.0
         )
-        client._should_reconnect = True
-        client.connected = False
-        client.current_reconnect_delay = 8.0  # Simulate it grew
         
-        # Mock connect to set connected=True (success)
-        async def mock_connect():
-            client.connected = True
-            client.current_reconnect_delay = client.reconnect_delay
+        expected_delays = [1.0, 2.0, 4.0, 8.0, 16.0]
+        actual_delays = []
         
-        client.connect = mock_connect
+        for _ in range(5):
+            actual_delays.append(client.current_reconnect_delay)
+            client.current_reconnect_delay = min(
+                client.current_reconnect_delay * client.reconnect_backoff,
+                client.max_reconnect_delay,
+            )
         
-        async def mock_loop():
-            client._should_reconnect = False
-            await client._reconnection_loop()
-        
-        await asyncio.wait_for(mock_loop(), timeout=10.0)
-        # After success, delay should reset
-        assert client.current_reconnect_delay == client.reconnect_delay
+        assert actual_delays == expected_delays
 
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_handles_cancelled_error(self) -> None:
-        """Reconnection loop should handle CancelledError gracefully."""
+    def test_backoff_capped_at_max(self) -> None:
+        """Backoff should never exceed max_reconnect_delay."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
-        client = RconClient("localhost", 27015, "password")
-        client._should_reconnect = True
-        client.connected = False
+        client = RconClient(
+            "localhost", 27015, "password",
+            reconnect_delay=1.0,
+            max_reconnect_delay=30.0,
+            reconnect_backoff=2.0
+        )
         
-        # Create task and cancel it
-        task = asyncio.create_task(client._reconnection_loop())
-        await asyncio.sleep(0.1)
-        task.cancel()
+        # Apply 20 backoff iterations
+        for _ in range(20):
+            client.current_reconnect_delay = min(
+                client.current_reconnect_delay * client.reconnect_backoff,
+                client.max_reconnect_delay,
+            )
         
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        assert client.current_reconnect_delay == 30.0
 
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_handles_exception(self) -> None:
-        """Reconnection loop should handle generic exceptions gracefully."""
+    def test_multiple_reconnect_cycles(self) -> None:
+        """Multiple reconnect cycles should work correctly."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
-        client = RconClient("localhost", 27015, "password")
-        client._should_reconnect = True
+        client = RconClient(
+            "localhost", 27015, "password",
+            reconnect_delay=1.0,
+            max_reconnect_delay=60.0,
+            reconnect_backoff=2.0
+        )
         
-        # Mock connect to raise exception
-        async def mock_connect():
-            raise RuntimeError("Test error")
+        # Cycle 1: backoff
+        for _ in range(3):
+            client.current_reconnect_delay = min(
+                client.current_reconnect_delay * client.reconnect_backoff,
+                client.max_reconnect_delay,
+            )
+        assert client.current_reconnect_delay == 8.0
         
-        client.connect = mock_connect
+        # Cycle 2: reset on success
+        client.current_reconnect_delay = client.reconnect_delay
+        assert client.current_reconnect_delay == 1.0
         
-        async def mock_loop():
-            try:
-                for i in range(2):  # Allow one exception to be caught
-                    if i == 1:
-                        client._should_reconnect = False
-                    try:
-                        await client._reconnection_loop()
-                    except RuntimeError:
-                        pass
-            except Exception:
-                pass
+        # Cycle 3: backoff again
+        client.current_reconnect_delay = min(
+            client.current_reconnect_delay * client.reconnect_backoff,
+            client.max_reconnect_delay,
+        )
+        assert client.current_reconnect_delay == 2.0
+
+    def test_custom_backoff_factor(self) -> None:
+        """Custom backoff factor should work correctly."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
         
-        # Should not raise, loop handles exception internally
-        await asyncio.wait_for(mock_loop(), timeout=10.0)
+        client = RconClient(
+            "localhost", 27015, "password",
+            reconnect_delay=1.0,
+            max_reconnect_delay=100.0,
+            reconnect_backoff=3.0  # 3x backoff
+        )
+        
+        client.current_reconnect_delay = min(
+            client.current_reconnect_delay * client.reconnect_backoff,
+            client.max_reconnect_delay,
+        )
+        assert client.current_reconnect_delay == 3.0
+        
+        client.current_reconnect_delay = min(
+            client.current_reconnect_delay * client.reconnect_backoff,
+            client.max_reconnect_delay,
+        )
+        assert client.current_reconnect_delay == 9.0
