@@ -73,7 +73,8 @@ class TestCreateBaseEmbed:
         assert isinstance(embed, discord.Embed)
         assert embed.title == "Test Title"
         assert embed.description is None
-        assert embed.color == EmbedBuilder.COLOR_INFO  # Default color
+        # Compare Colour.value to int
+        assert embed.color.value == EmbedBuilder.COLOR_INFO  # Default color
         assert embed.timestamp is not None
     
     def test_create_base_embed_with_description(self):
@@ -93,7 +94,7 @@ class TestCreateBaseEmbed:
             color=EmbedBuilder.COLOR_SUCCESS
         )
         
-        assert embed.color == EmbedBuilder.COLOR_SUCCESS
+        assert embed.color.value == EmbedBuilder.COLOR_SUCCESS
     
     def test_create_base_embed_has_footer(self):
         """Verify base embed has Factorio ISR footer."""
@@ -121,7 +122,7 @@ class TestErrorEmbed:
         assert isinstance(embed, discord.Embed)
         assert embed.title == "❌ Error"
         assert embed.description == "Something went wrong"
-        assert embed.color == EmbedBuilder.COLOR_ERROR
+        assert embed.color.value == EmbedBuilder.COLOR_ERROR
     
     def test_error_embed_long_message(self):
         """Error embed with long error message."""
@@ -150,7 +151,7 @@ class TestErrorEmbed:
         embed = EmbedBuilder.error_embed(msg)
         
         assert "RCON not available" in embed.description
-        assert embed.color == EmbedBuilder.COLOR_ERROR
+        assert embed.color.value == EmbedBuilder.COLOR_ERROR
 
 
 class TestCooldownEmbed:
@@ -163,7 +164,7 @@ class TestCooldownEmbed:
         assert embed.title == "⏱️ Slow Down!"
         assert "30.5" in embed.description
         assert "seconds" in embed.description
-        assert embed.color == EmbedBuilder.COLOR_WARNING
+        assert embed.color.value == EmbedBuilder.COLOR_WARNING
     
     def test_cooldown_embed_different_times(self):
         """Cooldown embeds with various retry times."""
@@ -195,7 +196,7 @@ class TestInfoEmbed:
         
         assert embed.title == "Server Status"
         assert embed.description == "All systems operational"
-        assert embed.color == EmbedBuilder.COLOR_INFO
+        assert embed.color.value == EmbedBuilder.COLOR_INFO
     
     def test_info_embed_with_emojis(self):
         """Info embed with emoji titles."""
@@ -244,7 +245,7 @@ class TestAdminActionEmbed:
         )
         
         assert "Player Kicked" in embed.title
-        assert embed.color == EmbedBuilder.COLOR_ADMIN
+        assert embed.color.value == EmbedBuilder.COLOR_ADMIN
         # Check fields exist
         field_names = [f.name for f in embed.fields]
         assert "Player" in field_names
@@ -302,7 +303,7 @@ class TestAdminActionEmbed:
         )
         
         assert "Kicked" in embed.title
-        assert embed.color == EmbedBuilder.COLOR_ADMIN
+        assert embed.color.value == EmbedBuilder.COLOR_ADMIN
     
     def test_admin_action_embed_ban(self):
         """Admin action embed for ban command (actual use case)."""
@@ -336,7 +337,7 @@ class TestPlayersListEmbed:
         
         assert "Players Online" in embed.title
         assert "No players" in embed.description
-        assert embed.color == EmbedBuilder.COLOR_INFO
+        assert embed.color.value == EmbedBuilder.COLOR_INFO
     
     def test_players_list_single(self):
         """Players embed with single player."""
@@ -344,7 +345,7 @@ class TestPlayersListEmbed:
         
         assert "(1)" in embed.title
         assert "PlayerOne" in embed.description
-        assert embed.color == EmbedBuilder.COLOR_SUCCESS
+        assert embed.color.value == EmbedBuilder.COLOR_SUCCESS
     
     def test_players_list_multiple(self):
         """Players embed with multiple players."""
@@ -385,7 +386,7 @@ class TestServerStatusEmbed:
         )
         
         assert "Server Status" in embed.title
-        assert embed.color == EmbedBuilder.COLOR_SUCCESS  # RCON enabled = green
+        assert embed.color.value == EmbedBuilder.COLOR_SUCCESS  # RCON enabled = green
     
     def test_server_status_rcon_disabled(self):
         """Server status embed with RCON disabled."""
@@ -395,7 +396,7 @@ class TestServerStatusEmbed:
             rcon_enabled=False
         )
         
-        assert embed.color == EmbedBuilder.COLOR_WARNING  # RCON disabled = warning
+        assert embed.color.value == EmbedBuilder.COLOR_WARNING  # RCON disabled = warning
     
     def test_server_status_with_uptime(self):
         """Server status embed with uptime."""
