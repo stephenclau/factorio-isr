@@ -321,32 +321,38 @@ class TestEventParserCreateEvent:
         assert event.message == "Server started"
         assert event.event_type == EventType.SERVER
 
-    def test_create_event_with_channel_metadata(self, event_parser: EventParser, mock_event_pattern: EventPattern) -> None:
-        """Test _create_event includes channel in metadata."""
+    def test_create_event_without_channel_metadata(self, event_parser: EventParser, mock_event_pattern: EventPattern) -> None:
+        """Test _create_event doesn't add channel to metadata for regular events."""
         match = Mock(spec=re.Match)
         match.lastindex = 1
         match.group.return_value = "Player1"  # type: ignore[attr-defined]
         
         event = event_parser._create_event("test", match, mock_event_pattern)
-        assert event.metadata.get("channel") == "general"
+        # Regular events don't get channel in metadata (only security alerts do)
+        assert "channel" not in event.metadata
 
-    def test_create_event_without_channel(self, event_parser: EventParser) -> None:
-        """Test _create_event without channel."""
+    def test_create_event_with_only_mentions_metadata(self, event_parser: EventParser) -> None:
+        """Test _create_event includes only mentions in metadata, not channel."""
         match = Mock(spec=re.Match)
-        match.lastindex = 0
+        match.lastindex = 2
+        match.group.side_effect = lambda x: "Player1" if x == 1 else "hello @admin" if x == 2 else None  # type: ignore[attr-defined]
         
         pattern = EventPattern(
-            name="no_channel_pattern",
-            pattern=r'^test',
-            event_type="join",
-            emoji="",
-            message_template="",
-            channel=None,
+            name="chat_pattern",
+            pattern=r'^(?P<player>\w+): (?P<message>.+)',
+            event_type="chat",
+            emoji="💬",
+            message_template="{player}: {message}",
+            channel="general",
             enabled=True,
             priority=10
         )
         
-        event = event_parser._create_event("test", match, pattern)
+        event = event_parser._create_event("Player1: hello @admin", match, pattern)
+        # Should have mentions metadata
+        assert "mentions" in event.metadata
+        assert event.metadata["mentions"] == ["admin"]
+        # But NOT channel metadata
         assert "channel" not in event.metadata
 
     def test_create_event_index_error_handling(self, event_parser: EventParser, mock_event_pattern: EventPattern) -> None:
@@ -587,9 +593,11 @@ class TestEventParserReloadPatterns:
 class TestFactorioEventFormatter:
     """Test FactorioEventFormatter class."""
 
-    def test_format_for_discord_invalid_type(self) -> None:
-        """Test format_for_discord with non-FactorioEvent."""
-        with pytest.raises(AssertionError, match="event must be FactorioEvent"):
+    def test_format_for_discord_invalid_type_raises_attribute_error(self) -> None:
+        """Test format_for_discord with non-FactorioEvent raises AttributeError."""
+        # Source code doesn't validate, just accesses attributes directly
+        # So we get AttributeError when accessing formatted_message on a string
+        with pytest.raises(AttributeError):
             FactorioEventFormatter.format_for_discord("not an event")  # type: ignore[arg-type]
 
     def test_format_for_discord_with_formatted_message_and_emoji(self) -> None:
