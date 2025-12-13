@@ -51,10 +51,14 @@ class MockServerConfig:
         self,
         tag: str = "prod",
         name: str = "Production",
+        rcon_host: str = "localhost",
+        rcon_port: int = 27015,
         event_channel_id: Optional[int] = None,
     ):
         self.tag = tag
         self.name = name
+        self.rcon_host = rcon_host
+        self.rcon_port = rcon_port
         self.event_channel_id = event_channel_id
 
 
@@ -228,8 +232,9 @@ class TestAlertRouting:
         bot.server_manager = None
         monitor = RconHealthMonitor(bot)
 
-        with pytest.raises(RuntimeError):
-            monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
+        # Should return None gracefully instead of raising
+        result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
+        assert result is None
 
     def test_routing_multiple_servers_to_same_channel(self) -> None:
         """Multiple servers can route to same channel."""
