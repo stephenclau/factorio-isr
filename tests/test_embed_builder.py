@@ -38,7 +38,7 @@ from unittest.mock import MagicMock, patch
 import discord
 from datetime import datetime, timezone
 
-from src.discord_interface import EmbedBuilder
+from discord_interface import EmbedBuilder
 
 
 class TestEmbedBuilderColors:
