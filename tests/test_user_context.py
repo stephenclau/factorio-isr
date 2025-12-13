@@ -398,16 +398,17 @@ class TestGetServerDisplayName:
         name = manager.get_server_display_name(123)
         assert name == "Unknown"
 
-    def test_get_server_display_name_empty_tags_raises_error(self) -> None:
-        """When no tags, RuntimeError from get_user_server propagates.
+    def test_get_server_display_name_empty_tags_returns_unknown(self) -> None:
+        """When no tags, get_server_display_name gracefully returns Unknown.
         
-        get_server_display_name calls get_user_server which raises RuntimeError,
-        and only catches KeyError, so RuntimeError propagates.
+        get_server_display_name catches RuntimeError from get_user_server
+        and returns "Unknown" instead of propagating the exception.
+        This is by design for graceful degradation.
         """
         bot = MockBot(MockServerManager(tags=[], configs={}, clients={}))
         manager = UserContextManager(bot)
-        with pytest.raises(RuntimeError, match="No servers configured"):
-            manager.get_server_display_name(123)
+        name = manager.get_server_display_name(123)
+        assert name == "Unknown"
 
     def test_get_server_display_name_custom_names(self) -> None:
         configs = {
