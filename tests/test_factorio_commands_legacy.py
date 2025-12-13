@@ -816,7 +816,7 @@ class TestWhitelistAllActions:
         assert mock_rcon_client.is_connected
 
 
-class TestRateLimit ingErrors:
+class TestRateLimitingErrors:
     """✓ ERROR PATH: Rate limiting token bucket algorithm."""
 
     def test_query_cooldown_token_bucket(
