@@ -475,14 +475,29 @@ class TestResearchCommandErrorPath:
         
         Input: /factorio research all (called 4+ times in 10s)
         Expected: Cooldown embed with retry time
+        
+        Note: ADMIN_COOLDOWN has rate=3 per 60s. First 3 calls should succeed.
+              The 4th call should be rate limited.
         """
         # Setup
         user_id = 12345
         
-        # First 3 calls should succeed
+        # IMPORTANT: Reset ADMIN_COOLDOWN state before testing
+        # This ensures this test doesn't inherit state from previous tests
+        ADMIN_COOLDOWN.reset(user_id)
+        
+        # First 3 calls should NOT be rate limited
         for i in range(3):
             is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(user_id)
             assert not is_limited, f"Should not be limited on attempt {i+1}"
+        
+        # 4th call SHOULD be rate limited
+        is_limited_4th, retry_4th = ADMIN_COOLDOWN.is_rate_limited(user_id)
+        assert is_limited_4th, "Should be limited on attempt 4"
+        assert retry_4th > 0, "Should have positive retry time"
+        
+        # Cleanup: Reset for other tests
+        ADMIN_COOLDOWN.reset(user_id)
 
 
 class TestResearchCommandEdgeCases:
