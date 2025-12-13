@@ -81,8 +81,9 @@ class TestEmbedBuilder:
         )
         
         assert embed.color.value == EmbedBuilder.COLOR_SUCCESS
-        assert "Running" in str(embed)
-        assert "5" in str(embed)
+        field_values = [f.value for f in embed.fields]
+        assert any("Running" in str(v) for v in field_values)
+        assert any("5" in str(v) for v in field_values)
 
     def test_server_status_embed_rcon_disabled(self) -> None:
         """server_status_embed should use warning color when RCON disabled."""
@@ -109,7 +110,10 @@ class TestEmbedBuilder:
             uptime="5 days 12 hours"
         )
         
-        assert len(embed.fields) > 0
+        field_names = [f.name for f in embed.fields]
+        assert "Uptime" in field_names
+        uptime_field = next(f for f in embed.fields if f.name == "Uptime")
+        assert "5 days 12 hours" in uptime_field.value
 
     def test_server_status_embed_no_uptime(self) -> None:
         """server_status_embed should work without uptime."""
@@ -162,6 +166,9 @@ class TestEmbedBuilder:
         
         assert "Ban" in embed.title
         assert embed.color.value == EmbedBuilder.COLOR_ADMIN
+        field_names = [f.name for f in embed.fields]
+        assert "Player" in field_names
+        assert "Moderator" in field_names
 
     def test_admin_action_embed_with_reason(self) -> None:
         """admin_action_embed should include reason when provided."""
@@ -175,7 +182,10 @@ class TestEmbedBuilder:
             reason="Excessive spam"
         )
         
-        assert "Excessive spam" in str(embed)
+        field_names = [f.name for f in embed.fields]
+        assert "Reason" in field_names
+        reason_field = next(f for f in embed.fields if f.name == "Reason")
+        assert "Excessive spam" in reason_field.value
 
     def test_admin_action_embed_with_response(self) -> None:
         """admin_action_embed should truncate long responses."""
@@ -190,7 +200,10 @@ class TestEmbedBuilder:
             response=long_response
         )
         
-        assert "..." in str(embed) or len(str(embed)) < len(long_response)
+        field_names = [f.name for f in embed.fields]
+        assert "Server Response" in field_names
+        response_field = next(f for f in embed.fields if f.name == "Server Response")
+        assert "..." in response_field.value or len(response_field.value) <= 1010
 
     def test_error_embed(self) -> None:
         """error_embed should create error embed with red color."""
