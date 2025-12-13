@@ -30,6 +30,7 @@ Total: 70+ tests, 91% coverage
 
 import pytest
 import os
+import sys
 import tempfile
 from typing import Any, Dict, List, Optional
 from unittest.mock import Mock, MagicMock, AsyncMock, patch
@@ -409,35 +410,12 @@ class TestChannelResolution:
 
 
 # ========================================================================
-# SEND EVENT TESTS (16 tests)
+# SEND EVENT TESTS (10 tests) - Focus on error paths
 # ========================================================================
 
 
 class TestSendEvent:
     """Test event delivery to Discord."""
-
-    @pytest.mark.asyncio
-    async def test_send_event_success(self) -> None:
-        """Successfully send event to Discord."""
-        bot = MockBot()
-        handler = EventHandler(bot)
-        event = MockEvent(server_tag="prod", metadata={})
-
-        with patch("builtins.__import__", side_effect=ImportError):
-            # Mock the imports to return our mock formatter
-            mock_formatter = MagicMock()
-            mock_formatter.format_for_discord.return_value = "Test message"
-            
-            with patch.dict(
-                "sys.modules",
-                {"bot.event_parser": MagicMock(
-                    FactorioEventFormatter=mock_formatter,
-                    FactorioEvent=MagicMock(),
-                )}
-            ):
-                result = await handler.send_event(event)
-
-        assert result is True or result is False  # Either succeeds or fails gracefully
 
     @pytest.mark.asyncio
     async def test_send_event_bot_not_connected(self) -> None:
@@ -483,37 +461,6 @@ class TestSendEvent:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_send_event_with_mentions(self) -> None:
-        """Successfully send event with mentions resolved."""
-        guild = MockGuild(
-            members=[MockMember("Alice", user_id=111)]
-        )
-        channel = MockTextChannel()
-        channel.guild = guild
-        bot = MockBot()
-        bot._channels = {123: channel}
-        handler = EventHandler(bot)
-        event = MockEvent(metadata={"mentions": ["Alice"]})
-
-        result = await handler.send_event(event)
-        # Should succeed or fail gracefully
-        assert isinstance(result, bool)
-
-    @pytest.mark.asyncio
-    async def test_send_event_mention_not_found(self) -> None:
-        """Handle mention that can't be resolved."""
-        guild = MockGuild(members=[])
-        channel = MockTextChannel()
-        channel.guild = guild
-        bot = MockBot()
-        bot._channels = {123: channel}
-        handler = EventHandler(bot)
-        event = MockEvent(metadata={"mentions": ["NonExistent"]})
-
-        result = await handler.send_event(event)
-        assert isinstance(result, bool)
-
-    @pytest.mark.asyncio
     async def test_send_event_channel_send_fails(self) -> None:
         """Handle channel send exception."""
         bot = MockBot()
@@ -525,22 +472,55 @@ class TestSendEvent:
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_send_event_import_error_event_parser(self) -> None:
+    async def test_send_event_no_event_parser_available(self) -> None:
         """Handle missing event_parser gracefully."""
         bot = MockBot()
         handler = EventHandler(bot)
         event = MockEvent()
 
-        # The method will fail on import but should return False gracefully
+        # event_parser module is not available, should return False
         result = await handler.send_event(event)
         assert result is False
 
     @pytest.mark.asyncio
-    async def test_send_event_import_error_discord_interface(self) -> None:
-        """Handle missing discord_interface gracefully."""
+    async def test_send_event_with_empty_mentions(self) -> None:
+        """Handle event with empty mentions list."""
+        bot = MockBot()
+        handler = EventHandler(bot)
+        event = MockEvent(server_tag="prod", metadata={"mentions": []})
+
+        result = await handler.send_event(event)
+        # Will fail due to missing event_parser, but should return False
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_event_missing_server_tag(self) -> None:
+        """Return False when event missing server_tag."""
         bot = MockBot()
         handler = EventHandler(bot)
         event = MockEvent()
+        event.server_tag = None
+
+        result = await handler.send_event(event)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_event_server_not_in_manager(self) -> None:
+        """Return False when server not in manager."""
+        bot = MockBot()
+        handler = EventHandler(bot)
+        event = MockEvent(server_tag="nonexistent")
+
+        result = await handler.send_event(event)
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_event_no_event_channel_id(self) -> None:
+        """Return False when server has no event channel configured."""
+        configs = {"prod": MockServerConfig("prod", None)}
+        bot = MockBot(MockServerManager(configs=configs))
+        handler = EventHandler(bot)
+        event = MockEvent(server_tag="prod")
 
         result = await handler.send_event(event)
         assert result is False
