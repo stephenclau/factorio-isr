@@ -254,17 +254,17 @@ class TestFormatUptime:
     def test_format_uptime_exactly_one_hour(self) -> None:
         delta = timedelta(hours=1)
         result = format_uptime(delta)
-        assert result == "1h 0m"
+        assert result == "1h"
 
     def test_format_uptime_days_and_hours(self) -> None:
         delta = timedelta(days=3, hours=5)
         result = format_uptime(delta)
-        assert result == "3d 5h 0m"
+        assert result == "3d 5h"
 
     def test_format_uptime_days_only(self) -> None:
         delta = timedelta(days=7)
         result = format_uptime(delta)
-        assert result == "7d 0h 0m"
+        assert result == "7d"
 
     def test_format_uptime_complex(self) -> None:
         delta = timedelta(days=1, hours=2, minutes=30, seconds=45)
@@ -564,7 +564,7 @@ class TestFormatStatsText:
             "evolution_by_surface": {"nauvis": 0.001},
         }
         result = format_stats_text("[prod] Main", metrics)
-        assert "0.1000%" in result or "0.0010" in result
+        assert "0.10%" in result or "0.0010" in result
 
     def test_format_stats_text_no_players(self) -> None:
         metrics = {
