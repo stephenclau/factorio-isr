@@ -641,8 +641,8 @@ class TestServerManagerStartStatsForServer:
         mock_discord_interface: MagicMock,
     ) -> None:
         """
-        When event_channel_id is set, use_channel() is called to bind
-        stats collector to that channel.
+        When event_channel_id is set, use_channel() is called for both
+        stats collector and alert monitor to bind them to that channel.
         """
         mock_per_channel_interface = MagicMock()
         mock_discord_interface.use_channel.return_value = mock_per_channel_interface
@@ -653,8 +653,9 @@ class TestServerManagerStartStatsForServer:
             await server_manager.add_server(sample_server_config, defer_stats=True)
             await server_manager.start_stats_for_server(sample_server_config.tag)
 
-        # Verify use_channel was called with the correct channel_id
-        mock_discord_interface.use_channel.assert_called_once_with(
+        # Verify use_channel was called with the correct channel_id (twice: collector + alert monitor)
+        assert mock_discord_interface.use_channel.call_count == 2
+        mock_discord_interface.use_channel.assert_called_with(
             sample_server_config.event_channel_id
         )
 
