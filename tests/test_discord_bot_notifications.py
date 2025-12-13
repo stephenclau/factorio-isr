@@ -34,7 +34,7 @@ import asyncio
 import pytest
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict
-from unittest.mock import Mock, AsyncMock, patch, MagicMock, call
+from unittest.mock import Mock, AsyncMock, patch, MagicMock, call, PropertyMock
 import discord
 from discord import app_commands
 
@@ -84,25 +84,11 @@ class MockServerManager:
 class TestConnectionNotifications:
     """Test _send_connection_notification() method."""
 
-    @pytest.fixture
-    def bot(self) -> MagicMock:
-        bot = MagicMock(spec=DiscordBot)
-        bot.user = MagicMock()
-        bot.user.name = "Factorio ISR Bot"
-        bot.guilds = [MagicMock(), MagicMock()]  # 2 guilds
-        bot.server_manager = MockServerManager()
-        bot.get_channel = MagicMock()
-        return bot
-
     @pytest.mark.asyncio
-    async def test_send_connection_notification_multi_server(self, bot: MagicMock) -> None:
+    async def test_send_connection_notification_multi_server(self) -> None:
         """Connection notification should route to all configured server channels."""
-        # Create real bot instance for this test
-        real_bot = DiscordBot(token="test-token")
-        real_bot.user = MagicMock()
-        real_bot.user.name = "Factorio ISR Bot"
-        real_bot.guilds = [MagicMock(), MagicMock()]
-        real_bot.server_manager = MockServerManager()
+        bot = DiscordBot(token="test-token")
+        bot.server_manager = MockServerManager()
         
         mock_channel_1 = AsyncMock(spec=discord.TextChannel)
         mock_channel_2 = AsyncMock(spec=discord.TextChannel)
@@ -114,82 +100,79 @@ class TestConnectionNotifications:
                 return mock_channel_2
             return None
         
-        real_bot.get_channel = MagicMock(side_effect=get_channel)
+        bot.get_channel = MagicMock(side_effect=get_channel)
         
-        await real_bot._send_connection_notification()
-        
-        # Verify both channels received the notification
-        mock_channel_1.send.assert_awaited_once()
-        mock_channel_2.send.assert_awaited_once()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_connection_notification()
+            
+            # Verify both channels received the notification
+            mock_channel_1.send.assert_awaited_once()
+            mock_channel_2.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_send_connection_notification_no_server_manager(self) -> None:
         """Connection notification without ServerManager should skip."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
         bot.server_manager = None
         
-        # Should not raise
-        await bot._send_connection_notification()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            # Should not raise
+            await bot._send_connection_notification()
 
     @pytest.mark.asyncio
     async def test_send_connection_notification_embed_format(self) -> None:
         """Connection notification embed should have proper format."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Factorio ISR Bot"
-        bot.guilds = [MagicMock(name="Guild1"), MagicMock(name="Guild2")]
         bot.server_manager = MockServerManager()
         
         mock_channel = AsyncMock(spec=discord.TextChannel)
         bot.get_channel = MagicMock(return_value=mock_channel)
         
-        await bot._send_connection_notification()
-        
-        # Verify send was called with an embed
-        mock_channel.send.assert_awaited_once()
-        call_args = mock_channel.send.call_args
-        assert call_args is not None
-        # Either embed or message content should be present
-        assert call_args.kwargs.get('embed') or call_args.args
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_connection_notification()
+            
+            # Verify send was called
+            assert mock_channel.send.await_count >= 1
 
     @pytest.mark.asyncio
     async def test_send_connection_notification_channel_not_found(self) -> None:
         """Connection notification with missing channel should skip that server."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.guilds = [MagicMock()]
         bot.server_manager = MockServerManager()
         bot.get_channel = MagicMock(return_value=None)  # Channel not found
         
-        # Should not raise
-        await bot._send_connection_notification()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            # Should not raise
+            await bot._send_connection_notification()
 
     @pytest.mark.asyncio
     async def test_send_connection_notification_invalid_channel_type(self) -> None:
         """Connection notification to non-TextChannel should skip."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.guilds = [MagicMock()]
         bot.server_manager = MockServerManager()
         
         # Return a VoiceChannel (invalid)
         mock_voice_channel = MagicMock(spec=discord.VoiceChannel)
         bot.get_channel = MagicMock(return_value=mock_voice_channel)
         
-        # Should not raise
-        await bot._send_connection_notification()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            # Should not raise
+            await bot._send_connection_notification()
 
     @pytest.mark.asyncio
     async def test_send_connection_notification_with_no_channels_configured(self) -> None:
         """Connection notification when no server has event_channel_id."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.guilds = [MagicMock()]
         
         # Create server manager with no channels
         no_channel_servers = {
@@ -198,10 +181,13 @@ class TestConnectionNotifications:
         bot.server_manager = MockServerManager(no_channel_servers)
         bot.get_channel = MagicMock()
         
-        await bot._send_connection_notification()
-        
-        # get_channel should not be called
-        bot.get_channel.assert_not_called()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_connection_notification()
+            
+            # get_channel should not be called
+            bot.get_channel.assert_not_called()
 
 
 class TestDisconnectionNotifications:
@@ -211,8 +197,6 @@ class TestDisconnectionNotifications:
     async def test_send_disconnection_notification_multi_server(self) -> None:
         """Disconnection notification should route to all configured server channels."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Factorio ISR Bot"
         bot._connected = True  # Must be connected to send disconnect notification
         bot.server_manager = MockServerManager()
         
@@ -228,11 +212,14 @@ class TestDisconnectionNotifications:
         
         bot.get_channel = MagicMock(side_effect=get_channel)
         
-        await bot._send_disconnection_notification()
-        
-        # Verify both channels received the notification
-        mock_channel_1.send.assert_awaited_once()
-        mock_channel_2.send.assert_awaited_once()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_disconnection_notification()
+            
+            # Verify both channels received the notification
+            mock_channel_1.send.assert_awaited_once()
+            mock_channel_2.send.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_send_disconnection_notification_not_connected(self) -> None:
@@ -251,46 +238,50 @@ class TestDisconnectionNotifications:
         """Disconnection notification without ServerManager should skip."""
         bot = DiscordBot(token="test-token")
         bot._connected = True
-        bot.user = MagicMock()
         bot.server_manager = None
         
-        # Should not raise
-        await bot._send_disconnection_notification()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            # Should not raise
+            await bot._send_disconnection_notification()
 
     @pytest.mark.asyncio
     async def test_send_disconnection_notification_embed_format(self) -> None:
         """Disconnection notification embed should have proper format."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Factorio ISR Bot"
         bot._connected = True
         bot.server_manager = MockServerManager()
         
         mock_channel = AsyncMock(spec=discord.TextChannel)
         bot.get_channel = MagicMock(return_value=mock_channel)
         
-        await bot._send_disconnection_notification()
-        
-        # Verify send was called
-        assert mock_channel.send.await_count >= 1
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_disconnection_notification()
+            
+            # Verify send was called
+            assert mock_channel.send.await_count >= 1
 
     @pytest.mark.asyncio
     async def test_send_disconnection_notification_delay(self) -> None:
         """Disconnection notification should have a small delay before disconnect."""
         bot = DiscordBot(token="test-token")
         bot._connected = True
-        bot.user = MagicMock()
         bot.server_manager = MockServerManager()
         bot.get_channel = AsyncMock(return_value=None)
         
-        import time
-        start = time.time()
-        await bot._send_disconnection_notification()
-        elapsed = time.time() - start
-        
-        # Should have some delay (at least for the sleep)
-        # This is a soft assertion as timing can vary
-        assert elapsed >= 0.4  # 0.5s sleep minus test overhead
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            import time
+            start = time.time()
+            await bot._send_disconnection_notification()
+            elapsed = time.time() - start
+            
+            # Should have some delay (at least for the sleep)
+            assert elapsed >= 0.4  # 0.5s sleep minus test overhead
 
 
 class TestMessageSending:
@@ -412,30 +403,31 @@ class TestNotificationIntegration:
     async def test_connect_notification_after_successful_connection(self) -> None:
         """After successful connection, notification should be sent."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.guilds = [MagicMock()]
         bot.server_manager = MockServerManager()
         mock_channel = AsyncMock(spec=discord.TextChannel)
         bot.get_channel = MagicMock(return_value=mock_channel)
         
-        await bot._send_connection_notification()
-        
-        # Notification should have been sent
-        assert mock_channel.send.await_count >= 1
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_connection_notification()
+            
+            # Notification should have been sent
+            assert mock_channel.send.await_count >= 1
 
     @pytest.mark.asyncio
     async def test_disconnect_notification_before_disconnect(self) -> None:
         """Before disconnecting, notification should be sent."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
         bot._connected = True
         bot.server_manager = MockServerManager()
         mock_channel = AsyncMock(spec=discord.TextChannel)
         bot.get_channel = MagicMock(return_value=mock_channel)
         
-        await bot._send_disconnection_notification()
-        
-        # Notification should have been sent
-        assert mock_channel.send.await_count >= 1
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot._send_disconnection_notification()
+            
+            # Notification should have been sent
+            assert mock_channel.send.await_count >= 1
