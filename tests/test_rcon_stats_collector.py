@@ -697,6 +697,9 @@ class TestRconStatsCollectorIntegration:
         mock_discord_interface: MagicMock,
     ) -> None:
         """Complete lifecycle: start -> collect -> stop."""
+        # Ensure text path is used (embed fails)
+        mock_discord_interface.send_embed.return_value = False
+
         with patch(
             "bot.helpers.format_stats_text", return_value="Stats"
         ):
