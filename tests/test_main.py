@@ -108,8 +108,6 @@ def mock_config(temp_log_file: Path, temp_patterns_dir: Path, mock_server_config
     """Create a mock configuration with multi-server setup."""
     return Config(
         discord_bot_token="test_bot_token",
-        bot_name="TestBot",
-        factorio_log_path=temp_log_file,
         patterns_dir=temp_patterns_dir,
         servers={"test": mock_server_config},
     )
@@ -172,7 +170,7 @@ class TestApplicationSetup:
             app = Application()
             await app.setup()
             assert app.config is not None
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             assert app.event_parser is not None
             assert app.health_server is not None
             assert len(app.event_parser.compiled_patterns) >= 1
@@ -200,7 +198,7 @@ class TestApplicationSetup:
             app = Application()
             await app.setup()
             assert app.config is not None
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
 
 
 # ============================================================================
@@ -226,7 +224,7 @@ class TestApplicationStart:
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             app.config.servers = None
             with pytest.raises(ValueError, match="servers.yml configuration required"):
                 await app.start()
@@ -245,7 +243,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             # Mock health server
             app.health_server.start = AsyncMock()
@@ -280,7 +278,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             # Mock components
             app.health_server.start = AsyncMock()
@@ -312,7 +310,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -342,7 +340,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -373,7 +371,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -403,7 +401,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -438,7 +436,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -472,7 +470,7 @@ class TestStartMultiServerMode:
              patch("main.SERVER_MANAGER_AVAILABLE", False):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             app.discord = AsyncMock()
             with pytest.raises(ImportError, match="ServerManager"):
                 await app._start_multi_server_mode()
@@ -500,7 +498,7 @@ class TestStartMultiServerMode:
              patch("main.SERVER_MANAGER_AVAILABLE", True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             app.discord = AsyncMock()  # Not a BotDiscordInterface
             with pytest.raises(TypeError, match="Bot interface required"):
                 await app._start_multi_server_mode()
@@ -515,7 +513,7 @@ class TestStartMultiServerMode:
              patch("main.SERVER_MANAGER_AVAILABLE", True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             mock_discord = MockBotDiscordInterface()
             app.discord = mock_discord
@@ -536,7 +534,7 @@ class TestStartMultiServerMode:
             
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             
             mock_discord = MockBotDiscordInterface()
             app.discord = mock_discord
@@ -582,7 +580,7 @@ class TestApplicationHandleLogLine:
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
 
             mock_event = FactorioEvent(
                 event_type=EventType.CHAT,
@@ -613,7 +611,7 @@ class TestApplicationHandleLogLine:
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             app.event_parser = MagicMock()
             app.event_parser.parse_line = MagicMock(return_value=None)
             app.discord = AsyncMock()
@@ -630,7 +628,7 @@ class TestApplicationHandleLogLine:
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             mock_event = FactorioEvent(
                 event_type=EventType.CHAT,
                 player_name="TestPlayer",
@@ -672,7 +670,7 @@ class TestApplicationStop:
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
-            assert app.config.bot_name == "TestBot"
+            assert app.config.discord_bot_token == "test_bot_token"
             app.server_manager = AsyncMock()
             app.logtailer = AsyncMock()
             app.discord = AsyncMock()
