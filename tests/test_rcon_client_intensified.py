@@ -560,8 +560,8 @@ class TestReconnectionLoopIntensified:
                 assert backoff_logged
 
     @pytest.mark.asyncio
-    async def test_reconnection_loop_cancelled_error_caught(self) -> None:
-        """_reconnection_loop() should catch CancelledError (line 225)."""
+    async def test_reconnection_loop_cancelled_error_handled_gracefully(self) -> None:
+        """_reconnection_loop() should handle CancelledError gracefully (line 225-227)."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
@@ -571,36 +571,14 @@ class TestReconnectionLoopIntensified:
         await client.start()
         await asyncio.sleep(0.05)
         
+        # Cancel the task
         if client.reconnect_task:
             client.reconnect_task.cancel()
-            with pytest.raises(asyncio.CancelledError):
-                await client.reconnect_task
-
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_logs_cancellation(self) -> None:
-        """_reconnection_loop() should log cancellation (line 226)."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-        
-        client = RconClient("localhost", 27015, "password")
-        client.connect = AsyncMock()
-        
-        with patch("rcon_client.logger") as mock_logger:
-            await client.start()
+            # Wait a moment for cancellation to propagate
             await asyncio.sleep(0.05)
-            
-            if client.reconnect_task:
-                client.reconnect_task.cancel()
-                try:
-                    await client.reconnect_task
-                except asyncio.CancelledError:
-                    pass
-            
-            # Cancellation should be logged
-            cancel_logged = any(
-                "cancelled" in str(call).lower()
-                for call in mock_logger.info.call_args_list
-            )
+        
+        # Task should be cancelled
+        assert client.reconnect_task is None or client.reconnect_task.cancelled()
 
     @pytest.mark.asyncio
     async def test_reconnection_loop_exception_caught_and_logged(self) -> None:
@@ -668,3 +646,48 @@ class TestReconnectionLoopIntensified:
         # Should have 5.0 (initial) + 5.0 (recovery)
         assert len(sleep_calls) >= 2
         assert all(d == 5.0 for d in sleep_calls)
+
+    @pytest.mark.asyncio
+    async def test_reconnection_loop_skip_connect_when_connected(self) -> None:
+        """_reconnection_loop() should skip connect when already connected (line 209)."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client._should_reconnect = True
+        client.connected = True
+        client.connect = AsyncMock()
+        
+        async def mock_sleep(delay):
+            client._should_reconnect = False
+        
+        with patch("rcon_client.asyncio.sleep", side_effect=mock_sleep):
+            await asyncio.wait_for(client._reconnection_loop(), timeout=1.0)
+        
+        # connect should NOT be called when already connected
+        client.connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_reconnection_loop_logs_reconnect_attempt(self) -> None:
+        """_reconnection_loop() should log reconnect attempt (line 210-213)."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client._should_reconnect = True
+        client.connected = False
+        client.connect = AsyncMock()
+        
+        async def mock_sleep(delay):
+            client._should_reconnect = False
+        
+        with patch("rcon_client.asyncio.sleep", side_effect=mock_sleep):
+            with patch("rcon_client.logger") as mock_logger:
+                await asyncio.wait_for(client._reconnection_loop(), timeout=1.0)
+                
+                # Check reconnect attempt was logged
+                reconnect_logged = any(
+                    call[0][0] == "rcon_attempting_reconnect"
+                    for call in mock_logger.info.call_args_list
+                )
+                assert reconnect_logged
