@@ -200,9 +200,11 @@ class TestDisconnectionLifecyclePaths:
         bot._connection_task.cancel = MagicMock()
         bot.close = AsyncMock()
         bot.is_closed = MagicMock(return_value=False)
-        bot.rcon_monitor = AsyncMock()
+        
+        # Create mock monitors with async stop methods
+        bot.rcon_monitor = MagicMock()
         bot.rcon_monitor.stop = AsyncMock()
-        bot.presence_manager = AsyncMock()
+        bot.presence_manager = MagicMock()
         bot.presence_manager.stop = AsyncMock()
         bot._send_disconnection_notification = AsyncMock()
         
@@ -238,9 +240,11 @@ class TestDisconnectionLifecyclePaths:
         bot._connection_task = None
         bot.is_closed = MagicMock(return_value=True)
         bot.close = AsyncMock()
-        bot.rcon_monitor = AsyncMock()
+        
+        # Create mock monitors with async stop methods
+        bot.rcon_monitor = MagicMock()
         bot.rcon_monitor.stop = AsyncMock()
-        bot.presence_manager = AsyncMock()
+        bot.presence_manager = MagicMock()
         bot.presence_manager.stop = AsyncMock()
         bot._send_disconnection_notification = AsyncMock()
         
@@ -259,9 +263,11 @@ class TestDisconnectionLifecyclePaths:
         bot._connection_task.cancel = MagicMock()
         bot.close = AsyncMock()
         bot.is_closed = MagicMock(return_value=False)
-        bot.rcon_monitor = AsyncMock()
+        
+        # Create mock monitors with async stop methods
+        bot.rcon_monitor = MagicMock()
         bot.rcon_monitor.stop = AsyncMock()
-        bot.presence_manager = AsyncMock()
+        bot.presence_manager = MagicMock()
         bot.presence_manager.stop = AsyncMock()
         bot._send_disconnection_notification = AsyncMock()
         
@@ -327,12 +333,15 @@ class TestConnectionEdgeCases:
         bot = DiscordBot(token="test-token")
         bot.login = AsyncMock()
         bot.connect = AsyncMock()
-        bot.rcon_monitor = AsyncMock()
+        
+        # Create mock monitors with async methods
+        bot.rcon_monitor = MagicMock()
         bot.rcon_monitor.start = AsyncMock()
         bot.rcon_monitor.stop = AsyncMock()
-        bot.presence_manager = AsyncMock()
+        bot.presence_manager = MagicMock()
         bot.presence_manager.start = AsyncMock()
         bot.presence_manager.stop = AsyncMock()
+        
         bot.is_closed = MagicMock(return_value=True)
         bot.close = AsyncMock()
         bot._send_connection_notification = AsyncMock()
