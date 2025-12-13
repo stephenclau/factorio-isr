@@ -96,10 +96,11 @@ def mock_rcon_client():
     client.is_connected = True
     client.host = "example.com"
     client.port = 27015
+    client.server_tag = "prod"
+    client.server_name = "Production Server"
     client.execute = AsyncMock(return_value="OK")
     client.start = AsyncMock()
     client.stop = AsyncMock()
-    client.server_tag = "prod"  # Add server_tag attribute
     return client
 
 
@@ -166,10 +167,12 @@ async def test_metrics_engine_per_server_isolation(
     mock_client_prod = MagicMock(spec=RconClient)
     mock_client_prod.is_connected = True
     mock_client_prod.server_tag = "prod"
+    mock_client_prod.server_name = "Production Server"
     
     mock_client_dev = MagicMock(spec=RconClient)
     mock_client_dev.is_connected = True
     mock_client_dev.server_tag = "dev"
+    mock_client_dev.server_name = "Development Server"
     
     server_manager.servers["prod"] = server_config_prod
     server_manager.clients["prod"] = mock_client_prod
@@ -313,6 +316,7 @@ async def test_metrics_gathering_handles_rcon_failure(
     failing_client = AsyncMock(spec=RconClient)
     failing_client.is_connected = True
     failing_client.server_tag = "prod"
+    failing_client.server_name = "Production Server"
     failing_client.execute = AsyncMock(side_effect=Exception("RCON timeout"))
     
     server_manager.servers["prod"] = server_config_prod
@@ -339,6 +343,7 @@ async def test_metrics_gathering_with_disconnected_rcon(
     disconnected_client = AsyncMock(spec=RconClient)
     disconnected_client.is_connected = False
     disconnected_client.server_tag = "prod"
+    disconnected_client.server_name = "Production Server"
     disconnected_client.execute = AsyncMock(side_effect=ConnectionError("Not connected"))
     
     server_manager.servers["prod"] = server_config_prod
@@ -394,11 +399,13 @@ async def test_stop_all_cleans_up_all_metrics_engines(
     mock_client_prod = AsyncMock(spec=RconClient)
     mock_client_prod.is_connected = True
     mock_client_prod.server_tag = "prod"
+    mock_client_prod.server_name = "Production Server"
     mock_client_prod.stop = AsyncMock()
     
     mock_client_dev = AsyncMock(spec=RconClient)
     mock_client_dev.is_connected = True
     mock_client_dev.server_tag = "dev"
+    mock_client_dev.server_name = "Development Server"
     mock_client_dev.stop = AsyncMock()
     
     manager.servers["prod"] = server_config_prod
@@ -437,10 +444,12 @@ async def test_multiple_servers_maintain_independent_metrics(
     mock_client_prod = AsyncMock(spec=RconClient)
     mock_client_prod.is_connected = True
     mock_client_prod.server_tag = "prod"
+    mock_client_prod.server_name = "Production Server"
     
     mock_client_dev = AsyncMock(spec=RconClient)
     mock_client_dev.is_connected = True
     mock_client_dev.server_tag = "dev"
+    mock_client_dev.server_name = "Development Server"
     
     manager.servers["prod"] = server_config_prod
     manager.clients["prod"] = mock_client_prod
@@ -510,6 +519,7 @@ async def test_metrics_engine_respects_ups_stat_flag(
     mock_client_disabled = MagicMock(spec=RconClient)
     mock_client_disabled.is_connected = True
     mock_client_disabled.server_tag = "ups_disabled"
+    mock_client_disabled.server_name = "UPS Disabled"
     manager.clients["ups_disabled"] = mock_client_disabled
     
     # Get engines
@@ -561,6 +571,7 @@ async def test_metrics_engine_respects_evolution_stat_flag(
     mock_client_disabled = MagicMock(spec=RconClient)
     mock_client_disabled.is_connected = True
     mock_client_disabled.server_tag = "evo_disabled"
+    mock_client_disabled.server_name = "Evolution Disabled"
     manager.clients["evo_disabled"] = mock_client_disabled
     
     # Get engines
