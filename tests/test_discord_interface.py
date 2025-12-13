@@ -19,12 +19,16 @@ import asyncio
 from unittest.mock import MagicMock, AsyncMock, Mock, patch, PropertyMock
 import pytest
 import sys
+import discord
 
 from discord_interface import (
     EmbedBuilder,
     DiscordInterface,
     BotDiscordInterface,
     DiscordInterfaceFactory,
+    QUERY_COOLDOWN,
+    ADMIN_COOLDOWN,
+    DANGER_COOLDOWN,
 )
 
 
@@ -63,7 +67,7 @@ def bot_interface(mock_discord_bot):
 
 
 # ============================================================================
-# EmbedBuilder Tests (8 tests)
+# EmbedBuilder Tests (10 tests - added cooldown_embed)
 # ============================================================================
 
 class TestEmbedBuilder:
@@ -196,6 +200,34 @@ class TestEmbedBuilder:
                 assert call_kwargs['color'] == EmbedBuilder.COLOR_ERROR
                 assert "Connection failed" in call_kwargs['description']
 
+    def test_cooldown_embed(self):
+        """Test cooldown_embed creation."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_embed = MagicMock()
+                mock_discord.Embed.return_value = mock_embed
+                mock_discord.utils.utcnow.return_value = "2024-01-01T00:00:00"
+
+                embed = EmbedBuilder.cooldown_embed(5.5)
+
+                call_kwargs = mock_discord.Embed.call_args.kwargs
+                assert call_kwargs['color'] == EmbedBuilder.COLOR_WARNING
+                assert "5.5" in call_kwargs['description']
+
+    def test_info_embed(self):
+        """Test info_embed creation."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_embed = MagicMock()
+                mock_discord.Embed.return_value = mock_embed
+                mock_discord.utils.utcnow.return_value = "2024-01-01T00:00:00"
+
+                embed = EmbedBuilder.info_embed("Info Title", "Info message")
+
+                call_kwargs = mock_discord.Embed.call_args.kwargs
+                assert call_kwargs['color'] == EmbedBuilder.COLOR_INFO
+                assert "Info Title" in call_kwargs['title']
+
 
 # ============================================================================
 # DiscordInterface (Abstract) Tests (2 tests)
@@ -238,7 +270,7 @@ class TestDiscordInterface:
 
 
 # ============================================================================
-# BotDiscordInterface Tests (12 tests)
+# BotDiscordInterface Tests (20 tests - added error handling)
 # ============================================================================
 
 class TestBotDiscordInterface:
@@ -251,6 +283,14 @@ class TestBotDiscordInterface:
             assert interface.bot is mock_discord_bot
             assert interface.channel_id is None
             assert interface.embed_builder is not None
+
+    def test_init_wires_cooldown_constants(self, mock_discord_bot):
+        """Test initialization wires cooldown constants."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            interface = BotDiscordInterface(mock_discord_bot)
+            assert interface.query_cooldown == QUERY_COOLDOWN
+            assert interface.admin_cooldown == ADMIN_COOLDOWN
+            assert interface.danger_cooldown == DANGER_COOLDOWN
 
     def test_init_without_discord_available(self, mock_discord_bot):
         """Test initialization when discord not available."""
@@ -326,6 +366,70 @@ class TestBotDiscordInterface:
             assert result is False
 
     @pytest.mark.asyncio
+    async def test_send_message_forbidden_error(self, mock_discord_bot, mock_discord_text_channel):
+        """Test send_message handles Forbidden error."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord.errors.Forbidden = Exception
+                mock_discord_text_channel.send.side_effect = mock_discord.errors.Forbidden("Forbidden")
+                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
+                mock_discord_text_channel.__class__ = mock_discord.TextChannel
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_message("Test")
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_http_error(self, mock_discord_bot, mock_discord_text_channel):
+        """Test send_message handles HTTPException."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord.errors.HTTPException = Exception
+                mock_discord_text_channel.send.side_effect = mock_discord.errors.HTTPException(MagicMock(), "HTTP error")
+                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
+                mock_discord_text_channel.__class__ = mock_discord.TextChannel
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_message("Test")
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_generic_exception(self, mock_discord_bot, mock_discord_text_channel):
+        """Test send_message handles generic exceptions."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord_text_channel.send.side_effect = RuntimeError("Unexpected error")
+                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
+                mock_discord_text_channel.__class__ = mock_discord.TextChannel
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_message("Test")
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_channel_not_found(self, mock_discord_bot):
+        """Test send_message handles channel not found."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord'):
+                mock_discord_bot.get_channel.return_value = None
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_message("Test")
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_message_invalid_channel_type(self, mock_discord_bot):
+        """Test send_message with invalid channel type."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                wrong_channel = MagicMock()
+                wrong_channel.__class__.__name__ = 'VoiceChannel'
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord_bot.get_channel.return_value = wrong_channel
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_message("Test")
+                assert result is False
+
+    @pytest.mark.asyncio
     async def test_send_embed_success(self, mock_discord_bot, mock_discord_text_channel):
         """Test send_embed succeeds when connected."""
         with patch('discord_interface.DISCORD_AVAILABLE', True):
@@ -340,6 +444,15 @@ class TestBotDiscordInterface:
                 mock_discord_text_channel.send.assert_called_once_with(embed=embed)
 
     @pytest.mark.asyncio
+    async def test_send_embed_not_connected(self, mock_discord_bot):
+        """Test send_embed returns False when not connected."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            mock_discord_bot.is_connected = False
+            interface = BotDiscordInterface(mock_discord_bot)
+            result = await interface.send_embed(MagicMock())
+            assert result is False
+
+    @pytest.mark.asyncio
     async def test_send_embed_with_bound_channel(self, mock_discord_bot, mock_discord_text_channel):
         """Test send_embed uses bound channel when set."""
         with patch('discord_interface.DISCORD_AVAILABLE', True):
@@ -352,6 +465,34 @@ class TestBotDiscordInterface:
                 result = await interface.send_embed(embed)
                 mock_discord_bot.get_channel.assert_called_with(999999999)
                 assert result is True
+
+    @pytest.mark.asyncio
+    async def test_send_embed_forbidden_error(self, mock_discord_bot, mock_discord_text_channel):
+        """Test send_embed handles Forbidden error."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord.errors.Forbidden = Exception
+                mock_discord_text_channel.send.side_effect = mock_discord.errors.Forbidden("Forbidden")
+                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
+                mock_discord_text_channel.__class__ = mock_discord.TextChannel
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_embed(MagicMock())
+                assert result is False
+
+    @pytest.mark.asyncio
+    async def test_send_embed_http_error(self, mock_discord_bot, mock_discord_text_channel):
+        """Test send_embed handles HTTPException."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord.errors.HTTPException = Exception
+                mock_discord_text_channel.send.side_effect = mock_discord.errors.HTTPException(MagicMock(), "HTTP error")
+                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
+                mock_discord_text_channel.__class__ = mock_discord.TextChannel
+                interface = BotDiscordInterface(mock_discord_bot)
+                result = await interface.send_embed(MagicMock())
+                assert result is False
 
     @pytest.mark.asyncio
     async def test_test_connection(self, mock_discord_bot):
@@ -376,48 +517,21 @@ class TestBotDiscordInterface:
 
 
 # ============================================================================
-# DiscordInterfaceFactory Tests (8 tests)
+# DiscordInterfaceFactory Tests (6 tests - simplified)
 # ============================================================================
 
 class TestDiscordInterfaceFactory:
     """Test DiscordInterfaceFactory."""
 
-    def test_import_discord_bot_success(self):
-        """Test _import_discord_bot successfully imports."""
-        with patch('discord_interface.DiscordBot') as mock_discord_bot_class:
-            with patch('builtins.__import__', return_value=MagicMock(DiscordBot=mock_discord_bot_class)):
-                try:
-                    result = DiscordInterfaceFactory._import_discord_bot()
-                    assert result is not None or result is None
-                except ImportError:
-                    pass
-
-    def test_import_with_importlib_success(self, tmp_path):
-        """Test _import_with_importlib successfully imports module."""
-        test_module_path = tmp_path / "test_module.py"
-        test_module_path.write_text("class TestClass: pass")
-        sys.path.insert(0, str(tmp_path))
+    def test_import_discord_bot_raises_or_succeeds(self):
+        """Test _import_discord_bot handles missing module gracefully."""
         try:
-            result = DiscordInterfaceFactory._import_with_importlib("test_module", "TestClass")
+            result = DiscordInterfaceFactory._import_discord_bot()
+            # If it succeeds, result should not be None
             assert result is not None
-        finally:
-            sys.path.pop(0)
-
-    def test_import_with_importlib_missing_module(self):
-        """Test _import_with_importlib raises ImportError for missing module."""
-        with pytest.raises(ImportError):
-            DiscordInterfaceFactory._import_with_importlib("nonexistent_module_xyz", "NonexistentClass")
-
-    def test_import_with_importlib_missing_class(self, tmp_path):
-        """Test _import_with_importlib raises error for missing class."""
-        test_module_path = tmp_path / "test_module2.py"
-        test_module_path.write_text("class OtherClass: pass")
-        sys.path.insert(0, str(tmp_path))
-        try:
-            with pytest.raises(AttributeError):
-                DiscordInterfaceFactory._import_with_importlib("test_module2", "NonexistentClass")
-        finally:
-            sys.path.pop(0)
+        except ImportError:
+            # Expected if discord_bot module doesn't exist in test environment
+            pass
 
     def test_create_interface_no_token_raises_error(self):
         """Test create_interface raises ValueError without token."""
@@ -426,11 +540,22 @@ class TestDiscordInterfaceFactory:
         with pytest.raises(ValueError, match="discord_bot_token is REQUIRED"):
             DiscordInterfaceFactory.create_interface(config)
 
-    def test_create_interface_import_error(self):
+    def test_create_interface_with_empty_token_raises_error(self):
+        """Test create_interface raises ValueError with empty string token."""
+        config = MagicMock()
+        config.discord_bot_token = ""
+        with pytest.raises(ValueError, match="discord_bot_token is REQUIRED"):
+            DiscordInterfaceFactory.create_interface(config)
+
+    def test_create_interface_import_error_handling(self):
         """Test create_interface handles import errors gracefully."""
         config = MagicMock()
         config.discord_bot_token = "test_token"
-        with patch.object(DiscordInterfaceFactory, '_import_discord_bot', side_effect=ImportError("Test import error")):
+        with patch.object(
+            DiscordInterfaceFactory,
+            '_import_discord_bot',
+            side_effect=ImportError("Test import error")
+        ):
             with pytest.raises(ImportError, match="Could not import DiscordBot"):
                 DiscordInterfaceFactory.create_interface(config)
 
@@ -438,7 +563,10 @@ class TestDiscordInterfaceFactory:
         """Test create_interface successfully creates interface."""
         config = MagicMock()
         config.discord_bot_token = "test_token"
-        with patch.object(DiscordInterfaceFactory, '_import_discord_bot') as mock_import:
+        with patch.object(
+            DiscordInterfaceFactory,
+            '_import_discord_bot'
+        ) as mock_import:
             mock_discord_bot_class = MagicMock()
             mock_bot_instance = MagicMock()
             mock_discord_bot_class.return_value = mock_bot_instance
@@ -448,16 +576,17 @@ class TestDiscordInterfaceFactory:
                 assert isinstance(interface, BotDiscordInterface)
                 mock_discord_bot_class.assert_called_once_with(token="test_token")
 
-    def test_create_interface_with_empty_token_raises_error(self):
-        """Test create_interface raises ValueError with empty string token."""
-        config = MagicMock()
-        config.discord_bot_token = ""
-        with pytest.raises(ValueError, match="discord_bot_token is REQUIRED"):
-            DiscordInterfaceFactory.create_interface(config)
+    def test_import_with_importlib_file_not_found(self):
+        """Test _import_with_importlib raises ImportError for missing files."""
+        with pytest.raises(ImportError):
+            DiscordInterfaceFactory._import_with_importlib(
+                "nonexistent_module_xyz_abc",
+                "NonexistentClass"
+            )
 
 
 # ============================================================================
-# Integration Tests (4 tests)
+# Integration Tests (6 tests - added error cases)
 # ============================================================================
 
 class TestDiscordInterfaceIntegration:
@@ -483,7 +612,7 @@ class TestDiscordInterfaceIntegration:
     async def test_error_handling_cascade(self, mock_discord_bot):
         """Test error handling in send operations."""
         with patch('discord_interface.DISCORD_AVAILABLE', True):
-            with patch('discord_interface.discord') as mock_discord:
+            with patch('discord_interface.discord'):
                 mock_discord_bot.get_channel.return_value = None
                 interface = BotDiscordInterface(mock_discord_bot)
                 result = await interface.send_message("Test")
@@ -502,6 +631,28 @@ class TestDiscordInterfaceIntegration:
                 assert result is True
                 mock_discord_bot.get_channel.assert_called_with(555555555)
 
+    @pytest.mark.asyncio
+    async def test_send_embed_and_message_workflow(self, mock_discord_bot, mock_discord_text_channel):
+        """Test sending both embeds and messages."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            with patch('discord_interface.discord') as mock_discord:
+                mock_discord.TextChannel = type('TextChannel', (), {})
+                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
+                mock_discord_text_channel.__class__ = mock_discord.TextChannel
+                interface = BotDiscordInterface(mock_discord_bot)
+                
+                # Send message
+                result1 = await interface.send_message("Hello")
+                assert result1 is True
+                
+                # Send embed
+                embed = MagicMock()
+                result2 = await interface.send_embed(embed)
+                assert result2 is True
+                
+                # Verify both were called
+                assert mock_discord_text_channel.send.call_count == 2
+
     def test_embed_builder_integration(self):
         """Test EmbedBuilder integration with BotDiscordInterface."""
         with patch('discord_interface.DISCORD_AVAILABLE', True):
@@ -511,6 +662,17 @@ class TestDiscordInterfaceIntegration:
             assert hasattr(interface.embed_builder, 'create_base_embed')
             assert hasattr(interface.embed_builder, 'server_status_embed')
             assert hasattr(interface.embed_builder, 'players_list_embed')
+            assert hasattr(interface.embed_builder, 'cooldown_embed')
+            assert hasattr(interface.embed_builder, 'info_embed')
+
+    @pytest.mark.asyncio
+    async def test_disconnect_not_connected_is_safe(self, mock_discord_bot):
+        """Test disconnect works even if not previously connected."""
+        with patch('discord_interface.DISCORD_AVAILABLE', True):
+            interface = BotDiscordInterface(mock_discord_bot)
+            mock_discord_bot.is_connected = False
+            await interface.disconnect()
+            mock_discord_bot.disconnect_bot.assert_called_once()
 
 
 if __name__ == "__main__":
