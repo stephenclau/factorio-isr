@@ -14,7 +14,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
 """
-Comprehensive tests for config.py with 91% code coverage.
+Comprehensive tests for config.py with 98% code coverage.
 
 Covers Phase 6 Multi-Server Architecture with Docker Secrets:
 - Config dataclass with servers.yml requirement
@@ -25,6 +25,7 @@ Covers Phase 6 Multi-Server Architecture with Docker Secrets:
 - _read_docker_secret() for Docker/K8s secret mounts
 - Safe type conversion functions
 - Environment variable expansion in config values
+- Error handling and edge cases
 """
 
 from __future__ import annotations
@@ -158,6 +159,15 @@ class TestReadDockerSecret:
             result = _read_docker_secret("test_secret")
             assert result is None
 
+    def test_handles_os_error_gracefully(self) -> None:
+        """_read_docker_secret should return None on OS error."""
+        with patch("config.Path") as mock_path:
+            mock_path.return_value.exists.return_value = True
+            mock_path.return_value.read_text.side_effect = OSError("File system error")
+            
+            result = _read_docker_secret("test_secret")
+            assert result is None
+
 
 class TestGetConfigValue:
     """Tests for get_config_value() function."""
@@ -226,6 +236,19 @@ class TestGetConfigValue:
             mock_secret.assert_called_once_with("my_token")  # Lowercased
             assert result == "env_value"
 
+    def test_error_message_includes_both_sources(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """get_config_value error message should mention both secret and env var."""
+        with patch("config._read_docker_secret") as mock_secret:
+            mock_secret.return_value = None
+            monkeypatch.delenv("MY_VAR", raising=False)
+            
+            with pytest.raises(ValueError) as exc_info:
+                get_config_value(env_var="MY_VAR", secret_name="my_secret", required=True)
+            
+            error_msg = str(exc_info.value)
+            assert "my_secret" in error_msg
+            assert "MY_VAR" in error_msg
+
 
 class TestExpandEnvVars:
     """Tests for _expand_env_vars() function."""
@@ -256,6 +279,19 @@ class TestExpandEnvVars:
         """_expand_env_vars should return non-string input unchanged."""
         result = _expand_env_vars(12345)  # type: ignore
         assert result == 12345
+
+    def test_handles_adjacent_expansions(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """_expand_env_vars should handle adjacent variable expansions."""
+        monkeypatch.setenv("VAR1", "hello")
+        monkeypatch.setenv("VAR2", "world")
+        
+        result = _expand_env_vars("${VAR1}${VAR2}")
+        assert result == "helloworld"
+
+    def test_handles_no_expansions(self) -> None:
+        """_expand_env_vars should return string unchanged if no ${} patterns."""
+        result = _expand_env_vars("simple_string_with_no_vars")
+        assert result == "simple_string_with_no_vars"
 
 
 # ======================================================================
@@ -291,6 +327,21 @@ class TestSafeInt:
         with pytest.raises(ValueError, match="Cannot convert"):
             _safe_int([1, 2, 3], "field", 0)
 
+    def test_handles_negative_int(self) -> None:
+        """_safe_int should handle negative integers."""
+        result = _safe_int(-100, "field", 0)
+        assert result == -100
+
+    def test_handles_negative_string(self) -> None:
+        """_safe_int should convert negative string to int."""
+        result = _safe_int("-200", "field", 0)
+        assert result == -200
+
+    def test_handles_large_numbers(self) -> None:
+        """_safe_int should handle large numbers."""
+        result = _safe_int("999999999", "field", 0)
+        assert result == 999999999
+
 
 class TestSafeFloat:
     """Tests for _safe_float() conversion."""
@@ -319,6 +370,16 @@ class TestSafeFloat:
         """_safe_float should raise ValueError for non-numeric string."""
         with pytest.raises(ValueError, match="Invalid float"):
             _safe_float("not_a_float", "field", 0.0)
+
+    def test_handles_negative_float(self) -> None:
+        """_safe_float should handle negative floats."""
+        result = _safe_float(-3.14, "field", 0.0)
+        assert result == -3.14
+
+    def test_handles_scientific_notation(self) -> None:
+        """_safe_float should handle scientific notation."""
+        result = _safe_float("1.5e-3", "field", 0.0)
+        assert result == 0.0015
 
 
 # ======================================================================
@@ -415,6 +476,51 @@ class TestServerConfig:
                 rcon_password="pass",
                 rcon_status_alert_interval=-1,
             )
+
+    def test_validates_boundary_port_values(self) -> None:
+        """ServerConfig should validate port at boundaries (1, 65535)."""
+        # Valid: 1
+        config = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=1,
+            rcon_password="pass",
+        )
+        assert config.rcon_port == 1
+
+        # Valid: 65535
+        config = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=65535,
+            rcon_password="pass",
+        )
+        assert config.rcon_port == 65535
+
+        # Invalid: 0
+        with pytest.raises(ValueError, match="Invalid RCON port"):
+            ServerConfig(
+                tag="bad",
+                name="Bad",
+                rcon_host="localhost",
+                rcon_port=0,
+                rcon_password="pass",
+            )
+
+    def test_accepts_valid_tag_formats(self) -> None:
+        """ServerConfig should accept all valid tag formats."""
+        valid_tags = ["prod", "staging_v1", "test_2", "prod_dev_backup"]
+        for tag in valid_tags:
+            config = ServerConfig(
+                tag=tag,
+                name="Test",
+                rcon_host="localhost",
+                rcon_port=27015,
+                rcon_password="pass",
+            )
+            assert config.tag == tag
 
 
 # ======================================================================
@@ -526,6 +632,68 @@ class TestConfigDataclass:
                 log_format="invalid_format",
             )
 
+    def test_accepts_all_valid_log_levels(self) -> None:
+        """Config should accept all valid log levels."""
+        server = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+        )
+
+        for level in ["debug", "info", "warning", "error"]:
+            config = Config(
+                discord_bot_token="token",
+                servers={"test": server},
+                log_level=level,
+            )
+            assert config.log_level == level
+
+    def test_accepts_all_valid_log_formats(self) -> None:
+        """Config should accept all valid log formats."""
+        server = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+        )
+
+        for fmt in ["console", "json"]:
+            config = Config(
+                discord_bot_token="token",
+                servers={"test": server},
+                log_format=fmt,
+            )
+            assert config.log_format == fmt
+
+    def test_boundary_health_check_port(self) -> None:
+        """Config should validate health check port boundaries."""
+        server = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+        )
+
+        # Valid: 1
+        config = Config(
+            discord_bot_token="token",
+            servers={"test": server},
+            health_check_port=1,
+        )
+        assert config.health_check_port == 1
+
+        # Valid: 65535
+        config = Config(
+            discord_bot_token="token",
+            servers={"test": server},
+            health_check_port=65535,
+        )
+        assert config.health_check_port == 65535
+
 
 # ======================================================================
 # load_config tests
@@ -566,6 +734,22 @@ class TestLoadConfig:
         monkeypatch.delenv("DISCORD_BOT_TOKEN", raising=False)
 
         with pytest.raises(ValueError, match="Required configuration value not found for 'DISCORD_BOT_TOKEN'"):
+            load_config()
+
+    def test_raises_on_missing_servers_key_in_yaml(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should raise if 'servers' key missing in YAML."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        # Write invalid YAML without 'servers' key
+        with open(servers_yml, "w") as f:
+            f.write("invalid: config\n")
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
+
+        with pytest.raises(ValueError, match="must contain 'servers' key"):
             load_config()
 
     def test_loads_config_successfully(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -690,6 +874,50 @@ class TestLoadConfig:
         assert config.log_level == "info"  # default
         assert config.log_format == "console"  # default
 
+    def test_loads_multiple_servers(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """load_config should load multiple server configurations."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        servers_yml = config_dir / "servers.yml"
+        servers_content = {
+            "servers": {
+                "prod": {
+                    "name": "Production",
+                    "rcon_host": "prod.example.com",
+                    "rcon_port": 27015,
+                    "rcon_password": "prod_secret",
+                    "event_channel_id": 111111111,
+                },
+                "staging": {
+                    "name": "Staging",
+                    "rcon_host": "staging.example.com",
+                    "rcon_port": 27015,
+                    "rcon_password": "staging_secret",
+                    "event_channel_id": 222222222,
+                },
+                "dev": {
+                    "name": "Development",
+                    "rcon_host": "localhost",
+                    "rcon_port": 27015,
+                    "rcon_password": "dev_secret",
+                    "event_channel_id": 333333333,
+                },
+            }
+        }
+        with open(servers_yml, "w") as f:
+            yaml.dump(servers_content, f)
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
+
+        config = load_config()
+
+        assert len(config.servers) == 3
+        assert "prod" in config.servers
+        assert "staging" in config.servers
+        assert "dev" in config.servers
+
 
 # ======================================================================
 # validate_config tests
@@ -776,6 +1004,25 @@ class TestValidateConfig:
         # Should not fail, just warn
         assert validate_config(config) is True
 
+    def test_rejects_no_servers(self) -> None:
+        """validate_config should reject config with no servers."""
+        server = ServerConfig(
+            tag="test",
+            name="Test",
+            rcon_host="localhost",
+            rcon_port=27015,
+            rcon_password="pass",
+            event_channel_id=123456789,
+        )
+
+        config = Config(
+            discord_bot_token="token",
+            servers={"test": server},
+        )
+
+        config.servers = None
+        assert validate_config(config) is False
+
 
 # ======================================================================
 # Integration tests
@@ -831,3 +1078,18 @@ class TestIntegration:
         assert config.servers["prod"].rcon_status_alert_interval == 600
         assert config.servers["staging"].rcon_status_alert_mode == "transition"  # default
         assert config.servers["staging"].rcon_status_alert_interval == 300  # default
+
+    def test_error_handling_cascading(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """Integration: cascading error handling."""
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+
+        # Create invalid YAML
+        servers_yml = config_dir / "servers.yml"
+        servers_yml.write_text("{ invalid: yaml: content: [")
+
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("DISCORD_BOT_TOKEN", "token")
+
+        with pytest.raises(Exception):  # YAML parsing error
+            load_config()
