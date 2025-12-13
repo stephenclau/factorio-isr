@@ -50,14 +50,15 @@ class TestOnReady:
     async def test_on_ready_sets_connected_flag(self) -> None:
         """on_ready should set _connected=True."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        # Patch user as a property
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        # Patch read-only properties
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             assert bot._connected is False
             await bot.on_ready()
@@ -67,13 +68,14 @@ class TestOnReady:
     async def test_on_ready_sets_ready_event(self) -> None:
         """on_ready should set the _ready event for connection waiter."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             assert not bot._ready.is_set()
             await bot.on_ready()
@@ -83,14 +85,15 @@ class TestOnReady:
     async def test_on_ready_syncs_commands_globally(self) -> None:
         """on_ready should sync commands to all guilds globally."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=["command1", "command2"])
         bot.tree.copy_global_to = MagicMock()
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             await bot.on_ready()
             
@@ -112,15 +115,16 @@ class TestOnReady:
         guild2.name = "Guild 2"
         guild2.id = 222222
         
-        bot.guilds = [guild1, guild2]
         bot.tree.sync = AsyncMock(return_value=[])
         bot.tree.copy_global_to = MagicMock()
         bot.tree.get_commands = MagicMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = [guild1, guild2]
             
             await bot.on_ready()
             
@@ -133,15 +137,16 @@ class TestOnReady:
     async def test_on_ready_handles_sync_failure(self) -> None:
         """on_ready should handle command sync exceptions gracefully."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         bot.tree.sync = AsyncMock(
             side_effect=Exception("Sync failed")
         )
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             # Should not raise
             await bot.on_ready()
@@ -153,13 +158,14 @@ class TestOnReady:
     async def test_on_ready_starts_presence_manager(self) -> None:
         """on_ready should start the presence manager."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             await bot.on_ready()
             
@@ -169,10 +175,11 @@ class TestOnReady:
     async def test_on_ready_no_user(self) -> None:
         """on_ready with no user should handle gracefully."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = None
+            mock_guilds.return_value = []
             
             # Should not raise
             await bot.on_ready()
@@ -181,13 +188,14 @@ class TestOnReady:
     async def test_on_ready_empty_guild_list(self) -> None:
         """on_ready with no guilds should still sync globally."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []  # No guilds
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []  # No guilds
             
             await bot.on_ready()
             
@@ -329,13 +337,14 @@ class TestEventHookIntegration:
     async def test_ready_triggers_presence_update(self) -> None:
         """After on_ready, presence should be updated."""
         bot = DiscordBot(token="test-token")
-        bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             await bot.on_ready()
             
@@ -362,13 +371,14 @@ class TestEventHookIntegration:
             await bot.setup_hook()
             mock_register.assert_called_once()
         
-        bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user, \
+             patch.object(type(bot), 'guilds', new_callable=PropertyMock) as mock_guilds:
             mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            mock_guilds.return_value = []
             
             await bot.on_ready()
             
