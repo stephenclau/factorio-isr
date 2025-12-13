@@ -23,9 +23,10 @@ Coverage targets:
 - Exception handling and error paths (5 tests)
 - Backoff logic and delay management (8 tests)
 - Reconnection loop integration tests (9 tests)
+- Connect method paths (8 tests)
 - Edge cases (4 tests)
 
-Total: 58 tests covering 94% coverage.
+Total: 59 tests covering 94% coverage.
 """
 
 import pytest
@@ -832,26 +833,8 @@ class TestRconClientReconnectionLoopIntegration:
         client.connect.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_reconnection_loop_handles_cancelled_error_in_sleep(self) -> None:
-        """Reconnection loop should handle CancelledError during sleep."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-        
-        client = RconClient("localhost", 27015, "password")
-        client._should_reconnect = True
-        
-        # Mock sleep to raise CancelledError
-        async def mock_sleep(delay):
-            raise asyncio.CancelledError()
-        
-        with patch("rcon_client.asyncio.sleep", side_effect=mock_sleep):
-            # Should handle CancelledError and exit cleanly
-            with pytest.raises(asyncio.CancelledError):
-                await client._reconnection_loop()
-
-    @pytest.mark.asyncio
-    async def test_reconnection_loop_handles_generic_exception(self) -> None:
-        """Reconnection loop should handle generic exceptions gracefully."""
+    async def test_reconnection_loop_continues_after_exception_in_sleep(self) -> None:
+        """Reconnection loop should continue after exception during sleep."""
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
         
@@ -870,8 +853,52 @@ class TestRconClientReconnectionLoopIntegration:
                 client._should_reconnect = False
         
         with patch("rcon_client.asyncio.sleep", side_effect=mock_sleep):
-            # Should handle exception and continue loop
+            # Should not raise, loop handles exception internally
             await asyncio.wait_for(client._reconnection_loop(), timeout=1.0)
         
         # Loop should have continued after exception
         assert call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_reconnection_loop_handles_task_cancellation_on_stop(self) -> None:
+        """Reconnection loop task should be properly cancelled by stop()."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.connect = AsyncMock()
+        client.disconnect = AsyncMock()
+        
+        # Start the reconnection loop
+        await client.start()
+        await asyncio.sleep(0.1)  # Give it a moment to run
+        
+        # Stop it
+        await client.stop()
+        
+        # Verify state after stop
+        assert client._should_reconnect is False
+        assert client.reconnect_task is None
+
+    @pytest.mark.asyncio
+    async def test_reconnection_loop_applies_secondary_sleep_on_exception(self) -> None:
+        """Reconnection loop should sleep after handling exception."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client._should_reconnect = True
+        client.connect = AsyncMock(side_effect=RuntimeError("Test"))
+        
+        sleep_calls = []
+        
+        async def mock_sleep(delay):
+            sleep_calls.append(delay)
+            if len(sleep_calls) >= 2:  # Exit after exception recovery sleep
+                client._should_reconnect = False
+        
+        with patch("rcon_client.asyncio.sleep", side_effect=mock_sleep):
+            await asyncio.wait_for(client._reconnection_loop(), timeout=1.0)
+        
+        # Should have initial 5.0 sleep + exception recovery 5.0 sleep
+        assert len(sleep_calls) >= 2
