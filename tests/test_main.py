@@ -81,7 +81,7 @@ def temp_patterns_dir(tmp_path: Path) -> Path:
   player_join:
     pattern: joined the game
     type: join
-    emoji: "✅"
+    emoji: ✅
     message: player joined
     priority: 10
 """
@@ -252,10 +252,11 @@ class TestApplicationStart:
             mock_discord = MockBotDiscordInterface()
             mock_factory.return_value = mock_discord
             
-            # Mock ServerManager
+            # Mock ServerManager - CRITICAL: return non-async values
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})  # Non-async!
             mock_server_manager_class.return_value = mock_server_manager
             
             # Mock log tailer
@@ -289,6 +290,7 @@ class TestApplicationStart:
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -321,6 +323,7 @@ class TestApplicationStart:
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -352,6 +355,7 @@ class TestApplicationStart:
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -385,6 +389,7 @@ class TestApplicationStart:
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -416,6 +421,7 @@ class TestApplicationStart:
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -452,6 +458,7 @@ class TestApplicationStart:
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
             mock_server_manager.list_tags = MagicMock(return_value=[])
+            mock_server_manager.list_servers = MagicMock(return_value={})
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
