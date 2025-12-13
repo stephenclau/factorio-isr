@@ -505,7 +505,7 @@ class TestRconClientExecuteAndHelpers:
         players = await client.get_players_online()
         assert players == []
 
-    async def test_get_server_time_success_and_strip(self, mock_rcon_client_class):
+    async def test_get_play_time_success_and_strip(self, mock_rcon_client_class):
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
 
@@ -518,10 +518,10 @@ class TestRconClientExecuteAndHelpers:
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
-        time_str = await client.get_server_time()
+        time_str = await client.get_play_time()
         assert time_str == "Day 10, 12:00"
 
-    async def test_get_server_time_empty_returns_unknown(self, mock_rcon_client_class):
+    async def test_get_play_time_empty_returns_unknown(self, mock_rcon_client_class):
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
 
@@ -534,7 +534,7 @@ class TestRconClientExecuteAndHelpers:
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
-        time_str = await client.get_server_time()
+        time_str = await client.get_play_time()
         assert time_str == "Unknown"
 
     async def test_get_players_alias_calls_online_version(self, mock_rcon_client_class):
@@ -596,7 +596,7 @@ class TestRconClientEdgeCases:
         players = await client.get_players_online()
         assert players == []
 
-    async def test_get_server_time_handles_errors(self, mock_rcon_client_class):
+    async def test_get_play_time_handles_errors(self, mock_rcon_client_class):
         if not RCON_AVAILABLE:
             pytest.skip("rcon library not available")
 
@@ -609,7 +609,7 @@ class TestRconClientEdgeCases:
         client = RconClient("localhost", 27015, "test123")
         await client.connect()
 
-        time_str = await client.get_server_time()
+        time_str = await client.get_play_time()
         assert time_str == "Unknown"
 
 
@@ -691,31 +691,31 @@ class TestRconStatsCollector:
         mock_rcon_client.server_tag = "TEST"
         mock_rcon_client.server_name = "Test Server"
         mock_rcon_client.server_config = MagicMock(pause_time_threshold=3.0)
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=300,
-            collect_ups=True,
-            collect_evolution=False,
+            enable_ups_stat=True,
+            enable_evolution_stat=False,
         )
 
         assert collector.rcon_client is mock_rcon_client
-        assert collector.discord_client is mock_discord_client
+        assert collector.discord_interface is mock_discord_interface
         assert collector.interval == 300
-        assert collector.collect_ups is True
-        assert collector.collect_evolution is False
+        assert collector.enable_ups_stat is True
+        assert collector.enable_evolution_stat is False
         assert collector.running is False
         assert collector.task is None
 
     async def test_start_and_stop(self):
         mock_rcon_client = MagicMock(spec=RconClient)
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=1,
         )
 
@@ -730,17 +730,17 @@ class TestRconStatsCollector:
         mock_rcon_client = AsyncMock(spec=RconClient)
         mock_rcon_client.get_player_count = AsyncMock(return_value=2)
         mock_rcon_client.get_players_online = AsyncMock(return_value=["Alice", "Bob"])
-        mock_rcon_client.get_server_time = AsyncMock(return_value="Day 10, 12:00")
+        mock_rcon_client.get_play_time = AsyncMock(return_value="Day 10, 12:00")
 
         mock_rcon_client.server_tag = "TEST"
         mock_rcon_client.server_name = "Test Server"
 
-        mock_discord_client = AsyncMock()
-        mock_discord_client.send_message = AsyncMock()
+        mock_discord_interface = AsyncMock()
+        mock_discord_interface.send_message = AsyncMock()
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=1,
         )
 
@@ -748,23 +748,23 @@ class TestRconStatsCollector:
 
         mock_rcon_client.get_player_count.assert_awaited()
         mock_rcon_client.get_players_online.assert_awaited()
-        mock_rcon_client.get_server_time.assert_awaited()
+        mock_rcon_client.get_play_time.assert_awaited()
 
     async def test_gather_extended_metrics_ups_only(self):
-        """collect_ups=True, collect_evolution=False."""
+        """enable_ups_stat=True, enable_evolution_stat=False."""
         mock_rcon_client = AsyncMock(spec=RconClient)
         # Two ticks so UPSCalculator can compute
         mock_rcon_client.execute = AsyncMock(side_effect=["0", "60"])
         mock_rcon_client.server_tag = "EXT"
         mock_rcon_client.server_name = "Extended"
 
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
         collector = RconStatsCollector(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=60,
-            collect_ups=True,
-            collect_evolution=False,
+            enable_ups_stat=True,
+            enable_evolution_stat=False,
         )
 
         # First call initializes UPS
@@ -777,19 +777,19 @@ class TestRconStatsCollector:
         assert "is_paused" in metrics2
 
     async def test_gather_extended_metrics_evolution_only_handles_json_error(self):
-        """collect_ups=False, collect_evolution=True with bad JSON."""
+        """enable_ups_stat=False, enable_evolution_stat=True with bad JSON."""
         mock_rcon_client = AsyncMock(spec=RconClient)
         mock_rcon_client.execute = AsyncMock(side_effect=ValueError("bad json"))
         mock_rcon_client.server_tag = "EXT"
         mock_rcon_client.server_name = "Extended"
 
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
         collector = RconStatsCollector(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=60,
-            collect_ups=False,
-            collect_evolution=True,
+            enable_ups_stat=False,
+            enable_evolution_stat=True,
         )
 
         metrics = await collector._gather_extended_metrics()
@@ -804,11 +804,11 @@ class TestRconStatsCollector:
         mock_rcon_client = MagicMock(spec=RconClient)
         mock_rcon_client.server_tag = "CHAIN"
         mock_rcon_client.server_name = "Chained Server"
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=60,
         )
 
@@ -857,10 +857,10 @@ class TestRconStatsCollector:
         base_client = RconClient("localhost", 27015, "pwd")
         rcon_client = base_client.use_context(server_name="Prod Server", server_tag="PROD")
 
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
         collector = RconStatsCollector(
             rcon_client=rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             interval=60,
         )
 
@@ -899,7 +899,7 @@ class TestRconStatsCollectorIntensive:
         mock_rcon = AsyncMock(spec=RconClient)
         mock_rcon.get_player_count = AsyncMock(return_value=1)
         mock_rcon.get_players_online = AsyncMock(return_value=["Alice"])
-        mock_rcon.get_server_time = AsyncMock(return_value="Day 1, 00:00")
+        mock_rcon.get_play_time = AsyncMock(return_value="Day 1, 00:00")
         mock_rcon.server_tag = "LOOP"
         mock_rcon.server_name = "Loop Server"
 
@@ -908,10 +908,10 @@ class TestRconStatsCollectorIntensive:
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             interval=0.05,
-            collect_ups=False,
-            collect_evolution=False,
+            enable_ups_stat=False,
+            enable_evolution_stat=False,
         )
 
         # Speed up sleep in _run_loop so we can iterate a few times quickly
@@ -929,7 +929,7 @@ class TestRconStatsCollectorIntensive:
         assert mock_rcon.get_player_count.await_count >= 1
 
     async def test_gather_extended_metrics_ups_and_evolution_mixed(self):
-        """collect_ups=True and collect_evolution=True with valid evolution JSON."""
+        """enable_ups_stat=True and enable_evolution_stat=True with valid evolution JSON."""
         mock_rcon = AsyncMock(spec=RconClient)
         mock_rcon.server_tag = "MIX"
         mock_rcon.server_name = "Mixed Server"
@@ -939,10 +939,10 @@ class TestRconStatsCollectorIntensive:
         mock_discord = AsyncMock()
         collector = RconStatsCollector(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             interval=60,
-            collect_ups=True,
-            collect_evolution=True,
+            enable_ups_stat=True,
+            enable_evolution_stat=True,
         )
 
         # First call initializes UPS
@@ -963,7 +963,7 @@ class TestRconStatsCollectorIntensive:
 
         collector = RconStatsCollector(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             interval=60,
         )
 
@@ -1012,11 +1012,12 @@ class TestRconAlertMonitor:
     async def test_init_uses_server_config(self):
         mock_rcon_client = MagicMock(spec=RconClient)
         mock_rcon_client.server_config = MagicMock(pause_time_threshold=7.0, ups_ema_alpha=0.5)
-        mock_discord_client = AsyncMock()
+        mock_rcon_client.is_connected = True
+        mock_discord_interface = AsyncMock()
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             check_interval=10,
             ups_warning_threshold=55.0,
             ups_recovery_threshold=58.0,
@@ -1029,11 +1030,11 @@ class TestRconAlertMonitor:
     async def test_check_ups_skips_when_not_connected(self):
         mock_rcon_client = MagicMock(spec=RconClient)
         mock_rcon_client.is_connected = False
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
         )
 
         await monitor._check_ups()
@@ -1042,11 +1043,11 @@ class TestRconAlertMonitor:
     async def test_low_ups_increments_consecutive_bad_samples(self):
         mock_rcon_client = MagicMock(spec=RconClient)
         mock_rcon_client.is_connected = True
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             ups_warning_threshold=55.0,
             samples_before_alert=3,
         )
@@ -1063,11 +1064,11 @@ class TestRconAlertMonitor:
     async def test_recovery_resets_consecutive_bad_samples(self):
         mock_rcon_client = MagicMock(spec=RconClient)
         mock_rcon_client.is_connected = True
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             ups_warning_threshold=55.0,
             ups_recovery_threshold=58.0,
             samples_before_alert=1,
@@ -1086,11 +1087,11 @@ class TestRconAlertMonitor:
 
     async def test_can_send_alert_cooldown_paths(self, monkeypatch):
         mock_rcon_client = MagicMock(spec=RconClient)
-        mock_discord_client = AsyncMock()
+        mock_discord_interface = AsyncMock()
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             check_interval=5,
         )
 
@@ -1111,12 +1112,12 @@ class TestRconAlertMonitor:
         mock_rcon_client = MagicMock(spec=RconClient)
         mock_rcon_client.server_tag = "ALERT"
         mock_rcon_client.server_name = "Alert Server"
-        mock_discord_client = AsyncMock()
-        mock_discord_client.send_embed = AsyncMock(return_value=True)
+        mock_discord_interface = AsyncMock()
+        mock_discord_interface.send_embed = AsyncMock(return_value=True)
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon_client,
-            discord_client=mock_discord_client,
+            discord_interface=mock_discord_interface,
             check_interval=1,
             ups_warning_threshold=55.0,
             ups_recovery_threshold=58.0,
@@ -1126,7 +1127,7 @@ class TestRconAlertMonitor:
         await monitor._send_low_ups_alert(current_ups=50.0, sma_ups=48.0, ema_ups=47.0)
         await monitor._send_ups_recovered_alert(current_ups=60.0, sma_ups=59.0, ema_ups=58.0)
 
-        assert mock_discord_client.send_embed.await_count >= 2
+        assert mock_discord_interface.send_embed.await_count >= 2
 
 
 # ============================================================================
@@ -1144,7 +1145,7 @@ class TestRconAlertMonitorIntensive:
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             check_interval=0.05,
             ups_warning_threshold=55.0,
             ups_recovery_threshold=58.0,
@@ -1175,7 +1176,7 @@ class TestRconAlertMonitorIntensive:
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             check_interval=1,
             ups_warning_threshold=55.0,
             ups_recovery_threshold=58.0,
@@ -1205,7 +1206,7 @@ class TestRconAlertMonitorIntensive:
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             check_interval=1,
             ups_warning_threshold=55.0,
             ups_recovery_threshold=58.0,
@@ -1238,7 +1239,7 @@ class TestRconAlertMonitorIntensive:
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
             check_interval=5,
         )
 
@@ -1269,7 +1270,7 @@ class TestRconAlertMonitorIntensive:
 
         monitor = RconAlertMonitor(
             rcon_client=mock_rcon,
-            discord_client=mock_discord,
+            discord_interface=mock_discord,
         )
 
         label = monitor._build_server_label()
