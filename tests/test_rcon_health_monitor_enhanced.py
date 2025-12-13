@@ -343,8 +343,8 @@ class TestEmbedBuilding:
 
         assert embed.timestamp is not None
 
-    def test_embed_color_matches_status(self) -> None:
-        """Embed color indicates overall status."""
+    def test_embed_uses_color_info(self) -> None:
+        """Embed always uses COLOR_INFO for status alerts."""
         bot = MockBot(
             MockServerManager(
                 statuses={"prod": True, "staging": True, "dev": True},
@@ -355,11 +355,11 @@ class TestEmbedBuilding:
         with patch("discord.Embed", MockEmbed):
             embed = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
 
-        # All connected = success color
-        assert embed.color == MockEmbedBuilder.COLOR_SUCCESS
+        # Status alert embed always uses COLOR_INFO
+        assert embed.color == MockEmbedBuilder.COLOR_INFO
 
-    def test_embed_all_disconnected_color(self) -> None:
-        """Embed color changes when all disconnected."""
+    def test_embed_color_all_disconnected(self) -> None:
+        """Embed still uses COLOR_INFO even when all disconnected."""
         bot = MockBot(
             MockServerManager(
                 statuses={"prod": False, "staging": False},
@@ -370,11 +370,11 @@ class TestEmbedBuilding:
         with patch("discord.Embed", MockEmbed):
             embed = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
 
-        # All disconnected = error color
-        assert embed.color == MockEmbedBuilder.COLOR_ERROR
+        # Status alert embed always uses COLOR_INFO
+        assert embed.color == MockEmbedBuilder.COLOR_INFO
 
-    def test_embed_partial_disconnected_color(self) -> None:
-        """Embed color for partial outage."""
+    def test_embed_color_partial_outage(self) -> None:
+        """Embed uses COLOR_INFO for partial outage too."""
         bot = MockBot(
             MockServerManager(
                 statuses={"prod": True, "staging": False},
@@ -385,8 +385,8 @@ class TestEmbedBuilding:
         with patch("discord.Embed", MockEmbed):
             embed = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
 
-        # Partial outage = warning color
-        assert embed.color == MockEmbedBuilder.COLOR_WARNING
+        # Status alert embed always uses COLOR_INFO
+        assert embed.color == MockEmbedBuilder.COLOR_INFO
 
     def test_embed_empty_server_list(self) -> None:
         """Handle empty server list gracefully."""
