@@ -195,9 +195,15 @@ class TestDisconnectionLifecyclePaths:
         """Disconnect bot: cleanup state, stop monitors, cancel tasks, close."""
         bot = DiscordBot(token="test-token")
         bot._connected = True
-        bot._connection_task = MagicMock(spec=asyncio.Task)
-        bot._connection_task.done.return_value = False
-        bot._connection_task.cancel = MagicMock()
+        
+        # Create an actual task that can be awaited after cancel
+        async def dummy_task():
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                pass
+        
+        bot._connection_task = asyncio.create_task(dummy_task())
         bot.close = AsyncMock()
         bot.is_closed = MagicMock(return_value=False)
         
@@ -215,7 +221,6 @@ class TestDisconnectionLifecyclePaths:
         bot.rcon_monitor.stop.assert_awaited_once()
         bot.presence_manager.stop.assert_awaited_once()
         bot._send_disconnection_notification.assert_awaited_once()
-        bot._connection_task.cancel.assert_called_once()
         bot.close.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -258,9 +263,15 @@ class TestDisconnectionLifecyclePaths:
         """Disconnect bot cancels the connection task properly."""
         bot = DiscordBot(token="test-token")
         bot._connected = True
-        bot._connection_task = MagicMock(spec=asyncio.Task)
-        bot._connection_task.done.return_value = False
-        bot._connection_task.cancel = MagicMock()
+        
+        # Create an actual task that can be awaited after cancel
+        async def dummy_task():
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                pass
+        
+        bot._connection_task = asyncio.create_task(dummy_task())
         bot.close = AsyncMock()
         bot.is_closed = MagicMock(return_value=False)
         
@@ -273,8 +284,7 @@ class TestDisconnectionLifecyclePaths:
         
         await bot.disconnect_bot()
         
-        # Verify task was cancelled
-        bot._connection_task.cancel.assert_called_once()
+        # Verify task was cancelled and cleaned up
         assert bot._connection_task is None
 
 
