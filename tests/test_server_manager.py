@@ -54,8 +54,6 @@ def sample_server_config() -> ServerConfig:
         description="Test server description",
         event_channel_id=123456789,
         stats_interval=300,
-        collect_ups=True,
-        collect_evolution=True,
         enable_alerts=True,
         alert_check_interval=60,
         alert_samples_required=3,
@@ -378,7 +376,7 @@ class TestServerManagerAddServer:
         mock_stats_collector: MagicMock,
     ) -> None:
         """
-        When event_channel_id is set but collect_ups/evolution are False,
+        When event_channel_id is set but enable_ups_stat/enable_evolution_stat are False,
         ensure the flags are propagated to RconStatsCollector.
         """
         config = ServerConfig(
@@ -389,8 +387,6 @@ class TestServerManagerAddServer:
             rcon_password="nostats",
             event_channel_id=111,
             stats_interval=120,
-            collect_ups=False,
-            collect_evolution=False,
             enable_alerts=False,
             enable_stats_collector=True,
             enable_ups_stat=False,
