@@ -98,7 +98,7 @@ class TestRconAlertMonitorInitialization:
 
     async def test_init_creates_metrics_engine_when_not_provided(self, mock_rcon_client, mock_discord_interface):
         """Test that metrics engine is created when not provided."""
-        with patch("rcon_alert_monitor.RconMetricsEngine") as mock_engine_cls:
+        with patch("rcon_metrics_engine.RconMetricsEngine") as mock_engine_cls:
             mock_engine_instance = MagicMock()
             mock_engine_cls.return_value = mock_engine_instance
 
@@ -117,7 +117,7 @@ class TestRconAlertMonitorInitialization:
 
     async def test_init_uses_provided_metrics_engine(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
         """Test that provided metrics engine is used."""
-        with patch("rcon_alert_monitor.RconMetricsEngine") as mock_engine_cls:
+        with patch("rcon_metrics_engine.RconMetricsEngine") as mock_engine_cls:
             monitor = RconAlertMonitor(
                 rcon_client=mock_rcon_client,
                 discord_interface=mock_discord_interface,
