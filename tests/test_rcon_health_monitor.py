@@ -572,7 +572,7 @@ class TestBuildStatusAlertEmbed:
 
 
 @pytest.fixture
-Async def monitor_and_bot():
+async def monitor_and_bot():
     """Fixture for RconHealthMonitor and mock bot."""
     bot = MockBot()
     monitor = RconHealthMonitor(bot)
