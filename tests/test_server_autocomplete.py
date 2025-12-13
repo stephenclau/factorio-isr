@@ -46,6 +46,13 @@ TEST EXTRACTION METHOD:
   1. Extracting the source code of register_factorio_commands()
   2. Using compile() + exec() to isolate and call server_autocomplete()
   3. This tests the ACTUAL implementation, not a mock
+
+MOCK SETUP FIX:
+  ❌ MagicMock(name='Value') sets the debug name, not a property
+  ✅ Use attribute assignment instead:
+     mock = MagicMock()
+     mock.name = 'Value'
+     mock.description = 'Desc'
 """
 
 import pytest
@@ -116,10 +123,24 @@ class TestServerAutocompleteHappyPath(TestServerAutocompleteLogic):
         # Setup: Mock interaction with server_manager
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment, not constructor args
+        prod_config = MagicMock()
+        prod_config.name = "Production"
+        prod_config.description = "Main server"
+        
+        staging_config = MagicMock()
+        staging_config.name = "Staging"
+        staging_config.description = "Testing server"
+        
+        dev_config = MagicMock()
+        dev_config.name = "Development"
+        dev_config.description = "Dev server"
+        
         server_manager.list_servers.return_value = {
-            "production": MagicMock(name="Production", description="Main server"),
-            "staging": MagicMock(name="Staging", description="Testing server"),
-            "development": MagicMock(name="Development", description="Dev server"),
+            "production": prod_config,
+            "staging": staging_config,
+            "development": dev_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -140,10 +161,24 @@ class TestServerAutocompleteHappyPath(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_config = MagicMock()
+        prod_config.name = "Production"
+        prod_config.description = "High-performance cluster"
+        
+        test_config = MagicMock()
+        test_config.name = "TestEnv"
+        test_config.description = "Testing environment"
+        
+        backup_config = MagicMock()
+        backup_config.name = "Backup"
+        backup_config.description = "Archival server for backups"
+        
         server_manager.list_servers.return_value = {
-            "prod": MagicMock(name="Production", description="High-performance cluster"),
-            "test": MagicMock(name="TestEnv", description="Testing environment"),
-            "backup": MagicMock(name="Backup", description="Archival server for backups"),
+            "prod": prod_config,
+            "test": test_config,
+            "backup": backup_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -170,9 +205,19 @@ class TestServerAutocompleteHappyPath(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_config = MagicMock()
+        prod_config.name = "Main Server"
+        prod_config.description = "Production"
+        
+        staging_config = MagicMock()
+        staging_config.name = "Staging"
+        staging_config.description = "Staging Environment"
+        
         server_manager.list_servers.return_value = {
-            "PRODUCTION": MagicMock(name="Main Server", description="Production"),
-            "staging": MagicMock(name="Staging", description="Staging Environment"),
+            "PRODUCTION": prod_config,
+            "staging": staging_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -190,11 +235,14 @@ class TestServerAutocompleteHappyPath(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_config = MagicMock()
+        prod_config.name = "Production"
+        prod_config.description = "Main game server"
+        
         server_manager.list_servers.return_value = {
-            "prod": MagicMock(
-                name="Production",
-                description="Main game server",
-            ),
+            "prod": prod_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -212,11 +260,14 @@ class TestServerAutocompleteHappyPath(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment, set description to None
+        backup_config = MagicMock()
+        backup_config.name = "Backup"
+        backup_config.description = None  # No description
+        
         server_manager.list_servers.return_value = {
-            "backup": MagicMock(
-                name="Backup",
-                description=None,  # No description
-            ),
+            "backup": backup_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -238,10 +289,24 @@ class TestServerAutocompleteEdgeCases(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_config = MagicMock()
+        prod_config.name = "Production"
+        prod_config.description = "Main"
+        
+        staging_config = MagicMock()
+        staging_config.name = "Staging"
+        staging_config.description = "Test"
+        
+        backup_config = MagicMock()
+        backup_config.name = "Backup"
+        backup_config.description = "Archive"
+        
         server_manager.list_servers.return_value = {
-            "prod": MagicMock(name="Production", description="Main"),
-            "staging": MagicMock(name="Staging", description="Test"),
-            "backup": MagicMock(name="Backup", description="Archive"),
+            "prod": prod_config,
+            "staging": staging_config,
+            "backup": backup_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -260,15 +325,19 @@ class TestServerAutocompleteEdgeCases(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_main_config = MagicMock()
+        prod_main_config.name = "Production-Main"
+        prod_main_config.description = "Main-Server (High-Performance)"
+        
+        test_env_config = MagicMock()
+        test_env_config.name = "Test_Environment"
+        test_env_config.description = "Testing_Environment"
+        
         server_manager.list_servers.return_value = {
-            "prod-main": MagicMock(
-                name="Production-Main",
-                description="Main-Server (High-Performance)",
-            ),
-            "test_env": MagicMock(
-                name="Test_Environment",
-                description="Testing_Environment",
-            ),
+            "prod-main": prod_main_config,
+            "test_env": test_env_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -293,10 +362,11 @@ class TestServerAutocompleteEdgeCases(TestServerAutocompleteLogic):
         # Create 30 servers
         servers = {}
         for i in range(30):
-            servers[f"server-{i:02d}"] = MagicMock(
-                name=f"Server {i}",
-                description=f"Test server {i}",
-            )
+            config = MagicMock()
+            config.name = f"Server {i}"
+            config.description = f"Test server {i}"
+            servers[f"server-{i:02d}"] = config
+        
         server_manager.list_servers.return_value = servers
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -316,11 +386,14 @@ class TestServerAutocompleteEdgeCases(TestServerAutocompleteLogic):
 
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        config = MagicMock()
+        config.name = long_name
+        config.description = long_description
+        
         server_manager.list_servers.return_value = {
-            "test": MagicMock(
-                name=long_name,
-                description=long_description,
-            ),
+            "test": config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -338,9 +411,19 @@ class TestServerAutocompleteEdgeCases(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_config = MagicMock()
+        prod_config.name = "Production"
+        prod_config.description = "Main"
+        
+        staging_config = MagicMock()
+        staging_config.name = "Staging"
+        staging_config.description = "Test"
+        
         server_manager.list_servers.return_value = {
-            "prod": MagicMock(name="Production", description="Main"),
-            "staging": MagicMock(name="Staging", description="Test"),
+            "prod": prod_config,
+            "staging": staging_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -419,8 +502,14 @@ class TestServerAutocompleteErrorHandling(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        config = MagicMock()
+        config.name = "Test"
+        config.description = None
+        
         server_manager.list_servers.return_value = {
-            "test": MagicMock(name="Test", description=None),
+            "test": config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -441,8 +530,14 @@ class TestServerAutocompleteReturnTypes(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_config = MagicMock()
+        prod_config.name = "Production"
+        prod_config.description = "Main"
+        
         server_manager.list_servers.return_value = {
-            "prod": MagicMock(name="Production", description="Main"),
+            "prod": prod_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -462,8 +557,14 @@ class TestServerAutocompleteReturnTypes(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        config = MagicMock()
+        config.name = "Production Name"
+        config.description = "Desc"
+        
         server_manager.list_servers.return_value = {
-            "prod-tag": MagicMock(name="Production Name", description="Desc"),
+            "prod-tag": config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -505,10 +606,13 @@ class TestServerAutocompletePerformance(TestServerAutocompleteLogic):
         interaction = MagicMock()
         server_manager = MagicMock()
         # Create 100 servers
-        servers = {f"server-{i:03d}": MagicMock(
-            name=f"Server {i}",
-            description=f"Description {i}",
-        ) for i in range(100)}
+        servers = {}
+        for i in range(100):
+            config = MagicMock()
+            config.name = f"Server {i}"
+            config.description = f"Description {i}"
+            servers[f"server-{i:03d}"] = config
+        
         server_manager.list_servers.return_value = servers
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -532,10 +636,13 @@ class TestServerAutocompletePerformance(TestServerAutocompleteLogic):
         interaction = MagicMock()
         server_manager = MagicMock()
         # Create 50 servers that all match "server"
-        servers = {f"server-{i:03d}": MagicMock(
-            name=f"Server {i}",
-            description=f"Description {i}",
-        ) for i in range(50)}
+        servers = {}
+        for i in range(50):
+            config = MagicMock()
+            config.name = f"Server {i}"
+            config.description = f"Description {i}"
+            servers[f"server-{i:03d}"] = config
+        
         server_manager.list_servers.return_value = servers
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -556,11 +663,29 @@ class TestServerAutocompleteComprehensive(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_us_east_config = MagicMock()
+        prod_us_east_config.name = "US East Production"
+        prod_us_east_config.description = "Primary cluster"
+        
+        prod_us_west_config = MagicMock()
+        prod_us_west_config.name = "US West Production"
+        prod_us_west_config.description = "Failover cluster"
+        
+        staging_us_config = MagicMock()
+        staging_us_config.name = "US Staging"
+        staging_us_config.description = "Pre-prod testing"
+        
+        dev_local_config = MagicMock()
+        dev_local_config.name = "Local Dev"
+        dev_local_config.description = "Developer sandbox"
+        
         server_manager.list_servers.return_value = {
-            "prod-us-east": MagicMock(name="US East Production", description="Primary cluster"),
-            "prod-us-west": MagicMock(name="US West Production", description="Failover cluster"),
-            "staging-us": MagicMock(name="US Staging", description="Pre-prod testing"),
-            "dev-local": MagicMock(name="Local Dev", description="Developer sandbox"),
+            "prod-us-east": prod_us_east_config,
+            "prod-us-west": prod_us_west_config,
+            "staging-us": staging_us_config,
+            "dev-local": dev_local_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
@@ -588,9 +713,19 @@ class TestServerAutocompleteComprehensive(TestServerAutocompleteLogic):
         
         interaction = MagicMock()
         server_manager = MagicMock()
+        
+        # ✅ FIX: Use attribute assignment
+        prod_jp_config = MagicMock()
+        prod_jp_config.name = "🇯🇵 Production"
+        prod_jp_config.description = "日本サーバー"
+        
+        prod_de_config = MagicMock()
+        prod_de_config.name = "🇩🇪 Produktion"
+        prod_de_config.description = "Deutscher Server"
+        
         server_manager.list_servers.return_value = {
-            "prod-jp": MagicMock(name="🇯🇵 Production", description="日本サーバー"),
-            "prod-de": MagicMock(name="🇩🇪 Produktion", description="Deutscher Server"),
+            "prod-jp": prod_jp_config,
+            "prod-de": prod_de_config,
         }
         interaction.client = MagicMock()
         interaction.client.server_manager = server_manager
