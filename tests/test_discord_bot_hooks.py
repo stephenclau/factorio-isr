@@ -33,7 +33,7 @@ Total: 8 tests covering 75+ lines of event handler code.
 import asyncio
 import pytest
 from typing import Any, List, Optional
-from unittest.mock import Mock, AsyncMock, patch, MagicMock, call
+from unittest.mock import Mock, AsyncMock, patch, MagicMock, call, PropertyMock
 import discord
 from discord import app_commands
 
@@ -50,61 +50,59 @@ class TestOnReady:
     async def test_on_ready_sets_connected_flag(self) -> None:
         """on_ready should set _connected=True."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        assert bot._connected is False
-        await bot.on_ready()
-        assert bot._connected is True
+        # Patch user as a property
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            assert bot._connected is False
+            await bot.on_ready()
+            assert bot._connected is True
 
     @pytest.mark.asyncio
     async def test_on_ready_sets_ready_event(self) -> None:
         """on_ready should set the _ready event for connection waiter."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        assert not bot._ready.is_set()
-        await bot.on_ready()
-        assert bot._ready.is_set()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            assert not bot._ready.is_set()
+            await bot.on_ready()
+            assert bot._ready.is_set()
 
     @pytest.mark.asyncio
     async def test_on_ready_syncs_commands_globally(self) -> None:
         """on_ready should sync commands to all guilds globally."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=["command1", "command2"])
         bot.tree.copy_global_to = MagicMock()
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        await bot.on_ready()
-        
-        # Verify sync was called for global (guild=None)
-        calls = bot.tree.sync.call_args_list
-        # First call should be with no guild parameter (global sync)
-        assert any(call().kwargs.get('guild') is None for call in calls)
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot.on_ready()
+            
+            # Verify sync was called for global (guild=None)
+            calls = bot.tree.sync.call_args_list
+            # First call should be with no guild parameter (global sync)
+            assert any(call().kwargs.get('guild') is None for call in calls)
 
     @pytest.mark.asyncio
     async def test_on_ready_syncs_commands_to_guilds(self) -> None:
         """on_ready should sync commands to each guild individually."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         
         # Create mock guilds
         guild1 = MagicMock(spec=discord.Guild)
@@ -121,20 +119,20 @@ class TestOnReady:
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        await bot.on_ready()
-        
-        # Verify copy_global_to was called for each guild
-        assert bot.tree.copy_global_to.call_count >= 2
-        bot.tree.copy_global_to.assert_any_call(guild=guild1)
-        bot.tree.copy_global_to.assert_any_call(guild=guild2)
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot.on_ready()
+            
+            # Verify copy_global_to was called for each guild
+            assert bot.tree.copy_global_to.call_count >= 2
+            bot.tree.copy_global_to.assert_any_call(guild=guild1)
+            bot.tree.copy_global_to.assert_any_call(guild=guild2)
 
     @pytest.mark.asyncio
     async def test_on_ready_handles_sync_failure(self) -> None:
         """on_ready should handle command sync exceptions gracefully."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(
             side_effect=Exception("Sync failed")
@@ -142,54 +140,59 @@ class TestOnReady:
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        # Should not raise
-        await bot.on_ready()
-        
-        # Should still be marked as connected
-        assert bot._connected is True
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            # Should not raise
+            await bot.on_ready()
+            
+            # Should still be marked as connected
+            assert bot._connected is True
 
     @pytest.mark.asyncio
     async def test_on_ready_starts_presence_manager(self) -> None:
         """on_ready should start the presence manager."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        await bot.on_ready()
-        
-        bot.presence_manager.start.assert_awaited_once()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot.on_ready()
+            
+            bot.presence_manager.start.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_on_ready_no_user(self) -> None:
         """on_ready with no user should handle gracefully."""
         bot = DiscordBot(token="test-token")
-        bot.user = None
         bot.guilds = []
         
-        # Should not raise
-        await bot.on_ready()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = None
+            
+            # Should not raise
+            await bot.on_ready()
 
     @pytest.mark.asyncio
     async def test_on_ready_empty_guild_list(self) -> None:
         """on_ready with no guilds should still sync globally."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []  # No guilds
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        await bot.on_ready()
-        
-        # Global sync should still happen
-        bot.tree.sync.assert_awaited()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot.on_ready()
+            
+            # Global sync should still happen
+            bot.tree.sync.assert_awaited()
 
 
 class TestOnDisconnect:
@@ -326,18 +329,18 @@ class TestEventHookIntegration:
     async def test_ready_triggers_presence_update(self) -> None:
         """After on_ready, presence should be updated."""
         bot = DiscordBot(token="test-token")
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        await bot.on_ready()
-        
-        # Presence manager should be started
-        bot.presence_manager.start.assert_awaited_once()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot.on_ready()
+            
+            # Presence manager should be started
+            bot.presence_manager.start.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_disconnect_cleans_up_state(self) -> None:
@@ -359,15 +362,15 @@ class TestEventHookIntegration:
             await bot.setup_hook()
             mock_register.assert_called_once()
         
-        bot.user = MagicMock()
-        bot.user.name = "Test Bot"
-        bot.user.id = 999888777
         bot.guilds = []
         bot.tree.sync = AsyncMock(return_value=[])
         bot.presence_manager = AsyncMock()
         bot.presence_manager.start = AsyncMock()
         
-        await bot.on_ready()
-        
-        assert bot._connected is True
-        assert bot._ready.is_set()
+        with patch.object(type(bot), 'user', new_callable=PropertyMock) as mock_user:
+            mock_user.return_value = MagicMock(name="Test Bot", id=999888777)
+            
+            await bot.on_ready()
+            
+            assert bot._connected is True
+            assert bot._ready.is_set()
