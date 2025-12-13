@@ -560,27 +560,6 @@ class TestReconnectionLoopIntensified:
                 assert backoff_logged
 
     @pytest.mark.asyncio
-    async def test_reconnection_loop_cancelled_error_handled_gracefully(self) -> None:
-        """_reconnection_loop() should handle CancelledError gracefully (line 225-227)."""
-        if not RCON_AVAILABLE:
-            pytest.skip("rcon library not available")
-        
-        client = RconClient("localhost", 27015, "password")
-        client.connect = AsyncMock()
-        
-        await client.start()
-        await asyncio.sleep(0.05)
-        
-        # Cancel the task
-        if client.reconnect_task:
-            client.reconnect_task.cancel()
-            # Wait a moment for cancellation to propagate
-            await asyncio.sleep(0.05)
-        
-        # Task should be cancelled
-        assert client.reconnect_task is None or client.reconnect_task.cancelled()
-
-    @pytest.mark.asyncio
     async def test_reconnection_loop_exception_caught_and_logged(self) -> None:
         """_reconnection_loop() should catch Exception (line 228-233)."""
         if not RCON_AVAILABLE:
@@ -691,3 +670,23 @@ class TestReconnectionLoopIntensified:
                     for call in mock_logger.info.call_args_list
                 )
                 assert reconnect_logged
+
+    @pytest.mark.asyncio
+    async def test_reconnection_loop_handles_cancelled_via_stop(self) -> None:
+        """_reconnection_loop() should handle cancellation via stop() call (line 225-227)."""
+        if not RCON_AVAILABLE:
+            pytest.skip("rcon library not available")
+        
+        client = RconClient("localhost", 27015, "password")
+        client.disconnect = AsyncMock()
+        
+        await client.start()
+        await asyncio.sleep(0.1)  # Let loop run
+        
+        # Now stop it
+        await client.stop()
+        
+        # Verify stopped state
+        assert client._should_reconnect is False
+        assert client.reconnect_task is None
+        client.disconnect.assert_called_once()
