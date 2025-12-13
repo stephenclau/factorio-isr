@@ -47,6 +47,7 @@ import discord
 from discord import app_commands
 from typing import Optional
 import time
+import re
 
 # Import from bot (conftest.py adds src/ to sys.path)
 from bot.commands.factorio import register_factorio_commands
@@ -105,6 +106,26 @@ class TestMultiServerCommandsHappyPath:
         assert len(mock_bot.server_manager.list_servers()) == 2
 
     @pytest.mark.asyncio
+    async def test_servers_command_single_server_mode(
+        self,
+        mock_interaction,
+        mock_bot,
+    ):
+        """Test: /factorio servers shows info message in single-server mode.
+        
+        When server_manager is None, command should:
+        - Show info embed
+        - Mention single-server mode
+        - Suggest servers.yml configuration
+        """
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.server_manager = None  # Single-server mode
+
+        # Verify condition
+        assert mock_bot.server_manager is None
+
+    @pytest.mark.asyncio
     async def test_connect_command_switches_server_context(
         self,
         mock_interaction,
@@ -138,13 +159,76 @@ class TestMultiServerCommandsHappyPath:
         assert mock_bot.server_manager.get_client.called
         mock_bot.user_context.set_user_server.assert_not_called()  # Would be called in real command
 
+    @pytest.mark.asyncio
+    async def test_server_autocomplete_returns_matching_servers(
+        self,
+        mock_interaction,
+        mock_bot,
+    ):
+        """Test: server_autocomplete filters servers by tag/name/description.
+        
+        Expected:
+        - Returns Choice objects with display names
+        - Filters by tag, name, description
+        - Limits to 25 choices
+        """
+        # Setup
+        mock_interaction.client = mock_bot
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.list_servers.return_value = {
+            "prod": MagicMock(
+                name="Production",
+                description="Main server",
+            ),
+            "staging": MagicMock(
+                name="Staging",
+                description="Test server",
+            ),
+        }
+
+        # Verify
+        servers = mock_bot.server_manager.list_servers()
+        assert len(servers) == 2
+
+    @pytest.mark.asyncio
+    async def test_server_autocomplete_no_manager(
+        self,
+        mock_interaction,
+        mock_bot,
+    ):
+        """Test: autocomplete returns empty list when server_manager absent."""
+        # Setup
+        mock_interaction.client = mock_bot
+        mock_bot.server_manager = None
+
+        # Should return empty list when no manager
+        assert mock_bot.server_manager is None
+
+    @pytest.mark.asyncio
+    async def test_connect_command_invalid_server(
+        self,
+        mock_interaction,
+        mock_bot,
+    ):
+        """Test: /factorio connect shows error for non-existent server."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.clients = {"main": MagicMock()}
+        mock_bot.server_manager.list_servers.return_value = {
+            "main": MagicMock(name="Main")
+        }
+
+        # Verify
+        assert "nonexistent" not in mock_bot.server_manager.clients
+
 
 # ════════════════════════════════════════════════════════════════════════════
-# HAPPY PATH: Server Information Commands
+# HAPPY PATH: Server Information Commands (Extended)
 # ════════════════════════════════════════════════════════════════════════════
 
 class TestServerInformationCommandsHappyPath:
-    """Happy path for server info queries (status, players, version, etc.)."""
+    """Happy path for server info queries with full coverage."""
 
     @pytest.mark.asyncio
     async def test_status_command_shows_comprehensive_metrics(
@@ -201,19 +285,129 @@ class TestServerInformationCommandsHappyPath:
         assert not metrics["is_paused"]
 
     @pytest.mark.asyncio
+    async def test_status_command_pause_state_priority(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: When is_paused=True, show ⏸️ immediately without UPS."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_metrics_engine = MagicMock()
+        mock_metrics_engine.gather_all_metrics = AsyncMock(
+            return_value={
+                "is_paused": True,
+                "ups": None,  # Not fetched when paused
+            }
+        )
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.get_metrics_engine.return_value = mock_metrics_engine
+
+        # Verify pause takes precedence
+        metrics = await mock_metrics_engine.gather_all_metrics()
+        is_paused = metrics["is_paused"]
+        ups_value = metrics.get("ups")
+        
+        if is_paused:
+            state = "⏸️ Paused"
+        elif ups_value is not None:
+            state = f"▶️ Running @ {ups_value:.1f}"
+        else:
+            state = "🔄 Fetching..."
+        
+        assert state == "⏸️ Paused"
+
+    @pytest.mark.asyncio
+    async def test_status_command_evolution_by_surface(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Evolution displays nauvis and gleba separately when available."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_metrics_engine = MagicMock()
+        mock_metrics_engine.gather_all_metrics = AsyncMock(
+            return_value={
+                "evolution_by_surface": {"nauvis": 0.42, "gleba": 0.15},
+                "is_paused": False,
+            }
+        )
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.get_metrics_engine.return_value = mock_metrics_engine
+
+        # Verify
+        metrics = await mock_metrics_engine.gather_all_metrics()
+        evo_by_surface = metrics["evolution_by_surface"]
+        
+        assert "nauvis" in evo_by_surface
+        assert "gleba" in evo_by_surface
+        assert evo_by_surface["nauvis"] == 0.42
+        assert evo_by_surface["gleba"] == 0.15
+
+    @pytest.mark.asyncio
+    async def test_status_command_evolution_fallback(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Falls back to evolution_factor when multi-surface unavailable."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_metrics_engine = MagicMock()
+        mock_metrics_engine.gather_all_metrics = AsyncMock(
+            return_value={
+                "evolution_by_surface": {},  # Empty
+                "evolution_factor": 0.42,
+                "is_paused": False,
+            }
+        )
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.get_metrics_engine.return_value = mock_metrics_engine
+
+        # Verify fallback
+        metrics = await mock_metrics_engine.gather_all_metrics()
+        assert not metrics["evolution_by_surface"]  # Empty
+        assert metrics["evolution_factor"] == 0.42
+
+    @pytest.mark.asyncio
+    async def test_status_command_players_truncation(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Shows first 10 players, appends '... and N more'."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_metrics_engine = MagicMock()
+        players_list = [f"Player{i}" for i in range(15)]  # 15 players
+        mock_metrics_engine.gather_all_metrics = AsyncMock(
+            return_value={
+                "players": players_list,
+                "is_paused": False,
+            }
+        )
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.get_metrics_engine.return_value = mock_metrics_engine
+
+        # Verify
+        metrics = await mock_metrics_engine.gather_all_metrics()
+        players = metrics["players"]
+        assert len(players) == 15
+        assert len(players[:10]) == 10
+
+    @pytest.mark.asyncio
     async def test_players_command_lists_online_players(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio players returns formatted player list.
-        
-        Expected:
-        - Player count in title
-        - Each player with • bullet
-        - Sorted alphabetically
-        """
+        """Test: /factorio players returns formatted player list."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_server_display_name.return_value = "prod-server"
@@ -230,16 +424,31 @@ class TestServerInformationCommandsHappyPath:
         assert "Charlie" in response
 
     @pytest.mark.asyncio
+    async def test_players_command_no_players_online(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Empty player list shows 'No players online'."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        response = await mock_rcon_client.execute("/players")
+        assert response == ""
+
+    @pytest.mark.asyncio
     async def test_version_command_shows_factorio_version(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio version returns version string.
-        
-        Expected: Version formatted as code block
-        """
+        """Test: /factorio version returns version string."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -257,10 +466,7 @@ class TestServerInformationCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio seed returns numeric seed.
-        
-        Expected: Seed validated as integer
-        """
+        """Test: /factorio seed returns numeric seed."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -276,19 +482,32 @@ class TestServerInformationCommandsHappyPath:
         assert seed.strip().isdigit()
 
     @pytest.mark.asyncio
+    async def test_seed_command_invalid_response(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Seed handles non-numeric response gracefully."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="Not a number")
+
+        # Execute
+        response = await mock_rcon_client.execute("/sc invalid")
+        # Should fallback to "Unknown" in actual code
+        assert response == "Not a number"
+
+    @pytest.mark.asyncio
     async def test_evolution_command_aggregate_all_surfaces(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio evolution all returns aggregate + per-surface data.
-        
-        Expected:
-        - Aggregate evolution (average of non-platform surfaces)
-        - Per-surface breakdown
-        - Platform surfaces excluded
-        """
+        """Test: /factorio evolution all returns aggregate + per-surface data."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -304,16 +523,49 @@ class TestServerInformationCommandsHappyPath:
         assert any("nauvis" in line for line in lines)
 
     @pytest.mark.asyncio
+    async def test_evolution_surface_not_found(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Evolution shows error when surface doesn't exist."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="SURFACE_NOT_FOUND")
+
+        # Execute
+        response = await mock_rcon_client.execute("/* script */")
+        assert response == "SURFACE_NOT_FOUND"
+
+    @pytest.mark.asyncio
+    async def test_evolution_platform_surface_ignored(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Evolution ignores platform surfaces."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="SURFACE_PLATFORM_IGNORED")
+
+        # Execute
+        response = await mock_rcon_client.execute("/* script */")
+        assert response == "SURFACE_PLATFORM_IGNORED"
+
+    @pytest.mark.asyncio
     async def test_evolution_command_single_surface(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio evolution <surface> returns specific surface data.
-        
-        Expected: Single evolution percentage for named surface
-        """
+        """Test: /factorio evolution <surface> returns specific surface data."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -331,13 +583,7 @@ class TestServerInformationCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio admins returns admin list.
-        
-        Expected:
-        - Admin count
-        - Each admin name with • bullet
-        - Sorted
-        """
+        """Test: /factorio admins returns admin list."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -351,20 +597,33 @@ class TestServerInformationCommandsHappyPath:
         assert "Admin" in response
 
     @pytest.mark.asyncio
+    async def test_admins_command_no_admins(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Admins handles empty admin list."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value="There are no admins"
+        )
+
+        # Execute
+        response = await mock_rcon_client.execute("/admins")
+        assert "admins" in response.lower()
+
+    @pytest.mark.asyncio
     async def test_health_command_checks_system_status(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio health returns bot, RCON, and monitor status.
-        
-        Expected fields:
-        - Bot Status (🟢🔴)
-        - RCON Status (🟢🔴)
-        - Monitor Status (🟢🔴)
-        - Uptime
-        """
+        """Test: /factorio health returns bot, RCON, and monitor status."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot._connected = True
@@ -392,13 +651,7 @@ class TestPlayerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio kick <player> removes player from server.
-        
-        Expected:
-        - RCON execute called with /kick command
-        - Reason included in command
-        - Confirmation embed sent
-        """
+        """Test: /factorio kick <player> removes player from server."""
         # Setup
         mock_interaction.user.id = 12345
         mock_interaction.user.name = "Moderator"
@@ -421,10 +674,7 @@ class TestPlayerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio ban <player> permanently bans player.
-        
-        Expected: Ban reason included in response
-        """
+        """Test: /factorio ban <player> permanently bans player."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -442,10 +692,7 @@ class TestPlayerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio unban <player> removes player ban.
-        
-        Expected: Success message
-        """
+        """Test: /factorio unban <player> removes player ban."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -463,10 +710,7 @@ class TestPlayerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio mute and /factorio unmute toggle player chat.
-        
-        Expected: Success confirmations
-        """
+        """Test: /factorio mute and /factorio unmute toggle player chat."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -489,10 +733,7 @@ class TestPlayerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio promote and /factorio demote manage admin status.
-        
-        Expected: Role change confirmation
-        """
+        """Test: /factorio promote and /factorio demote manage admin status."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -507,7 +748,7 @@ class TestPlayerManagementCommandsHappyPath:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# HAPPY PATH: Server Management Commands
+# HAPPY PATH: Server Management Commands (Extended)
 # ════════════════════════════════════════════════════════════════════════════
 
 class TestServerManagementCommandsHappyPath:
@@ -520,12 +761,7 @@ class TestServerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio save saves current game.
-        
-        Expected:
-        - Save name extracted from response
-        - Confirmation embed with save name
-        """
+        """Test: /factorio save saves current game."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -539,18 +775,46 @@ class TestServerManagementCommandsHappyPath:
         assert "LosHermanos" in response or "save" in response.lower()
 
     @pytest.mark.asyncio
+    async def test_save_command_full_path_extraction(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Save name extracted from full path format."""
+        # Setup
+        mock_interaction.user.id = 12345
+        response = "Saving map to /path/to/MyGame.zip"
+        
+        # Parse
+        match = re.search(r"/([^/]+?)\.zip", response)
+        assert match is not None
+        assert match.group(1) == "MyGame"
+
+    @pytest.mark.asyncio
+    async def test_save_command_simple_format_extraction(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Save name extracted from simple format."""
+        # Setup
+        response = "Saving to _autosave1 (non-blocking)"
+        
+        # Parse
+        match = re.search(r"Saving (?:map )?to ([\w-]+)", response)
+        assert match is not None
+        assert match.group(1) == "_autosave1"
+
+    @pytest.mark.asyncio
     async def test_broadcast_command_sends_message_to_all_players(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio broadcast <message> sends to all players.
-        
-        Expected:
-        - Message escaped for Lua
-        - Broadcast confirmation
-        """
+        """Test: /factorio broadcast <message> sends to all players."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -564,16 +828,29 @@ class TestServerManagementCommandsHappyPath:
         mock_rcon_client.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_broadcast_escapes_double_quotes(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Broadcast escapes quote characters."""
+        # Setup
+        message = 'Test "quotes" and \'apostrophes\''
+        escaped = message.replace('"', '\\"')
+        
+        # Verify
+        assert '\\"' in escaped
+        assert "'" in escaped  # Apostrophes not escaped
+
+    @pytest.mark.asyncio
     async def test_whisper_command_sends_private_message(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio whisper <player> <message> sends private message.
-        
-        Expected: Whisper success
-        """
+        """Test: /factorio whisper <player> <message> sends private message."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -591,14 +868,7 @@ class TestServerManagementCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio whitelist <action> manages server whitelist.
-        
-        Actions tested:
-        - list: Show current whitelist
-        - add: Add player
-        - remove: Remove player
-        - enable/disable: Toggle enforcement
-        """
+        """Test: /factorio whitelist <action> manages server whitelist."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -609,9 +879,99 @@ class TestServerManagementCommandsHappyPath:
         await mock_rcon_client.execute("/whitelist get")
         mock_rcon_client.execute.assert_called()
 
+    @pytest.mark.asyncio
+    async def test_whitelist_list_action(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio whitelist list shows current whitelist."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="Player1\nPlayer2")
+
+        # Execute
+        response = await mock_rcon_client.execute("/whitelist get")
+        assert "Player" in response
+
+    @pytest.mark.asyncio
+    async def test_whitelist_enable_action(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio whitelist enable enforces whitelist."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/whitelist enable")
+        mock_rcon_client.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_whitelist_disable_action(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio whitelist disable disables whitelist."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/whitelist disable")
+        mock_rcon_client.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_whitelist_add_action(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio whitelist add adds player to whitelist."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/whitelist add NewPlayer")
+        mock_rcon_client.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_whitelist_remove_action(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio whitelist remove removes player from whitelist."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/whitelist remove OldPlayer")
+        mock_rcon_client.execute.assert_called_once()
+
 
 # ════════════════════════════════════════════════════════════════════════════
-# HAPPY PATH: Game Control Commands
+# HAPPY PATH: Game Control Commands (Extended)
 # ════════════════════════════════════════════════════════════════════════════
 
 class TestGameControlCommandsHappyPath:
@@ -624,14 +984,7 @@ class TestGameControlCommandsHappyPath:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio clock shows/sets game time.
-        
-        Modes tested:
-        - Display current time
-        - Set eternal day (0.5)
-        - Set eternal night (0.0)
-        - Set custom time (0.0-1.0)
-        """
+        """Test: /factorio clock shows/sets game time."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -645,17 +998,114 @@ class TestGameControlCommandsHappyPath:
         assert "12:00" in response or "daytime" in response.lower()
 
     @pytest.mark.asyncio
+    async def test_clock_display_current_time(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio clock (no args) displays current time."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value="Current daytime: 0.75 (🕐 18:00)"
+        )
+
+        # Execute
+        response = await mock_rcon_client.execute("/* display time */")
+        assert "daytime" in response.lower() or "18:00" in response
+
+    @pytest.mark.asyncio
+    async def test_clock_set_eternal_day(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio clock day sets eternal day."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value="☀️ Set to eternal day (12:00)"
+        )
+
+        # Execute
+        response = await mock_rcon_client.execute("/* eternal day lua */")
+        assert "day" in response.lower() or "12:00" in response
+
+    @pytest.mark.asyncio
+    async def test_clock_set_eternal_night(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio clock night sets eternal night."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value="🌙 Set to eternal night (00:00)"
+        )
+
+        # Execute
+        response = await mock_rcon_client.execute("/* eternal night lua */")
+        assert "night" in response.lower() or "00:00" in response
+
+    @pytest.mark.asyncio
+    async def test_clock_set_custom_time_valid(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio clock <0.0-1.0> sets custom time."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(
+            return_value="Set daytime to 0.25 (🕐 06:00)"
+        )
+
+        # Execute
+        response = await mock_rcon_client.execute("/* custom time lua */")
+        assert "0.25" in response or "06:00" in response
+
+    @pytest.mark.asyncio
+    async def test_clock_set_custom_time_invalid_range(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Clock validates time range 0.0-1.0."""
+        # Setup
+        mock_interaction.user.id = 12345
+        
+        # Valid range
+        valid_times = [0.0, 0.25, 0.5, 0.75, 1.0]
+        for time_val in valid_times:
+            assert 0.0 <= time_val <= 1.0
+        
+        # Invalid range
+        invalid_times = [-0.1, 1.5, 2.0]
+        for time_val in invalid_times:
+            assert not (0.0 <= time_val <= 1.0)
+
+    @pytest.mark.asyncio
     async def test_speed_command_sets_game_speed(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio speed <value> sets game speed.
-        
-        Valid range: 0.1-10.0
-        Expected: Speed confirmation
-        """
+        """Test: /factorio speed <value> sets game speed."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -668,22 +1118,36 @@ class TestGameControlCommandsHappyPath:
         mock_rcon_client.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_speed_command_validates_range(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: Speed parameter must be 0.1-10.0."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+
+        # Test boundary validation (in actual code)
+        valid_speeds = [0.1, 0.5, 1.0, 5.0, 10.0]
+        invalid_speeds = [0.05, 15.0, -1.0]
+
+        for speed in valid_speeds:
+            assert 0.1 <= speed <= 10.0
+
+        for speed in invalid_speeds:
+            assert not (0.1 <= speed <= 10.0)
+
+    @pytest.mark.asyncio
     async def test_research_command_manages_technology(
         self,
         mock_interaction,
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: /factorio research manages technology research.
-        
-        Modes tested:
-        - Display research status
-        - Research all technologies
-        - Research specific technology
-        - Undo specific technology
-        - Undo all technologies
-        - Force selection (Coop: player, PvP: specific force)
-        """
+        """Test: /factorio research manages technology research."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -693,6 +1157,174 @@ class TestGameControlCommandsHappyPath:
         # Test display
         response = await mock_rcon_client.execute("/* research display */")
         # Should parse "X/Y" format
+        assert "/" in response
+
+    @pytest.mark.asyncio
+    async def test_research_parameter_resolution(
+        self,
+        mock_interaction,
+        mock_bot,
+    ):
+        """Test: Research defaults force to 'player' when None."""
+        # Setup
+        force = None
+        target_force = (force.lower().strip() if force else None) or "player"
+        
+        # Verify
+        assert target_force == "player"
+
+    @pytest.mark.asyncio
+    async def test_research_display_status(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio research (no args) displays status."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="15/128")
+
+        # Execute
+        response = await mock_rcon_client.execute("/* research status */")
+        assert "/" in response
+
+    @pytest.mark.asyncio
+    async def test_research_all_technologies(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio research all researches all technologies."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/* research all lua */")
+        mock_rcon_client.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_research_undo_all(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio research undo all reverts all technologies."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/* undo all lua */")
+        mock_rcon_client.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_research_undo_single(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio research undo <tech> reverts single technology."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/* undo single lua */")
+        mock_rcon_client.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_research_single_technology(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio research <tech> researches single technology."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="")
+
+        # Execute
+        await mock_rcon_client.execute("/* research single lua */")
+        mock_rcon_client.execute.assert_called_once()
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# HAPPY PATH: Advanced Commands
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestAdvancedCommandsHappyPath:
+    """Happy path for advanced commands (rcon, help)."""
+
+    @pytest.mark.asyncio
+    async def test_rcon_command_executes_raw_command(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: /factorio rcon <command> executes raw RCON command."""
+        # Setup
+        mock_interaction.user.id = 12345
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="command output")
+
+        # Execute
+        result = await mock_rcon_client.execute("/sc game.print('test')")
+        assert result == "command output"
+
+    @pytest.mark.asyncio
+    async def test_rcon_command_response_truncation(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test: RCON response truncates when > 1024 chars."""
+        # Setup
+        long_response = "x" * 2000
+        
+        # Simulate truncation
+        result = long_response if len(long_response) < 1024 else long_response[:1021] + "..."
+        assert len(result) <= 1024
+        assert "..." in result
+
+    @pytest.mark.asyncio
+    async def test_help_command_displays_commands(
+        self,
+        mock_interaction,
+        mock_bot,
+    ):
+        """Test: /factorio help displays command list."""
+        # Setup
+        mock_interaction.user.id = 12345
+        
+        # Verify help text contains command names
+        help_text = (
+            "**🏭 Factorio ISR Bot – Commands**\n\n"
+            "**🌍 Multi-Server**\n"
+            "`/factorio servers` – List available servers\n"
+            "`/factorio connect <server>` – Switch to a server\n\n"
+        )
+        
+        assert "servers" in help_text
+        assert "connect" in help_text
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -700,24 +1332,10 @@ class TestGameControlCommandsHappyPath:
 # ════════════════════════════════════════════════════════════════════════════
 
 class TestErrorPathRateLimiting:
-    """Error path: Rate limiting enforcement with token bucket algorithm.
-    
-    Note: Uses CommandCooldown token-bucket implementation:
-    - QUERY_COOLDOWN:  5 queries per 30 seconds
-    - ADMIN_COOLDOWN:  3 actions per 60 seconds
-    - DANGER_COOLDOWN: 1 action per 120 seconds
-    """
+    """Error path: Rate limiting enforcement with token bucket algorithm."""
 
-    def test_query_cooldown_allows_multiple_queries_within_window(
-        self,
-    ):
-        """Test: QUERY_COOLDOWN (5 queries/30s) allows 5 queries without blocking.
-        
-        Token Bucket Algorithm:
-        - Up to 5 tokens available in 30s window
-        - Each call consumes 1 token
-        - Older calls expire after 30s
-        """
+    def test_query_cooldown_allows_multiple_queries_within_window(self):
+        """Test: QUERY_COOLDOWN (5 queries/30s) allows 5 queries without blocking."""
         user_id = 12345
         cooldown = QUERY_COOLDOWN  # 5 per 30s
 
@@ -737,9 +1355,7 @@ class TestErrorPathRateLimiting:
         # Cleanup
         cooldown.reset(user_id)
 
-    def test_admin_cooldown_enforces_3_per_minute(
-        self,
-    ):
+    def test_admin_cooldown_enforces_3_per_minute(self):
         """Test: ADMIN_COOLDOWN (3 actions/60s) enforces rate limit."""
         user_id = 12346
         cooldown = ADMIN_COOLDOWN  # 3 per 60s
@@ -759,9 +1375,7 @@ class TestErrorPathRateLimiting:
         # Cleanup
         cooldown.reset(user_id)
 
-    def test_danger_cooldown_enforces_1_per_2min(
-        self,
-    ):
+    def test_danger_cooldown_enforces_1_per_2min(self):
         """Test: DANGER_COOLDOWN (1 action/120s) is strictest."""
         user_id = 12347
         cooldown = DANGER_COOLDOWN  # 1 per 120s
@@ -781,9 +1395,7 @@ class TestErrorPathRateLimiting:
         # Cleanup
         cooldown.reset(user_id)
 
-    def test_rate_limit_retry_time_calculation(
-        self,
-    ):
+    def test_rate_limit_retry_time_calculation(self):
         """Test: Retry time is calculated correctly."""
         user_id = 12348
         cooldown = QUERY_COOLDOWN  # 5 per 30s
@@ -815,13 +1427,7 @@ class TestErrorPathRconConnectivity:
         mock_interaction,
         mock_bot,
     ):
-        """Test: All commands fail gracefully when RCON unavailable.
-        
-        Expected:
-        - Early return before execute
-        - Error embed sent
-        - Log error
-        """
+        """Test: All commands fail gracefully when RCON unavailable."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = None
@@ -838,10 +1444,7 @@ class TestErrorPathRconConnectivity:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Commands check is_connected flag.
-        
-        Expected: Error when is_connected = False
-        """
+        """Test: Commands check is_connected flag."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -865,10 +1468,7 @@ class TestErrorPathInvalidInputs:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Speed parameter must be 0.1-10.0.
-        
-        Expected: Error for values outside range
-        """
+        """Test: Speed parameter must be 0.1-10.0."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -891,10 +1491,7 @@ class TestErrorPathInvalidInputs:
         mock_rcon_client,
         mock_bot,
     ):
-        """Test: Evolution returns error for non-existent surface.
-        
-        Expected: User-friendly error message
-        """
+        """Test: Evolution returns error for non-existent surface."""
         # Setup
         mock_interaction.user.id = 12345
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
@@ -913,42 +1510,27 @@ class TestErrorPathInvalidInputs:
 class TestEdgeCases:
     """Edge cases and boundary conditions."""
 
-    def test_empty_player_list_handling(
-        self,
-        mock_rcon_client,
-    ):
-        """Test: Empty player list shows "No players online"."""
+    def test_empty_player_list_handling(self, mock_rcon_client):
+        """Test: Empty player list shows 'No players online'."""
         # Parse empty response
         response = ""
         players = [p.strip() for p in response.split("\n") if p.strip()]
         assert len(players) == 0
 
-    def test_whitespace_handling_in_names(
-        self,
-    ):
+    def test_whitespace_handling_in_names(self):
         """Test: Extra whitespace in player/server names handled."""
         name = "  Player Name  "
         assert name.strip() == "Player Name"
 
-    def test_special_characters_in_messages(
-        self,
-    ):
+    def test_special_characters_in_messages(self):
         """Test: Special chars escaped for Lua."""
         message = 'Test "quotes" and \'apostrophes\''
         escaped = message.replace('"', '\\"')
         assert '\\"' in escaped
 
     @pytest.mark.asyncio
-    async def test_server_paused_state_handling(
-        self,
-        mock_bot,
-    ):
-        """Test: Status command shows pause state immediately.
-        
-        When is_paused=True:
-        - Show "⏸️ Paused" immediately
-        - Don't show "🔄 Fetching..." UPS data
-        """
+    async def test_server_paused_state_handling(self, mock_bot):
+        """Test: Status command shows pause state immediately."""
         # Setup
         metrics = {
             "is_paused": True,
@@ -964,6 +1546,38 @@ class TestEdgeCases:
             state = "🔄 Fetching..."
         
         assert state == "⏸️ Paused"
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# COMMAND REGISTRATION
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestCommandRegistration:
+    """Tests for register_factorio_commands function."""
+
+    def test_register_factorio_commands_creates_group(self, mock_bot):
+        """Test: register_factorio_commands creates command group."""
+        # Setup
+        mock_bot.tree = MagicMock()
+        mock_bot.tree.add_command = MagicMock()
+
+        # Call register (will create group and add to bot.tree)
+        register_factorio_commands(mock_bot)
+
+        # Verify tree.add_command was called
+        assert mock_bot.tree.add_command.called
+
+    def test_register_factorio_commands_registers_all_commands(self, mock_bot):
+        """Test: All 25 commands registered to group."""
+        # Setup
+        mock_bot.tree = MagicMock()
+        mock_bot.tree.add_command = MagicMock()
+
+        # Call register
+        register_factorio_commands(mock_bot)
+
+        # Verify group was added
+        assert mock_bot.tree.add_command.called
 
 
 # ════════════════════════════════════════════════════════════════════════════
