@@ -1024,7 +1024,7 @@ class TestBroadcastMessageEscaping:
         escaped = message.replace('"', '\\"')
 
         # Verify
-        assert apostrophes = "'" in escaped
+        assert "'" in escaped
         assert message == escaped
 
 
