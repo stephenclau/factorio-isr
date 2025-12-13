@@ -3,8 +3,6 @@ layout: default
 title: Home
 ---
 
-
-
 # Factorio ISR Documentation
 
 [![Release](https://img.shields.io/github/v/release/stephenclau/factorio-isr?style=flat-square&logo=github)](https://github.com/stephenclau/factorio-isr/releases)
@@ -45,7 +43,7 @@ Query live server statistics: player count, uptime, evolution factor, UPS, and m
 ### 🔀 Multi-Channel Routing
 Route different event types to different Discord channels—keep chat in one place and admin alerts in another.
 
-### 🎛️ Admin Commands
+### 🏛️ Admin Commands
 Send in-game broadcasts, check server health, and monitor performance directly from Discord.
 
 ### 🐳 Production Ready
@@ -123,12 +121,10 @@ docker compose up -d
 ### 🔧 Configuration
 **Customize your setup**
 - [Pattern Syntax](PATTERNS.md) - Event matching rules
-- [Multi-Channel Routing](MULTI_CHANNEL.md) - Route events to different channels
 - [RCON Setup](RCON_SETUP.md) - Enable server statistics
 
 ### 📚 Reference
 **Deep dive documentation**
-- [Architecture](architecture.md) - How it works
 - [Deployment Guide](DEPLOYMENT.md) - Production setup
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues
 
@@ -157,7 +153,7 @@ Run multiple Factorio servers (vanilla, modded, testing) with separate Discord c
 ### Admin-Only Alerts
 Route player activity to a public channel while keeping admin alerts (low UPS, crashes) in a private channel.
 
-📖 [View Admin Setup](MULTI_CHANNEL.md)
+📖 [View Pattern Guide](PATTERNS.md)
 
 ### Mod-Specific Events
 Parse custom events from popular mods like Krastorio 2, Space Exploration, or Factorissimo.
