@@ -164,39 +164,24 @@ class TestApplicationSetup:
 
     @pytest.mark.asyncio
     async def test_setup_loads_config_and_parser(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """setup() should load configuration and initialize EventParser."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
             assert app.config is not None
+            assert app.config.bot_name == "TestBot"
             assert app.event_parser is not None
             assert app.health_server is not None
             assert len(app.event_parser.compiled_patterns) >= 1
 
     @pytest.mark.asyncio
     async def test_setup_validation_failure(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """setup() should fail if validate_config returns False."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=False):
             app = Application()
@@ -205,23 +190,17 @@ class TestApplicationSetup:
 
     @pytest.mark.asyncio
     async def test_setup_log_file_not_found_warning(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """setup() should warn if server log files don't exist."""
-        mock_server_config.log_path = Path("/nonexistent/console.log")
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
+        mock_config.servers["test"].log_path = Path("/nonexistent/console.log")
+        
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
             assert app.config is not None
+            assert app.config.bot_name == "TestBot"
 
 
 # ============================================================================
@@ -240,38 +219,23 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_requires_servers_config(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should fail if servers config is empty or None."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             app.config.servers = None
             with pytest.raises(ValueError, match="servers.yml configuration required"):
                 await app.start()
 
     @pytest.mark.asyncio
     async def test_start_health_server_starts(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should start the health check server."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -281,6 +245,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             # Mock health server
             app.health_server.start = AsyncMock()
@@ -303,17 +268,9 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_discord_interface_creation(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should create Discord interface via factory."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -323,6 +280,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             # Mock components
             app.health_server.start = AsyncMock()
@@ -342,17 +300,9 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_discord_connection_called(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should call discord.connect()."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -362,6 +312,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -379,17 +330,9 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_discord_test_connection_skipped_by_default(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should skip test_connection by default (send_test_message=False)."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -399,6 +342,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -416,17 +360,9 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_multi_server_mode_called(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should call _start_multi_server_mode()."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -437,6 +373,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -454,17 +391,9 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_log_tailer_initialized(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should initialize MultiServerLogTailer with proper config."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -474,6 +403,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -496,17 +426,9 @@ class TestApplicationStart:
 
     @pytest.mark.asyncio
     async def test_start_log_tailer_started(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """start() should call logtailer.start()."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
@@ -516,6 +438,7 @@ class TestApplicationStart:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             app.health_server.start = AsyncMock()
             mock_discord = MockBotDiscordInterface()
@@ -541,29 +464,22 @@ class TestStartMultiServerMode:
 
     @pytest.mark.asyncio
     async def test_server_manager_unavailable(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """Should raise ImportError when ServerManager unavailable."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.SERVER_MANAGER_AVAILABLE", False):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             app.discord = AsyncMock()
             with pytest.raises(ImportError, match="ServerManager"):
                 await app._start_multi_server_mode()
 
     @pytest.mark.asyncio
     async def test_missing_discord_bot_token(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """Should raise ValueError when discord_bot_token missing."""
         # Config validation will reject empty token at init time
@@ -576,54 +492,30 @@ class TestStartMultiServerMode:
 
     @pytest.mark.asyncio
     async def test_non_bot_discord_interface(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """Should raise TypeError if Discord interface is not BotDiscordInterface."""
-        mock_config = Config(
-            discord_bot_token="test_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.SERVER_MANAGER_AVAILABLE", True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             app.discord = AsyncMock()  # Not a BotDiscordInterface
             with pytest.raises(TypeError, match="Bot interface required"):
                 await app._start_multi_server_mode()
 
     @pytest.mark.asyncio
     async def test_no_servers_configured(
-        self, temp_log_file: Path, temp_patterns_dir: Path
+        self, mock_config: Config
     ) -> None:
         """Should raise ValueError when no servers in config."""
-        mock_server_config = ServerConfig(
-            name="TestServer",
-            tag="test",
-            rcon_host="127.0.0.1",
-            rcon_port=27015,
-            rcon_password="testpass",
-            log_path=Path("/tmp/test_console.log"),
-            event_channel_id=987654321,
-        )
-        
-        mock_config = Config(
-            discord_bot_token="test_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.SERVER_MANAGER_AVAILABLE", True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             mock_discord = MockBotDiscordInterface()
             app.discord = mock_discord
@@ -634,17 +526,9 @@ class TestStartMultiServerMode:
 
     @pytest.mark.asyncio
     async def test_add_server_exception_handling(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """Should handle exceptions during add_server() without crashing."""
-        mock_config = Config(
-            discord_bot_token="test_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
@@ -652,6 +536,7 @@ class TestStartMultiServerMode:
             
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             
             mock_discord = MockBotDiscordInterface()
             app.discord = mock_discord
@@ -690,21 +575,14 @@ class TestApplicationHandleLogLine:
 
     @pytest.mark.asyncio
     async def test_handle_log_line_with_event(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """handle_log_line should parse and send matching events to Discord."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
 
             mock_event = FactorioEvent(
                 event_type=EventType.CHAT,
@@ -728,21 +606,14 @@ class TestApplicationHandleLogLine:
 
     @pytest.mark.asyncio
     async def test_handle_log_line_no_event(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """handle_log_line should not send event if parser returns None."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             app.event_parser = MagicMock()
             app.event_parser.parse_line = MagicMock(return_value=None)
             app.discord = AsyncMock()
@@ -752,21 +623,14 @@ class TestApplicationHandleLogLine:
 
     @pytest.mark.asyncio
     async def test_handle_log_line_send_failure(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """handle_log_line should log warning if Discord send fails."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             mock_event = FactorioEvent(
                 event_type=EventType.CHAT,
                 player_name="TestPlayer",
@@ -801,21 +665,14 @@ class TestApplicationStop:
 
     @pytest.mark.asyncio
     async def test_stop_closes_all_components(
-        self, temp_log_file: Path, temp_patterns_dir: Path, mock_server_config: ServerConfig
+        self, mock_config: Config
     ) -> None:
         """stop() should close all components."""
-        mock_config = Config(
-            discord_bot_token="test_bot_token",
-            bot_name="TestBot",
-            factorio_log_path=temp_log_file,
-            patterns_dir=temp_patterns_dir,
-            servers={"test": mock_server_config},
-        )
-
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True):
             app = Application()
             await app.setup()
+            assert app.config.bot_name == "TestBot"
             app.server_manager = AsyncMock()
             app.logtailer = AsyncMock()
             app.discord = AsyncMock()
