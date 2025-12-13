@@ -233,9 +233,12 @@ class TestEventHandler:
         assert handler.bot is mock_bot
         assert isinstance(handler._mention_group_keywords, dict)
 
-    def test_load_mention_config_missing_file(self, mock_bot: MagicMock) -> None:
+    def test_load_mention_config_loads_from_file(self, mock_bot: MagicMock) -> None:
+        """Test that mention config loads from config/mentions.yml."""
         handler = EventHandler(mock_bot)
-        assert handler._mention_group_keywords == {}
+        # Config file exists and should be loaded
+        assert len(handler._mention_group_keywords) > 0
+        assert isinstance(handler._mention_group_keywords, dict)
 
     @pytest.mark.asyncio
     async def test_send_event_not_connected(self, mock_bot: MagicMock) -> None:
@@ -398,7 +401,8 @@ class TestPresenceManager:
     def mock_bot(self) -> MagicMock:
         bot = MagicMock()
         bot._connected = True
-        bot.server_manager = MockServerManager()
+        bot.server_manager = MagicMock()
+        bot.server_manager.get_status_summary = MagicMock()
         bot.change_presence = AsyncMock()
         bot.user = MagicMock()
         return bot
@@ -448,6 +452,7 @@ class TestPresenceManager:
 
     @pytest.mark.asyncio
     async def test_start_creates_task(self, mock_bot: MagicMock) -> None:
+        mock_bot.server_manager.get_status_summary.return_value = {}
         manager = PresenceManager(mock_bot)
         assert manager._presence_task is None
         await manager.start()
@@ -456,6 +461,7 @@ class TestPresenceManager:
 
     @pytest.mark.asyncio
     async def test_stop_cancels_task(self, mock_bot: MagicMock) -> None:
+        mock_bot.server_manager.get_status_summary.return_value = {}
         manager = PresenceManager(mock_bot)
         await manager.start()
         assert manager._presence_task is not None
@@ -464,6 +470,7 @@ class TestPresenceManager:
 
     @pytest.mark.asyncio
     async def test_start_already_running(self, mock_bot: MagicMock) -> None:
+        mock_bot.server_manager.get_status_summary.return_value = {}
         manager = PresenceManager(mock_bot)
         await manager.start()
         first_task = manager._presence_task
