@@ -241,14 +241,16 @@ class TestUPSCalculatorSampling:
 
         assert result is None
 
-    async def test_sample_ups_handles_invalid_tick_format(self) -> None:
-        """UPS sampling handles non-numeric tick response."""
+    async def test_sample_ups_handles_non_numeric_tick_response(self) -> None:
+        """UPS sampling handles non-numeric tick response gracefully."""
         calc = UPSCalculator()
         mock_client = MagicMock()
         mock_client.execute = AsyncMock(return_value="not_a_number")
 
-        with pytest.raises(ValueError):
-            await calc.sample_ups(mock_client)
+        # Should return None instead of raising (error caught in sample_ups)
+        result = await calc.sample_ups(mock_client)
+
+        assert result is None
 
 
 # ============================================================================
@@ -536,34 +538,40 @@ class TestRconMetricsEngineGatherAllMetricsHappyPath:
     async def test_gather_all_metrics_ema_initialization(
         self, mock_rcon_client: MagicMock
     ) -> None:
-        """gather_all_metrics initializes EMA from first sample."""
+        """gather_all_metrics initializes EMA from first UPS sample."""
         engine = RconMetricsEngine(
             rcon_client=mock_rcon_client,
             enable_ups_stat=True,
             enable_evolution_stat=False,
         )
+
+        # First gather: sample_ups returns None (first sample)
+        mock_rcon_client.execute = AsyncMock(return_value="3600")
+        result1 = await engine.gather_all_metrics()
+        assert result1["ups_ema"] is None
+        assert result1["ups"] is None
+
+        # Prepare for second gather with valid UPS
         first_time = time.time()
         call_count = 0
 
-        async def mock_execute(cmd):
+        async def mock_execute_with_delay(cmd):
             nonlocal call_count
             call_count += 1
-            if call_count == 1:
-                with patch("time.time", return_value=first_time):
-                    return "1000"
-            else:
-                with patch("time.time", return_value=first_time + 2.0):
-                    return "1120"
+            return "3600"
 
-        mock_rcon_client.execute = AsyncMock(side_effect=mock_execute)
+        # Manually set calculator state to have a valid sample
+        engine.ups_calculator.last_tick = 3600
+        engine.ups_calculator.last_sample_time = first_time
 
-        # First gather (EMA not initialized)
-        result1 = await engine.gather_all_metrics()
-        assert result1["ups_ema"] is None
+        # Second gather: sample_ups returns actual UPS value
+        with patch("time.time", return_value=first_time + 2.0):
+            mock_rcon_client.execute = AsyncMock(return_value="3720")  # +120 ticks in 2s
+            result2 = await engine.gather_all_metrics()
 
-        # Second gather (EMA initialized from UPS sample)
-        result2 = await engine.gather_all_metrics()
-        assert result2["ups_ema"] is not None
+        # Now EMA should be initialized from UPS
+        assert result2["ups"] == 60.0  # 120 ticks / 2 seconds
+        assert result2["ups_ema"] == 60.0  # First UPS value becomes EMA
 
     async def test_gather_all_metrics_ema_updates(
         self, mock_rcon_client: MagicMock
