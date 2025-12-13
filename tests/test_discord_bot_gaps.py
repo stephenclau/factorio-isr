@@ -60,14 +60,18 @@ class TestOnErrorEventHandler:
     """Test on_error event handler."""
 
     @pytest.mark.asyncio
-    async def test_on_error_logging(self) -> None:
-        """on_error should log the error event."""
+    async def test_on_error_with_exception(self) -> None:
+        """on_error should handle exceptions during event processing."""
         bot = DiscordBot(token="test-token")
         
-        # on_error doesn't raise, just logs
-        await bot.on_error("test_event", "arg1", key="value")
+        # Simulate an error event with an actual exception
+        try:
+            raise ValueError("Test error")
+        except ValueError:
+            # on_error is called with event name and captures exc_info
+            await bot.on_error("test_event")
         
-        # Should complete without error
+        # Should complete without additional errors
         assert True
 
 
