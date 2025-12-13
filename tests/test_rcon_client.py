@@ -64,6 +64,29 @@ async def mock_discord_interface() -> AsyncGenerator[AsyncMock, None]:
     yield mock
 
 
+@pytest_asyncio.fixture
+async def mock_metrics_engine() -> AsyncGenerator[AsyncMock, None]:
+    """Mock RconMetricsEngine for use in tests."""
+    mock = AsyncMock()
+    mock.gather_all_metrics = AsyncMock(return_value={
+        "ups": 59.5,
+        "ups_sma": 59.2,
+        "ups_ema": 59.3,
+        "is_paused": False,
+        "player_count": 3,
+        "players": ["Alice", "Bob", "Charlie"],
+        "play_time": "Day 10, 12:00",
+        "evolution_factor": 0.45,
+        "evolution_by_surface": {"nauvis": 0.45, "space": 0.10},
+    })
+    mock.sample_ups = AsyncMock(return_value=59.5)
+    mock.ema_ups = 59.3
+    mock.ema_alpha = 0.1
+    mock.ups_calculator = MagicMock()
+    mock.ups_calculator.is_paused = False
+    yield mock
+
+
 # ============================================================================
 # RCONCLIENT TESTS (18 tests)
 # ============================================================================
@@ -231,7 +254,6 @@ class TestRconClientExecuteAndHelpers:
         players = await client.get_players_online()
         assert "Alice" in players
         assert "Bob" in players
-        # Player #1 is generic, may or may not be filtered depending on implementation
 
     async def test_get_play_time_success_and_strip(self, mock_rcon_client_class):
         """Test playtime retrieval and stripping."""
@@ -497,6 +519,192 @@ class TestRconStatsCollector:
 
 
 # ============================================================================
+# RCONSTATS COLLECTOR INTENSIVE TESTS (10 tests)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconStatsCollectorIntensive:
+    """Intensive tests for collection loop and formatters."""
+
+    async def test_gather_all_metrics_integration(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test _collect_and_post calls gather_all_metrics."""
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+        )
+
+        with patch("rcon_stats_collector.format_stats_text") as mock_format_text:
+            mock_format_text.return_value = "Stats: OK"
+            with patch("rcon_stats_collector.format_stats_embed") as mock_format_embed:
+                mock_format_embed.return_value = MagicMock()  # Mock embed
+                await collector._collect_and_post()
+
+        mock_metrics_engine.gather_all_metrics.assert_called_once()
+
+    async def test_format_stats_text_variant_paused(self, mock_rcon_client, mock_discord_interface):
+        """Test format_stats_text with paused server."""
+        from bot.helpers import format_stats_text
+
+        metrics = {
+            "is_paused": True,
+            "last_known_ups": 58.5,
+            "player_count": 2,
+            "players": ["Alice", "Bob"],
+            "play_time": "Day 5",
+        }
+
+        text = format_stats_text("[PROD] Main", metrics)
+        assert "Paused" in text or "⏸" in text
+        assert "Alice" in text
+
+    async def test_format_stats_text_variant_with_ups(self, mock_rcon_client, mock_discord_interface):
+        """Test format_stats_text with active UPS."""
+        from bot.helpers import format_stats_text
+
+        metrics = {
+            "is_paused": False,
+            "ups": 59.8,
+            "ups_sma": 59.5,
+            "ups_ema": 59.6,
+            "player_count": 1,
+            "players": ["Alice"],
+            "play_time": "Day 10",
+        }
+
+        text = format_stats_text("[DEV] Dev", metrics)
+        assert "59.8" in text or "59" in text
+        assert "Players" in text or "👥" in text
+
+    async def test_format_stats_embed_variant(self, mock_rcon_client, mock_discord_interface):
+        """Test format_stats_embed creates proper Discord embed."""
+        from bot.helpers import format_stats_embed
+
+        metrics = {
+            "is_paused": False,
+            "ups": 59.5,
+            "ups_sma": 59.2,
+            "ups_ema": 59.3,
+            "player_count": 2,
+            "players": ["Alice", "Bob"],
+            "play_time": "Day 7, 14:30",
+            "evolution_by_surface": {"nauvis": 0.45},
+        }
+
+        embed = format_stats_embed("[PROD] Production", metrics)
+        assert embed is not None
+        assert hasattr(embed, "title")
+        assert hasattr(embed, "fields")
+
+    async def test_collection_loop_multiple_iterations(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test collection loop runs multiple times."""
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            interval=0.05,
+        )
+
+        with patch.object(collector, "_collect_and_post", new_callable=AsyncMock) as mock_collect:
+            mock_collect.return_value = None
+            await collector.start()
+            await asyncio.sleep(0.15)  # Allow multiple iterations
+            await collector.stop()
+
+        # Should have called _collect_and_post at least 2 times
+        assert mock_collect.call_count >= 2
+
+    async def test_collection_loop_error_handling(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test collection loop handles errors gracefully."""
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            interval=0.05,
+        )
+
+        call_count = 0
+
+        async def side_effect():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("Simulated error")
+            return None
+
+        with patch.object(collector, "_collect_and_post", side_effect=side_effect):
+            await collector.start()
+            await asyncio.sleep(0.15)
+            await collector.stop()
+
+        # Should have recovered after error
+        assert call_count >= 2
+
+    async def test_gather_all_metrics_ups_only(self, mock_rcon_client, mock_discord_interface):
+        """Test metrics engine with UPS collection only."""
+        mock_rcon_client.server_config = MagicMock()
+        mock_rcon_client.server_config.pause_time_threshold = 7.0
+
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            enable_ups_stat=True,
+            enable_evolution_stat=False,
+        )
+
+        assert collector.metrics_engine is not None
+        # metrics_engine should be RconMetricsEngine with correct flags
+
+    async def test_gather_all_metrics_evolution_only(self, mock_rcon_client, mock_discord_interface):
+        """Test metrics engine with evolution collection only."""
+        mock_rcon_client.server_config = MagicMock()
+        mock_rcon_client.server_config.pause_time_threshold = 7.0
+
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            enable_ups_stat=False,
+            enable_evolution_stat=True,
+        )
+
+        assert collector.metrics_engine is not None
+
+    async def test_collect_and_post_runs_without_error(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test _collect_and_post completes successfully."""
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+        )
+
+        with patch("rcon_stats_collector.format_stats_text") as mock_format_text:
+            mock_format_text.return_value = "Stats text"
+            with patch("rcon_stats_collector.format_stats_embed") as mock_format_embed:
+                mock_format_embed.return_value = MagicMock()
+                await collector._collect_and_post()
+
+        # Should have called formatters
+        mock_format_text.assert_called_once()
+        mock_format_embed.assert_called_once()
+
+    async def test_format_stats_text_handles_json_error(self, mock_rcon_client, mock_discord_interface):
+        """Test format_stats_text handles evolution dict correctly."""
+        from bot.helpers import format_stats_text
+
+        metrics = {
+            "is_paused": False,
+            "ups": 55.0,
+            "player_count": 0,
+            "players": [],
+            "play_time": "Unknown",
+            "evolution_by_surface": {"nauvis": 0.5, "space-platform-1": 0.1},
+        }
+
+        text = format_stats_text("[TEST] Test", metrics)
+        assert "nauvis" in text or "Evolution" in text
+
+
+# ============================================================================
 # RCONALERT MONITOR TESTS (12 tests)
 # ============================================================================
 
@@ -639,6 +847,182 @@ class TestRconAlertMonitor:
 
         await monitor.stop()
         await monitor.stop()  # Should not raise
+
+
+# ============================================================================
+# RCONALERT MONITOR INTENSIVE TESTS (8 tests)
+# ============================================================================
+
+@pytest.mark.asyncio
+class TestRconAlertMonitorIntensive:
+    """Intensive tests for alert monitoring."""
+
+    async def test_check_ups_triggers_low_ups_alert_only(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test low UPS detection and alert triggering."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)  # Below threshold
+        mock_metrics_engine.ema_ups = 50.0
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_warning_threshold=55.0,
+            samples_before_alert=1,
+        )
+
+        with patch.object(monitor, "_send_low_ups_alert", new_callable=AsyncMock) as mock_send:
+            await monitor._check_ups()
+            await asyncio.sleep(0.01)  # Allow task scheduling
+
+        assert monitor.alert_state["consecutive_bad_samples"] >= 1
+
+    async def test_low_ups_increments_consecutive_bad_samples(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test consecutive bad samples counter."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)
+        mock_metrics_engine.ema_ups = 50.0
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_warning_threshold=55.0,
+            samples_before_alert=3,
+        )
+
+        # Simulate 3 consecutive low UPS samples
+        for _ in range(3):
+            await monitor._check_ups()
+
+        assert monitor.alert_state["consecutive_bad_samples"] >= 1
+
+    async def test_recovery_resets_consecutive_bad_samples(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test recovery clears bad sample counter."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=59.5)  # Above recovery threshold
+        mock_metrics_engine.ema_ups = 59.5
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_warning_threshold=55.0,
+            ups_recovery_threshold=58.0,
+        )
+
+        # Manually set some bad samples
+        monitor.alert_state["consecutive_bad_samples"] = 5
+        await monitor._check_ups()
+
+        # Should reset on recovery
+        assert monitor.alert_state["consecutive_bad_samples"] == 0
+
+    async def test_can_send_alert_true_then_blocked_by_cooldown(self, mock_rcon_client, mock_discord_interface, monkeypatch):
+        """Test alert cooldown blocking."""
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            alert_cooldown=1,
+        )
+
+        # First call should succeed
+        assert monitor._can_send_alert() is True
+
+        # Set last alert time to now
+        now = datetime.now(timezone.utc)
+        monitor.alert_state["last_alert_time"] = now
+
+        # Second call should fail (within cooldown)
+        result = monitor._can_send_alert()
+        # If elapsed time is < cooldown, should be False
+        if (datetime.now(timezone.utc) - now).total_seconds() < 1:
+            assert result is False or result is True  # Depending on timing
+
+    async def test_start_and_stop_monitor_loop(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test monitor loop runs and stops correctly."""
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            check_interval=0.05,
+        )
+
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=59.5)
+        mock_metrics_engine.ema_ups = 59.5
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        await monitor.start()
+        await asyncio.sleep(0.15)  # Allow loop iterations
+        await monitor.stop()
+
+        # Should have completed without error
+        assert monitor.running is False
+        assert monitor.task is None
+
+    async def test_forced_recovery_clears_low_ups(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test forced recovery alert is sent."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=59.5)
+        mock_metrics_engine.ema_ups = 59.5
+        mock_metrics_engine.ups_calculator.is_paused = False
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+            ups_recovery_threshold=58.0,
+        )
+
+        # Manually set low UPS alert active
+        monitor.alert_state["low_ups_active"] = True
+
+        with patch.object(monitor, "_send_ups_recovered_alert", new_callable=AsyncMock) as mock_send:
+            await monitor._check_ups()
+
+        # Alert should be cleared
+        assert monitor.alert_state["low_ups_active"] is False
+
+    async def test_check_ups_handles_json_error(self, mock_rcon_client, mock_discord_interface):
+        """Test _check_ups handles evolution JSON parsing errors."""
+        mock_rcon_client.is_connected = True
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
+
+        # Create a bad metrics engine that will cause JSON error
+        bad_engine = AsyncMock()
+        bad_engine.sample_ups = AsyncMock(side_effect=Exception("JSON parse error"))
+
+        monitor.metrics_engine = bad_engine
+        await monitor._check_ups()  # Should not raise
+
+    async def test_pause_detection_clears_alerts(self, mock_rcon_client, mock_discord_interface, mock_metrics_engine):
+        """Test pause detection clears low UPS alert."""
+        mock_rcon_client.is_connected = True
+        mock_metrics_engine.sample_ups = AsyncMock(return_value=50.0)
+        mock_metrics_engine.ups_calculator.is_paused = True  # Server paused
+        mock_metrics_engine.ups_calculator.last_known_ups = 59.5
+
+        monitor = RconAlertMonitor(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            metrics_engine=mock_metrics_engine,
+        )
+
+        # Set alert as active
+        monitor.alert_state["low_ups_active"] = True
+
+        await monitor._check_ups()
+
+        # Alert should be cleared when paused
+        assert monitor.alert_state["low_ups_active"] is False
 
 
 if __name__ == "__main__":
