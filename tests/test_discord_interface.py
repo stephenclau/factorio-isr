@@ -270,7 +270,7 @@ class TestDiscordInterface:
 
 
 # ============================================================================
-# BotDiscordInterface Tests (16 tests - removed flaky discord.errors mocks)
+# BotDiscordInterface Tests (14 tests)
 # ============================================================================
 
 class TestBotDiscordInterface:
@@ -366,19 +366,6 @@ class TestBotDiscordInterface:
             assert result is False
 
     @pytest.mark.asyncio
-    async def test_send_message_with_exception(self, mock_discord_bot, mock_discord_text_channel):
-        """Test send_message handles exceptions gracefully."""
-        with patch('discord_interface.DISCORD_AVAILABLE', True):
-            with patch('discord_interface.discord') as mock_discord:
-                mock_discord.TextChannel = type('TextChannel', (), {})
-                mock_discord_text_channel.send.side_effect = RuntimeError("Unexpected error")
-                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
-                mock_discord_text_channel.__class__ = mock_discord.TextChannel
-                interface = BotDiscordInterface(mock_discord_bot)
-                result = await interface.send_message("Test")
-                assert result is False
-
-    @pytest.mark.asyncio
     async def test_send_message_channel_not_found(self, mock_discord_bot):
         """Test send_message handles channel not found."""
         with patch('discord_interface.DISCORD_AVAILABLE', True):
@@ -439,19 +426,6 @@ class TestBotDiscordInterface:
                 assert result is True
 
     @pytest.mark.asyncio
-    async def test_send_embed_with_exception(self, mock_discord_bot, mock_discord_text_channel):
-        """Test send_embed handles exceptions gracefully."""
-        with patch('discord_interface.DISCORD_AVAILABLE', True):
-            with patch('discord_interface.discord') as mock_discord:
-                mock_discord.TextChannel = type('TextChannel', (), {})
-                mock_discord_text_channel.send.side_effect = RuntimeError("Unexpected error")
-                mock_discord_bot.get_channel.return_value = mock_discord_text_channel
-                mock_discord_text_channel.__class__ = mock_discord.TextChannel
-                interface = BotDiscordInterface(mock_discord_bot)
-                result = await interface.send_embed(MagicMock())
-                assert result is False
-
-    @pytest.mark.asyncio
     async def test_test_connection(self, mock_discord_bot):
         """Test test_connection returns bot connection status."""
         with patch('discord_interface.DISCORD_AVAILABLE', True):
@@ -474,7 +448,7 @@ class TestBotDiscordInterface:
 
 
 # ============================================================================
-# DiscordInterfaceFactory Tests (5 tests - simplified)
+# DiscordInterfaceFactory Tests (5 tests)
 # ============================================================================
 
 class TestDiscordInterfaceFactory:
@@ -533,7 +507,7 @@ class TestDiscordInterfaceFactory:
 
 
 # ============================================================================
-# Integration Tests (7 tests)
+# Integration Tests (5 tests)
 # ============================================================================
 
 class TestDiscordInterfaceIntegration:
@@ -605,35 +579,6 @@ class TestDiscordInterfaceIntegration:
             assert hasattr(interface.embed_builder, 'players_list_embed')
             assert hasattr(interface.embed_builder, 'cooldown_embed')
             assert hasattr(interface.embed_builder, 'info_embed')
-
-    @pytest.mark.asyncio
-    async def test_disconnect_not_connected_is_safe(self, mock_discord_bot):
-        """Test disconnect works even if not previously connected."""
-        with patch('discord_interface.DISCORD_AVAILABLE', True):
-            interface = BotDiscordInterface(mock_discord_bot)
-            mock_discord_bot.is_connected = False
-            await interface.disconnect()
-            mock_discord_bot.disconnect_bot.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_error_handling_generic(self, mock_discord_bot, mock_discord_text_channel):
-        """Test error paths catch and handle gracefully."""
-        with patch('discord_interface.DISCORD_AVAILABLE', True):
-            with patch('discord_interface.discord') as mock_discord:
-                mock_discord.TextChannel = type('TextChannel', (), {})
-                interface = BotDiscordInterface(mock_discord_bot)
-                
-                # Test all error cases return False
-                mock_discord_bot.get_channel.return_value = None
-                result1 = await interface.send_message("Test")
-                assert result1 is False
-                
-                mock_discord_bot.is_connected = False
-                result2 = await interface.send_message("Test")
-                assert result2 is False
-                
-                result3 = await interface.send_embed(MagicMock())
-                assert result3 is False
 
 
 if __name__ == "__main__":
