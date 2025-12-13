@@ -69,18 +69,26 @@ def mock_metrics_engine() -> MagicMock:
 
 
 @pytest.fixture
+def patch_metrics_engine(mock_metrics_engine: MagicMock) -> MagicMock:
+    """Auto-patch RconMetricsEngine at source for all tests."""
+    with patch("rcon_metrics_engine.RconMetricsEngine", return_value=mock_metrics_engine):
+        yield mock_metrics_engine
+
+
+@pytest.fixture
 def stats_collector(
-    mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
+    mock_rcon_client: MagicMock,
+    mock_discord_interface: MagicMock,
+    patch_metrics_engine: MagicMock,
 ) -> RconStatsCollector:
     """Create a RconStatsCollector with mocks."""
-    with patch("rcon_stats_collector.RconMetricsEngine"):
-        return RconStatsCollector(
-            rcon_client=mock_rcon_client,
-            discord_interface=mock_discord_interface,
-            interval=1,  # Fast interval for testing
-            enable_ups_stat=True,
-            enable_evolution_stat=True,
-        )
+    return RconStatsCollector(
+        rcon_client=mock_rcon_client,
+        discord_interface=mock_discord_interface,
+        interval=0.05,  # Fast interval for testing (50ms)
+        enable_ups_stat=True,
+        enable_evolution_stat=True,
+    )
 
 
 @pytest.fixture
@@ -94,7 +102,7 @@ def stats_collector_with_engine(
         rcon_client=mock_rcon_client,
         discord_interface=mock_discord_interface,
         metrics_engine=mock_metrics_engine,
-        interval=1,
+        interval=0.05,
         enable_ups_stat=True,
         enable_evolution_stat=True,
     )
@@ -109,30 +117,34 @@ class TestRconStatsCollectorInit:
     """Test RconStatsCollector initialization."""
 
     def test_init_with_all_params(
-        self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
+        self,
+        mock_rcon_client: MagicMock,
+        mock_discord_interface: MagicMock,
+        patch_metrics_engine: MagicMock,
     ) -> None:
         """Initialize collector with all parameters specified."""
-        with patch("rcon_stats_collector.RconMetricsEngine"):
-            collector = RconStatsCollector(
-                rcon_client=mock_rcon_client,
-                discord_interface=mock_discord_interface,
-                interval=300,
-                enable_ups_stat=True,
-                enable_evolution_stat=False,
-            )
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+            interval=300,
+            enable_ups_stat=True,
+            enable_evolution_stat=False,
+        )
 
-            assert collector.rcon_client is mock_rcon_client
-            assert collector.discord_interface is mock_discord_interface
-            assert collector.interval == 300
-            assert collector.running is False
-            assert collector.task is None
-            assert collector.metrics_engine is not None
+        assert collector.rcon_client is mock_rcon_client
+        assert collector.discord_interface is mock_discord_interface
+        assert collector.interval == 300
+        assert collector.running is False
+        assert collector.task is None
+        assert collector.metrics_engine is not None
 
     def test_init_creates_metrics_engine_when_not_provided(
-        self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
+        self,
+        mock_rcon_client: MagicMock,
+        mock_discord_interface: MagicMock,
     ) -> None:
         """When metrics_engine is None, collector creates its own."""
-        with patch("rcon_stats_collector.RconMetricsEngine") as mock_engine_cls:
+        with patch("rcon_metrics_engine.RconMetricsEngine") as mock_engine_cls:
             mock_engine_instance = MagicMock()
             mock_engine_cls.return_value = mock_engine_instance
 
@@ -159,7 +171,7 @@ class TestRconStatsCollectorInit:
         mock_metrics_engine: MagicMock,
     ) -> None:
         """When metrics_engine is provided, collector uses it (doesn't create)."""
-        with patch("rcon_stats_collector.RconMetricsEngine") as mock_engine_cls:
+        with patch("rcon_metrics_engine.RconMetricsEngine") as mock_engine_cls:
             collector = RconStatsCollector(
                 rcon_client=mock_rcon_client,
                 discord_interface=mock_discord_interface,
@@ -171,22 +183,26 @@ class TestRconStatsCollectorInit:
         assert collector.metrics_engine is mock_metrics_engine
 
     def test_init_default_interval(
-        self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
+        self,
+        mock_rcon_client: MagicMock,
+        mock_discord_interface: MagicMock,
+        patch_metrics_engine: MagicMock,
     ) -> None:
         """Collector initializes with default interval of 300 seconds."""
-        with patch("rcon_stats_collector.RconMetricsEngine"):
-            collector = RconStatsCollector(
-                rcon_client=mock_rcon_client,
-                discord_interface=mock_discord_interface,
-            )
+        collector = RconStatsCollector(
+            rcon_client=mock_rcon_client,
+            discord_interface=mock_discord_interface,
+        )
 
-            assert collector.interval == 300
+        assert collector.interval == 300
 
     def test_init_default_enable_flags(
-        self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
+        self,
+        mock_rcon_client: MagicMock,
+        mock_discord_interface: MagicMock,
     ) -> None:
         """Collector initializes with stats enabled by default."""
-        with patch("rcon_stats_collector.RconMetricsEngine") as mock_engine_cls:
+        with patch("rcon_metrics_engine.RconMetricsEngine") as mock_engine_cls:
             RconStatsCollector(
                 rcon_client=mock_rcon_client,
                 discord_interface=mock_discord_interface,
@@ -293,8 +309,8 @@ class TestRconStatsCollectionLoop:
         """Collection loop iterates multiple times and respects interval."""
         await stats_collector_with_engine.start()
 
-        # Let loop run for a few iterations
-        await asyncio.sleep(0.1)  # ~100ms, should get 2-3 iterations with 1s interval
+        # Let loop run for a few iterations with short interval
+        await asyncio.sleep(0.15)
 
         await stats_collector_with_engine.stop()
 
@@ -634,10 +650,12 @@ class TestMetricsEngineLifecycle:
     """Test metrics engine creation and lifecycle."""
 
     def test_collector_creates_engine_with_correct_flags(
-        self, mock_rcon_client: MagicMock, mock_discord_interface: MagicMock
+        self,
+        mock_rcon_client: MagicMock,
+        mock_discord_interface: MagicMock,
     ) -> None:
         """Collector creates engine with enable flags from constructor."""
-        with patch("rcon_stats_collector.RconMetricsEngine") as mock_engine_cls:
+        with patch("rcon_metrics_engine.RconMetricsEngine") as mock_engine_cls:
             RconStatsCollector(
                 rcon_client=mock_rcon_client,
                 discord_interface=mock_discord_interface,
@@ -686,8 +704,8 @@ class TestRconStatsCollectorIntegration:
             await stats_collector_with_engine.start()
             assert stats_collector_with_engine.running is True
 
-            # Let collection happen
-            await asyncio.sleep(0.15)
+            # Let collection happen (short interval: 50ms, so 200ms allows ~4 iterations)
+            await asyncio.sleep(0.2)
 
             # Verify collection occurred
             assert mock_metrics_engine.gather_all_metrics.call_count >= 1
@@ -719,7 +737,7 @@ class TestRconStatsCollectorIntegration:
             "bot.helpers.format_stats_text", return_value="Stats"
         ):
             await stats_collector_with_engine.start()
-            await asyncio.sleep(0.2)  # Allow 2 iterations
+            await asyncio.sleep(0.15)  # Allow multiple iterations with 50ms interval
             await stats_collector_with_engine.stop()
 
         # Should have attempted both iterations
