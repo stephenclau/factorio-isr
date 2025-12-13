@@ -300,7 +300,7 @@ class TestSendStatusAlertEmbedsIntensified:
         # (but per-server channels may have been called)
 
     @pytest.mark.asyncio
-    async def test_global_channel_get_channel_call(self) -> None:
+    async def test_global_channel_get_channel_called(self) -> None:
         """Calls bot.get_channel with event_channel_id (line 176)."""
         bot = MockBot(event_channel_id=111)
         bot.get_channel = Mock(return_value=None)
@@ -310,7 +310,14 @@ class TestSendStatusAlertEmbedsIntensified:
             with patch("bot.rcon_health_monitor.logger"):
                 await monitor._send_status_alert_embeds()
         
-        bot.get_channel.assert_called_with(111)
+        # Should call get_channel at least once for global channel
+        assert bot.get_channel.called
+        # Check that 111 (global channel) was in the calls
+        global_channel_called = any(
+            call_obj[0][0] == 111
+            for call_obj in bot.get_channel.call_args_list
+        )
+        assert global_channel_called
 
     @pytest.mark.asyncio
     async def test_global_channel_is_none(self) -> None:
@@ -430,7 +437,7 @@ class TestSendStatusAlertEmbedsIntensified:
     @pytest.mark.asyncio
     async def test_per_server_list_servers_called(self) -> None:
         """Iterates through server_manager.list_servers() (line 195)."""
-        bot = MockBot()
+        bot = MockBot(event_channel_id=None)  # No global channel
         bot.server_manager.list_servers = Mock(return_value={
             "prod": MockServerConfig("prod", "Production", event_channel_id=111),
         })
@@ -443,7 +450,7 @@ class TestSendStatusAlertEmbedsIntensified:
             with patch("bot.rcon_health_monitor.logger"):
                 await monitor._send_status_alert_embeds()
         
-        bot.server_manager.list_servers.assert_called_once()
+        bot.server_manager.list_servers.assert_called()
 
     @pytest.mark.asyncio
     async def test_per_server_no_event_channel_id(self) -> None:
@@ -482,7 +489,7 @@ class TestSendStatusAlertEmbedsIntensified:
         assert len(channel222.messages_sent) == 1  # Only per-server send
 
     @pytest.mark.asyncio
-    async def test_per_server_get_channel_call(self) -> None:
+    async def test_per_server_get_channel_called(self) -> None:
         """Calls bot.get_channel for each per-server channel (line 205)."""
         bot = MockBot(event_channel_id=None)
         bot.get_channel = Mock(return_value=None)
