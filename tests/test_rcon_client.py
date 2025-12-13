@@ -534,9 +534,9 @@ class TestRconStatsCollectorIntensive:
             metrics_engine=mock_metrics_engine,
         )
 
-        with patch("rcon_stats_collector.format_stats_text") as mock_format_text:
+        with patch("bot.helpers.format_stats_text") as mock_format_text:
             mock_format_text.return_value = "Stats: OK"
-            with patch("rcon_stats_collector.format_stats_embed") as mock_format_embed:
+            with patch("bot.helpers.format_stats_embed") as mock_format_embed:
                 mock_format_embed.return_value = MagicMock()  # Mock embed
                 await collector._collect_and_post()
 
@@ -677,9 +677,9 @@ class TestRconStatsCollectorIntensive:
             metrics_engine=mock_metrics_engine,
         )
 
-        with patch("rcon_stats_collector.format_stats_text") as mock_format_text:
+        with patch("bot.helpers.format_stats_text") as mock_format_text:
             mock_format_text.return_value = "Stats text"
-            with patch("rcon_stats_collector.format_stats_embed") as mock_format_embed:
+            with patch("bot.helpers.format_stats_embed") as mock_format_embed:
                 mock_format_embed.return_value = MagicMock()
                 await collector._collect_and_post()
 
