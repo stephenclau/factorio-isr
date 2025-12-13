@@ -58,15 +58,20 @@ class MockServerConfig:
 
 
 class MockServerManager:
-    """Mock server manager."""
+    """Mock server manager.
+    
+    CRITICAL: Use 'is not None' pattern for default arguments
+    to properly handle empty collections ([] vs default list).
+    """
 
     def __init__(self, tags: list = None, configs: dict = None, clients: dict = None):
-        self.tags = tags or ["prod", "staging"]
-        self.configs = configs or {
+        # Use 'is not None' to distinguish empty [] from None
+        self.tags = tags if tags is not None else ["prod", "staging"]
+        self.configs = configs if configs is not None else {
             "prod": MockServerConfig("prod", "Production"),
             "staging": MockServerConfig("staging", "Staging"),
         }
-        self.clients = clients or {
+        self.clients = clients if clients is not None else {
             "prod": MockRconClient("prod"),
             "staging": MockRconClient("staging"),
         }
