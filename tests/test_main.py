@@ -4,7 +4,7 @@ Tests for src/main.py - Application class with MultiServerLogTailer integration.
 Type-safe and comprehensive coverage of:
 - setup() with config loading and EventParser initialization
 - start() with health server, Discord interface, and MultiServerLogTailer
-- _start_multi_server_mode() with ServerManager, token validation, type checks
+- _setup_multi_server_manager() with ServerManager, token validation, type checks
 - handle_log_line() with server_tag parameter (multi-server aware)
 - run() with exception handling and shutdown graceful exit
 - main() entry point with signal handlers
@@ -54,7 +54,7 @@ class MockBotDiscordInterface(BotDiscordInterface):
         self.test_connection = AsyncMock(return_value=True)
         self.bot = MagicMock()
         self.bot.set_server_manager = MagicMock()
-        self.bot._apply_server_breakdown_config = MagicMock()
+        self.bot._apply_server_status_alert_config = MagicMock()
         self.embed_builder = None
 
 
@@ -255,6 +255,7 @@ class TestApplicationStart:
             # Mock ServerManager
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             # Mock log tailer
@@ -287,6 +288,7 @@ class TestApplicationStart:
             
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -318,6 +320,7 @@ class TestApplicationStart:
             
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -348,6 +351,7 @@ class TestApplicationStart:
             
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -360,14 +364,15 @@ class TestApplicationStart:
     async def test_start_multi_server_mode_called(
         self, mock_config: Config
     ) -> None:
-        """start() should call _start_multi_server_mode()."""
+        """start() should call _setup_multi_server_manager()."""
         with patch("main.load_config", return_value=mock_config), \
              patch("main.validate_config", return_value=True), \
              patch("main.DiscordInterfaceFactory.create_interface") as mock_factory, \
              patch("main.MultiServerLogTailer") as mock_tailer_class, \
              patch("main.SERVER_MANAGER_AVAILABLE", True), \
              patch("main.ServerManager") as mock_server_manager_class, \
-             patch.object(Application, "_start_multi_server_mode", new_callable=AsyncMock) as mock_multi_start:
+             patch.object(Application, "_setup_multi_server_manager", new_callable=AsyncMock) as mock_multi_start, \
+             patch.object(Application, "_start_multi_server_stats_collectors", new_callable=AsyncMock):
             
             app = Application()
             await app.setup()
@@ -379,6 +384,7 @@ class TestApplicationStart:
             
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -409,6 +415,7 @@ class TestApplicationStart:
             
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -444,6 +451,7 @@ class TestApplicationStart:
             
             mock_server_manager = AsyncMock()
             mock_server_manager.add_server = AsyncMock()
+            mock_server_manager.list_tags = MagicMock(return_value=[])
             mock_server_manager_class.return_value = mock_server_manager
             
             mock_tailer = AsyncMock()
@@ -454,11 +462,11 @@ class TestApplicationStart:
 
 
 # ============================================================================
-# Application._start_multi_server_mode Tests
+# Application._setup_multi_server_manager Tests
 # ============================================================================
 
 class TestStartMultiServerMode:
-    """Tests for _start_multi_server_mode() - high-impact coverage gains."""
+    """Tests for _setup_multi_server_manager() - high-impact coverage gains."""
 
     @pytest.mark.asyncio
     async def test_server_manager_unavailable(
@@ -473,7 +481,7 @@ class TestStartMultiServerMode:
             assert app.config.discord_bot_token == "test_bot_token"
             app.discord = AsyncMock()
             with pytest.raises(ImportError, match="ServerManager"):
-                await app._start_multi_server_mode()
+                await app._setup_multi_server_manager()
 
     @pytest.mark.asyncio
     async def test_missing_discord_bot_token(
@@ -501,7 +509,7 @@ class TestStartMultiServerMode:
             assert app.config.discord_bot_token == "test_bot_token"
             app.discord = AsyncMock()  # Not a BotDiscordInterface
             with pytest.raises(TypeError, match="Bot interface required"):
-                await app._start_multi_server_mode()
+                await app._setup_multi_server_manager()
 
     @pytest.mark.asyncio
     async def test_no_servers_configured(
@@ -520,7 +528,7 @@ class TestStartMultiServerMode:
             app.config.servers = {}  # Empty servers
             
             with pytest.raises(ValueError, match="servers"):
-                await app._start_multi_server_mode()
+                await app._setup_multi_server_manager()
 
     @pytest.mark.asyncio
     async def test_add_server_exception_handling(
@@ -544,7 +552,7 @@ class TestStartMultiServerMode:
             mock_server_manager_class.return_value = mock_server_manager
             
             with pytest.raises(ConnectionError):
-                await app._start_multi_server_mode()
+                await app._setup_multi_server_manager()
 
 
 # ============================================================================
