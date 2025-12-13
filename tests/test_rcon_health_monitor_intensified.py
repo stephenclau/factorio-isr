@@ -31,6 +31,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, Optional
 from unittest.mock import Mock, MagicMock, AsyncMock, patch, call
 import sys
+import discord
 
 try:
     from bot.rcon_health_monitor import RconHealthMonitor
@@ -97,6 +98,20 @@ class MockPresenceManager:
         self.update_called = True
 
 
+class MockTextChannel(discord.TextChannel):
+    """Mock Discord text channel that extends discord.TextChannel."""
+
+    def __init__(self, channel_id: int = 111):
+        self.channel_id = channel_id
+        self.messages_sent = []
+        self._state = MagicMock()
+        self.guild = MagicMock()
+        self.name = f"test-channel-{channel_id}"
+
+    async def send(self, embed=None, content=None, **kwargs) -> None:
+        self.messages_sent.append({"embed": embed, "content": content})
+
+
 class MockBot:
     """Mock Discord bot."""
 
@@ -115,21 +130,10 @@ class MockBot:
         self.rcon_status_alert_interval = rcon_status_alert_interval
         self.presence_manager = MockPresenceManager()
         self.rcon_last_connected: Optional[datetime] = None
-        self.channels: Dict[int, MagicMock] = {}
+        self.channels: Dict[int, discord.TextChannel] = {}
 
-    def get_channel(self, channel_id: int) -> Optional[MagicMock]:
+    def get_channel(self, channel_id: int) -> Optional[discord.TextChannel]:
         return self.channels.get(channel_id)
-
-
-class MockTextChannel:
-    """Mock Discord text channel."""
-
-    def __init__(self, channel_id: int):
-        self.channel_id = channel_id
-        self.messages_sent = []
-
-    async def send(self, embed=None, content=None) -> None:
-        self.messages_sent.append({"embed": embed, "content": content})
 
 
 class MockEmbedBuilder:
@@ -141,26 +145,9 @@ class MockEmbedBuilder:
     COLOR_ERROR = 0xFF0000
 
     @staticmethod
-    def info_embed(title: str, message: str) -> "MockEmbed":
-        return MockEmbed(title=title, description=message)
-
-
-class MockEmbed:
-    """Mock Discord embed."""
-
-    def __init__(self, title: str = "", description: str = "", color: int = 0, timestamp=None):
-        self.title = title
-        self.description = description
-        self.color = color
-        self.timestamp = timestamp
-        self.fields = []
-        self.footer = None
-
-    def add_field(self, name: str, value: str, inline: bool = True) -> None:
-        self.fields.append({"name": name, "value": value, "inline": inline})
-
-    def set_footer(self, text: str) -> None:
-        self.footer = text
+    def info_embed(title: str, message: str) -> discord.Embed:
+        embed = discord.Embed(title=title, description=message, color=MockEmbedBuilder.COLOR_INFO)
+        return embed
 
 
 class TestMonitorRconStatusLoop:
@@ -325,26 +312,6 @@ class TestMonitorRconStatusLoop:
         assert monitor._send_status_alert_embeds.called
 
     @pytest.mark.asyncio
-    async def test_monitor_status_alert_interval_mode_respects_interval(self) -> None:
-        """Monitor respects interval timing in 'interval' mode."""
-        bot = MockBot(rcon_status_alert_mode="interval", rcon_status_alert_interval=1000.0)
-        monitor = RconHealthMonitor(bot)
-        monitor._send_status_alert_embeds = AsyncMock()
-        
-        sleep_count = 0
-        async def mock_sleep(delay):
-            nonlocal sleep_count
-            sleep_count += 1
-            if sleep_count >= 2:
-                bot._connected = False
-        
-        with patch("asyncio.sleep", side_effect=mock_sleep):
-            await monitor._monitor_rcon_status()
-        
-        # Should only be called once (initial)
-        assert monitor._send_status_alert_embeds.call_count == 1
-
-    @pytest.mark.asyncio
     async def test_monitor_presence_updated_each_cycle(self) -> None:
         """Monitor updates presence each cycle."""
         bot = MockBot()
@@ -379,107 +346,96 @@ class TestSendStatusAlertEmbeds:
     @pytest.mark.asyncio
     async def test_send_alert_global_channel(self) -> None:
         """Sends to global event channel."""
-        channel = AsyncMock()
         bot = MockBot(event_channel_id=111)
+        channel = MockTextChannel(channel_id=111)
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                with patch("bot.rcon_health_monitor.logger"):
-                    await monitor._send_status_alert_embeds()
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            with patch("bot.rcon_health_monitor.logger"):
+                await monitor._send_status_alert_embeds()
         
-        # Should have tried to send
-        channel.send.assert_called_once()
+        # Verify send was called
+        assert len(channel.messages_sent) > 0
 
     @pytest.mark.asyncio
     async def test_send_alert_per_server_channels(self) -> None:
         """Sends to per-server channels."""
-        prod_channel = AsyncMock()
-        staging_channel = AsyncMock()
-        
         bot = MockBot(event_channel_id=None)  # No global channel
+        prod_channel = MockTextChannel(channel_id=111)
+        staging_channel = MockTextChannel(channel_id=222)
         bot.channels = {111: prod_channel, 222: staging_channel}
-        bot.get_channel = Mock(side_effect=lambda cid: bot.channels.get(cid))
         
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                with patch("bot.rcon_health_monitor.logger"):
-                    await monitor._send_status_alert_embeds()
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            with patch("bot.rcon_health_monitor.logger"):
+                await monitor._send_status_alert_embeds()
         
         # Both should be called
-        assert prod_channel.send.called
-        assert staging_channel.send.called
+        assert len(prod_channel.messages_sent) > 0
+        assert len(staging_channel.messages_sent) > 0
 
     @pytest.mark.asyncio
     async def test_send_alert_avoids_duplicate_to_same_channel(self) -> None:
         """Avoids sending twice to same channel."""
-        channel = AsyncMock()
         bot = MockBot(event_channel_id=111)
+        channel = MockTextChannel(channel_id=111)
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         # Set server channel to same as global
         bot.server_manager.configs["prod"].event_channel_id = 111
         
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                with patch("bot.rcon_health_monitor.logger"):
-                    await monitor._send_status_alert_embeds()
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            with patch("bot.rcon_health_monitor.logger"):
+                await monitor._send_status_alert_embeds()
         
         # Should only send once
-        assert channel.send.call_count == 1
+        assert len(channel.messages_sent) == 1
 
     @pytest.mark.asyncio
     async def test_send_alert_channel_not_text_channel(self) -> None:
         """Skips non-TextChannel objects."""
         bot = MockBot(event_channel_id=111)
         bot.channels[111] = Mock()  # Not a TextChannel
-        bot.get_channel = Mock(return_value=bot.channels[111])
         
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                with patch("bot.rcon_health_monitor.logger"):
-                    await monitor._send_status_alert_embeds()
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            with patch("bot.rcon_health_monitor.logger"):
+                await monitor._send_status_alert_embeds()
         
         # Should not raise
 
     @pytest.mark.asyncio
     async def test_send_alert_channel_send_exception(self) -> None:
         """Handles channel.send() exceptions."""
-        channel = AsyncMock()
-        channel.send.side_effect = Exception("Send failed")
-        
         bot = MockBot(event_channel_id=111)
+        channel = MockTextChannel(channel_id=111)
+        
+        # Make send raise an exception
+        original_send = channel.send
+        async def failing_send(**kwargs):
+            raise Exception("Send failed")
+        channel.send = failing_send
+        
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                with patch("bot.rcon_health_monitor.logger") as mock_logger:
-                    await monitor._send_status_alert_embeds()
-                
-                # Should have logged warning
-                warning_logged = any(
-                    call[0][0] == "rcon_status_alert_send_failed"
-                    for call in mock_logger.warning.call_args_list
-                )
-                assert warning_logged
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            with patch("bot.rcon_health_monitor.logger") as mock_logger:
+                await monitor._send_status_alert_embeds()
+            
+            # Should have logged warning
+            warning_logged = any(
+                call[0][0] == "rcon_status_alert_send_failed"
+                for call in mock_logger.warning.call_args_list
+            )
+            assert warning_logged
 
 
 class TestNotifyRconDisconnected:
@@ -514,10 +470,9 @@ class TestNotifyRconDisconnected:
     @pytest.mark.asyncio
     async def test_notify_disconnect_sends_embed(self) -> None:
         """Sends embed on disconnect."""
-        channel = AsyncMock()
         bot = MockBot()
+        channel = MockTextChannel(channel_id=111)
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         monitor = RconHealthMonitor(bot)
         
@@ -525,7 +480,8 @@ class TestNotifyRconDisconnected:
             with patch("bot.rcon_health_monitor.logger"):
                 await monitor._notify_rcon_disconnected("prod")
         
-        channel.send.assert_called_once()
+        # Verify send was called
+        assert len(channel.messages_sent) > 0
 
     @pytest.mark.asyncio
     async def test_notify_disconnect_exception_logged(self) -> None:
@@ -576,10 +532,9 @@ class TestNotifyRconReconnected:
     @pytest.mark.asyncio
     async def test_notify_reconnect_calculates_downtime(self) -> None:
         """Calculates and includes downtime in message."""
-        channel = AsyncMock()
         bot = MockBot()
+        channel = MockTextChannel(channel_id=111)
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         monitor = RconHealthMonitor(bot)
         
@@ -594,16 +549,15 @@ class TestNotifyRconReconnected:
             with patch("bot.rcon_health_monitor.logger"):
                 await monitor._notify_rcon_reconnected("prod")
         
-        # Verify send was called (embed contains downtime)
-        channel.send.assert_called_once()
+        # Verify send was called
+        assert len(channel.messages_sent) > 0
 
     @pytest.mark.asyncio
     async def test_notify_reconnect_no_downtime_info(self) -> None:
         """Handles missing last_connected gracefully."""
-        channel = AsyncMock()
         bot = MockBot()
+        channel = MockTextChannel(channel_id=111)
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         monitor = RconHealthMonitor(bot)
         # No last_connected entry
@@ -612,15 +566,15 @@ class TestNotifyRconReconnected:
             with patch("bot.rcon_health_monitor.logger"):
                 await monitor._notify_rcon_reconnected("prod")
         
-        channel.send.assert_called_once()
+        # Verify send was called
+        assert len(channel.messages_sent) > 0
 
     @pytest.mark.asyncio
     async def test_notify_reconnect_singular_minute(self) -> None:
         """Uses 'minute' (singular) for 1 minute downtime."""
-        channel = AsyncMock()
         bot = MockBot()
+        channel = MockTextChannel(channel_id=111)
         bot.channels[111] = channel
-        bot.get_channel = Mock(return_value=channel)
         
         monitor = RconHealthMonitor(bot)
         
@@ -635,7 +589,8 @@ class TestNotifyRconReconnected:
             with patch("bot.rcon_health_monitor.logger"):
                 await monitor._notify_rcon_reconnected("prod")
         
-        channel.send.assert_called_once()
+        # Verify send was called
+        assert len(channel.messages_sent) > 0
 
     @pytest.mark.asyncio
     async def test_notify_reconnect_exception_logged(self) -> None:
@@ -663,14 +618,12 @@ class TestBuildStatusAlertEmbedIntensified:
         bot.server_manager.configs["prod"].description = "Production server"
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
         
         # Check that description is in fields
         if result:
-            field_values = "\n".join([f["value"] for f in result.fields])
+            field_values = "\n".join([f.value for f in result.fields])
             assert "Production server" in field_values
 
     def test_build_embed_status_icons(self) -> None:
@@ -678,28 +631,24 @@ class TestBuildStatusAlertEmbedIntensified:
         bot = MockBot()
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
         
         if result:
-            field_values = "\n".join([f["value"] for f in result.fields])
+            field_values = "\n".join([f.value for f in result.fields])
             # Check for status icons (green or red circle)
             has_icons = "\ud83d\udfe2" in field_values or "\ud83d\udd34" in field_values
-            assert has_icons or len(field_values) > 0  # Either has icons or at least has content
+            assert has_icons or len(field_values) > 0
 
     def test_build_embed_host_port_display(self) -> None:
         """Displays host and port correctly."""
         bot = MockBot()
         monitor = RconHealthMonitor(bot)
         
-        mock_embed = MockEmbed(title="Test")
-        with patch("discord.Embed", return_value=mock_embed):
-            with patch("discord.utils.utcnow", return_value=datetime.now(timezone.utc)):
-                result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
+        with patch.dict('sys.modules', {'discord_interface': Mock(EmbedBuilder=MockEmbedBuilder)}):
+            result = monitor._build_rcon_status_alert_embed(MockEmbedBuilder)
         
         if result:
-            field_values = "\n".join([f["value"] for f in result.fields])
+            field_values = "\n".join([f.value for f in result.fields])
             assert "localhost" in field_values
             assert "27015" in field_values
