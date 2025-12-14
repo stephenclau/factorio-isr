@@ -556,7 +556,10 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         interaction: discord.Interaction,
         target: str,
     ) -> None:
-        """Show enemy evolution with guaranteed response handling and timeout protection."""
+        """Show enemy evolution with guaranteed response handling and timeout protection.
+        
+        🐛 FIX: Removed preemptive defer() call. Handler manages interaction state internally.
+        """
         try:
             if not evolution_handler:
                 await interaction.response.send_message(
@@ -569,9 +572,8 @@ def register_factorio_commands(bot: FactorioBot) -> None:
                 logger.error("evolution_command_failed_no_handler", user=interaction.user.name)
                 return
             
-            await interaction.response.defer(ephemeral=False)
             result = await evolution_handler.execute(interaction, target)
-            await send_command_response(interaction, result, defer_before_send=True)
+            await send_command_response(interaction, result, defer_before_send=False)
         except Exception as e:
             logger.error("evolution_command_exception", error=str(e), exc_info=True)
             embed = EmbedBuilder.error_embed(f"Evolution command error: {str(e)}")
@@ -821,7 +823,10 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         except Exception as e:
             logger.error("research_command_exception", error=str(e), exc_info=True)
             embed = EmbedBuilder.error_embed(f"Research command error: {str(e)}")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ════════════════════════════════════════════════════════════════════════════
     # ADVANCED (2)
