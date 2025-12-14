@@ -231,6 +231,7 @@ class StatusCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute status command with explicit dependency injection."""
+        logger.info("handler_invoked", handler="StatusCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="StatusCommandHandler",
@@ -440,6 +441,7 @@ class PlayersCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute players command."""
+        logger.info("handler_invoked", handler="PlayersCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="PlayersCommandHandler",
@@ -525,6 +527,7 @@ class VersionCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute version command."""
+        logger.info("handler_invoked", handler="VersionCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="VersionCommandHandler",
@@ -592,6 +595,7 @@ class SeedCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute seed command."""
+        logger.info("handler_invoked", handler="SeedCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="SeedCommandHandler",
@@ -675,6 +679,7 @@ class EvolutionCommandHandler:
         self, interaction: discord.Interaction, target: str
     ) -> CommandResult:
         """Execute evolution command for single surface or aggregate all."""
+        logger.info("handler_invoked", handler="EvolutionCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="EvolutionCommandHandler",
@@ -864,6 +869,7 @@ class AdminsCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute admins command."""
+        logger.info("handler_invoked", handler="AdminsCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="AdminsCommandHandler",
@@ -954,6 +960,7 @@ class HealthCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute health command."""
+        logger.info("handler_invoked", handler="HealthCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="HealthCommandHandler",
@@ -1054,6 +1061,7 @@ class KickCommandHandler:
         reason: Optional[str] = None,
     ) -> CommandResult:
         """Execute kick command."""
+        logger.info("handler_invoked", handler="KickCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="KickCommandHandler",
@@ -1136,6 +1144,7 @@ class BanCommandHandler:
         reason: Optional[str] = None,
     ) -> CommandResult:
         """Execute ban command."""
+        logger.info("handler_invoked", handler="BanCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="BanCommandHandler",
@@ -1217,6 +1226,7 @@ class UnbanCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute unban command."""
+        logger.info("handler_invoked", handler="UnbanCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="UnbanCommandHandler",
@@ -1295,6 +1305,7 @@ class MuteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute mute command."""
+        logger.info("handler_invoked", handler="MuteCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="MuteCommandHandler",
@@ -1373,6 +1384,7 @@ class UnmuteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute unmute command."""
+        logger.info("handler_invoked", handler="UnmuteCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="UnmuteCommandHandler",
@@ -1451,6 +1463,7 @@ class PromoteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute promote command."""
+        logger.info("handler_invoked", handler="PromoteCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="PromoteCommandHandler",
@@ -1530,6 +1543,7 @@ class DemoteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute demote command."""
+        logger.info("handler_invoked", handler="DemoteCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="DemoteCommandHandler",
@@ -1614,6 +1628,7 @@ class SaveCommandHandler:
         name: Optional[str] = None,
     ) -> CommandResult:
         """Execute save command."""
+        logger.info("handler_invoked", handler="SaveCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="SaveCommandHandler",
@@ -1699,6 +1714,7 @@ class BroadcastCommandHandler:
         message: str,
     ) -> CommandResult:
         """Execute broadcast command."""
+        logger.info("handler_invoked", handler="BroadcastCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="BroadcastCommandHandler",
@@ -1774,6 +1790,7 @@ class WhisperCommandHandler:
         message: str,
     ) -> CommandResult:
         """Execute whisper command."""
+        logger.info("handler_invoked", handler="WhisperCommandHandler", user=interaction.user.name, player=player)
         logger.info(
             "handler_invoked",
             handler="WhisperCommandHandler",
@@ -1853,6 +1870,7 @@ class WhitelistCommandHandler:
         player: Optional[str] = None,
     ) -> CommandResult:
         """Execute whitelist command with multi-action dispatch."""
+        logger.info("handler_invoked", handler="WhitelistCommandHandler", user=interaction.user.name, action=action)
         logger.info(
             "handler_invoked",
             handler="WhitelistCommandHandler",
@@ -1991,6 +2009,7 @@ class ClockCommandHandler:
         value: Optional[str] = None,
     ) -> CommandResult:
         """Execute clock command."""
+        logger.info("handler_invoked", handler="ClockCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="ClockCommandHandler",
@@ -2130,6 +2149,7 @@ class SpeedCommandHandler:
         value: float,
     ) -> CommandResult:
         """Execute speed command."""
+        logger.info("handler_invoked", handler="SpeedCommandHandler", user=interaction.user.name, speed=speed)
         logger.info(
             "handler_invoked",
             handler="SpeedCommandHandler",
@@ -2224,6 +2244,7 @@ class ResearchCommandHandler:
         technology: Optional[str],
     ) -> CommandResult:
         """Execute research command with multi-force support."""
+        logger.info("handler_invoked", handler="ResearchCommandHandler", user=interaction.user.name, force=force)
         logger.info(
             "handler_invoked",
             handler="ResearchCommandHandler",
@@ -2532,6 +2553,7 @@ class RconCommandHandler:
         command: str,
     ) -> CommandResult:
         """Execute raw RCON command."""
+        logger.info("handler_invoked", handler="RconCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="RconCommandHandler",
@@ -2603,6 +2625,7 @@ class HelpCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute help command."""
+        logger.info("handler_invoked", handler="HelpCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="HelpCommandHandler",
@@ -2670,6 +2693,7 @@ class ServersCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute servers command."""
+        logger.info("handler_invoked", handler="ServersCommandHandler", user=interaction.user.name)
         logger.info(
             "handler_invoked",
             handler="ServersCommandHandler",
@@ -2760,6 +2784,7 @@ class ConnectCommandHandler:
         server: str,
     ) -> CommandResult:
         """Execute connect command."""
+        logger.info("handler_invoked", handler="ConnectCommandHandler", user=interaction.user.name, server=server)
         logger.info(
             "handler_invoked",
             handler="ConnectCommandHandler",
