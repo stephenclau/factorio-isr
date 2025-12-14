@@ -433,9 +433,9 @@ def register_factorio_commands(bot: Any) -> None:
     Register all /factorio subcommands (Phase 1 + Phase 2 + Phase 3 + Phase 4).
 
     This function creates and registers the complete /factorio command tree.
-    Discord limit: 25 subcommands per group (we use 17).
+    Discord limit: 25 subcommands per group (we use 25).
     
-    All 17 commands now use DI + Command Pattern with handler delegations.
+    All 25 commands now use DI + Command Pattern with handler delegations.
 
     Args:
         bot: DiscordBot instance with user_context, server_manager attributes
