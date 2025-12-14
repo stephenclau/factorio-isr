@@ -41,20 +41,20 @@ from unittest.mock import MagicMock, AsyncMock, patch, call
 from datetime import datetime, timezone, timedelta
 import discord
 
-from src.bot.commands.command_handlers import (
+from bot.commands.command_handlers import (
     StatusCommandHandler,
     EvolutionCommandHandler,
     ResearchCommandHandler,
     CommandResult,
 )
-from src.bot.commands.command_handlers_batch1 import (
+from bot.commands.command_handlers_batch1 import (
     KickCommandHandler,
     BanCommandHandler,
     UnbanCommandHandler,
     MuteCommandHandler,
     UnmuteCommandHandler,
 )
-from src.discord_interface import EmbedBuilder
+from discord_interface import EmbedBuilder
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -109,8 +109,8 @@ def mock_embed_builder():
     allowing us to test the actual embed creation logic while mocking discord.Embed.
     """
     # Use patch to mock discord.Embed before EmbedBuilder uses it
-    with patch('src.discord_interface.discord.Embed') as mock_embed_class:
-        with patch('src.discord_interface.discord.utils.utcnow') as mock_utcnow:
+    with patch('discord_interface.discord.Embed') as mock_embed_class:
+        with patch('discord_interface.discord.utils.utcnow') as mock_utcnow:
             mock_utcnow.return_value = datetime.now(timezone.utc)
             # Create a mock instance that discord.Embed() returns
             mock_embed_instance = MagicMock(spec=discord.Embed)
