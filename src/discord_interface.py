@@ -64,13 +64,13 @@ logger = structlog.get_logger()
 class EmbedBuilder:
     """Helper class for creating rich Discord embeds (Discord-specific)."""
 
-    # Color scheme
-    COLOR_SUCCESS = 0x00FF00  # Green
-    COLOR_INFO = 0x3498DB     # Blue
-    COLOR_WARNING = 0xFFA500  # Orange
-    COLOR_ERROR = 0xFF0000    # Red
-    COLOR_ADMIN =  0xFFC0CB    # Pink formally, Purple 0x9B59B6
-    COLOR_FACTORIO = 0xFF6B00 # Factorio orange
+    # Color scheme - EXPLICITLY TYPED AS INT to satisfy protocol invariance
+    COLOR_SUCCESS: int = 0x00FF00      # Green
+    COLOR_INFO: int = 0x3498DB         # Blue
+    COLOR_WARNING: int = 0xFFA500      # Orange
+    COLOR_ERROR: int = 0xFF0000        # Red
+    COLOR_ADMIN: int = 0xFFC0CB        # Pink formally, Purple 0x9B59B6
+    COLOR_FACTORIO: int = 0xFF6B00     # Factorio orange
 
     @staticmethod
     def create_base_embed(
