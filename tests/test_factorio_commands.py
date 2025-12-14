@@ -1582,11 +1582,15 @@ class TestServerAutocompleteFunction:
         mock_bot.server_manager.list_servers.return_value = mock_servers
         mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Test
+        # Test: Use OR condition like prod logic (tag OR name OR description)
         current_lower = 'production'.lower()
         choices = []
         for tag, config in mock_servers.items():
-            if current_lower in config.name.lower():
+            if (
+                current_lower in tag.lower()
+                or current_lower in config.name.lower()
+                or (config.description and current_lower in config.description.lower())
+            ):
                 choices.append(tag)
         
         # Validate
