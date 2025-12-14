@@ -23,7 +23,7 @@ Can be used by Discord commands, RCON, Prometheus, Logstash, etc.
 """
 
 import time
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 from collections import defaultdict, deque
 import structlog
 
@@ -46,80 +46,83 @@ class CommandCooldown:
         self.cooldowns: Dict[int, deque] = defaultdict(lambda: deque(maxlen=rate))
         logger.debug("cooldown_initialized", rate=rate, per=per)
 
-    def is_rate_limited(self, identifier: int) -> tuple[bool, float]:
+    def is_rate_limited(self, user_id: int) -> tuple[bool, Optional[int]]:
         """
-        Check if identifier is rate limited.
+        Check if user is rate limited.
 
         Args:
-            identifier: Unique ID (user_id, command_hash, etc.)
+            user_id: User's unique ID (Discord user ID, etc.)
 
         Returns:
-            (is_limited, retry_after_seconds)
+            Tuple of (is_limited: bool, retry_seconds: Optional[int])
+            - is_limited: True if user is rate limited
+            - retry_seconds: Seconds until next allowed use (None if not limited, 0 if immediate)
         """
         now = time.time()
-        bucket = self.cooldowns[identifier]
+        bucket = self.cooldowns[user_id]
 
         # Remove timestamps outside the window
         while bucket and bucket[0] < now - self.per:
             bucket.popleft()
 
         if len(bucket) >= self.rate:
-            # Rate limited - calculate retry time
+            # Rate limited - calculate retry time in seconds (rounded up to int)
             retry_after = self.per - (now - bucket[0])
+            retry_seconds = max(0, int(retry_after) if retry_after <= 0 else int(retry_after) + 1)
             logger.debug(
                 "rate_limited",
-                identifier=identifier,
-                retry_after=retry_after,
+                user_id=user_id,
+                retry_seconds=retry_seconds,
                 rate=self.rate,
                 per=self.per
             )
-            return True, max(0, retry_after)
+            return True, retry_seconds
 
         # Not rate limited - record this use
         bucket.append(now)
-        return False, 0.0
+        return False, None
 
-    def reset(self, identifier: int) -> None:
+    def reset(self, user_id: int) -> None:
         """
-        Reset cooldown for a specific identifier.
+        Reset cooldown for a specific user.
 
         Args:
-            identifier: Unique ID to reset
+            user_id: User's unique ID to reset
         """
-        if identifier in self.cooldowns:
-            del self.cooldowns[identifier]
-            logger.debug("cooldown_reset", identifier=identifier)
+        if user_id in self.cooldowns:
+            del self.cooldowns[user_id]
+            logger.debug("cooldown_reset", user_id=user_id)
 
-    def reset_user(self, identifier: int) -> None:
+    def reset_user(self, user_id: int) -> None:
         """Alias for reset() for backward compatibility."""
-        self.reset(identifier)
+        self.reset(user_id)
 
     def reset_all(self) -> None:
         """Reset all cooldowns."""
         self.cooldowns.clear()
         logger.debug("all_cooldowns_reset")
 
-    def get_usage(self, identifier: int) -> Tuple[int, int]:
+    def get_usage(self, user_id: int) -> Tuple[int, int]:
         """
-        Get current usage and max rate for identifier.
+        Get current usage and max rate for user.
 
         Args:
-            identifier: Unique ID
+            user_id: User's unique ID
 
         Returns:
             Tuple of (current_usage_count, max_rate)
         """
         now = time.time()
-        bucket = self.cooldowns.get(identifier, deque())
+        bucket = self.cooldowns.get(user_id, deque())
 
         # Count valid timestamps in current window
         current_usage = sum(1 for ts in bucket if ts >= now - self.per)
 
         return (current_usage, self.rate)
 
-    def get_usage_count(self, identifier: int) -> int:
-        """Get usage count for identifier."""
-        current_usage, _ = self.get_usage(identifier)
+    def get_usage_count(self, user_id: int) -> int:
+        """Get usage count for user."""
+        current_usage, _ = self.get_usage(user_id)
         return current_usage
 
 
