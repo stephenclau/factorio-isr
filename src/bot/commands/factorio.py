@@ -203,53 +203,53 @@ connect_handler: Optional[ConnectCommandHandler] = None
 
 def _import_phase2_handlers() -> tuple[Any, Any, Any]:
     """
-    Import Phase 2 handlers (status_handler, evolution_handler, research_handler).
+    Import Phase 2 handlers (StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler).
     
     Tries multiple import paths and returns tuple of handlers or None values.
     
     Returns:
-        Tuple of (status_handler, evolution_handler, research_handler)
+        Tuple of (StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler)
     """
-    status_handler = None
-    evolution_handler = None
-    research_handler = None
+    StatusCommandHandler = None
+    EvolutionCommandHandler = None
+    ResearchCommandHandler = None
     
     # Try Path 1: Relative import from same directory
     try:
         from .command_handlers import (
-            status_handler as sh,
-            evolution_handler as eh,
-            research_handler as rh,
+            StatusCommandHandler as sh,
+            EvolutionCommandHandler as eh,
+            ResearchCommandHandler as rh,
         )
-        status_handler, evolution_handler, research_handler = sh, eh, rh
+        StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler = sh, eh, rh
         logger.info("phase2_handlers_imported", path="relative_from_same_directory")
-        return status_handler, evolution_handler, research_handler
+        return StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler
     except (ImportError, AttributeError) as e:
         logger.debug("phase2_import_failed_path1", error=str(e))
     
     # Try Path 2: Absolute import via bot.commands
     try:
         from bot.commands.command_handlers import (
-            status_handler as sh,
-            evolution_handler as eh,
-            research_handler as rh,
+            StatusCommandHandler as sh,
+            EvolutionCommandHandler as eh,
+            ResearchCommandHandler as rh,
         )
-        status_handler, evolution_handler, research_handler = sh, eh, rh
+        StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler = sh, eh, rh
         logger.info("phase2_handlers_imported", path="absolute_bot_commands")
-        return status_handler, evolution_handler, research_handler
+        return StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler
     except (ImportError, AttributeError) as e:
         logger.debug("phase2_import_failed_path2", error=str(e))
     
     # Try Path 3: Absolute import via src.bot.commands
     try:
         from src.bot.commands.command_handlers import (  # type: ignore
-            status_handler as sh,
-            evolution_handler as eh,
-            research_handler as rh,
+            StatusCommandHandler as sh,
+            EvolutionCommandHandler as eh,
+            ResearchCommandHandler as rh,
         )
-        status_handler, evolution_handler, research_handler = sh, eh, rh
+        StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler = sh, eh, rh
         logger.info("phase2_handlers_imported", path="absolute_src_bot_commands")
-        return status_handler, evolution_handler, research_handler
+        return StatusCommandHandler, EvolutionCommandHandler, ResearchCommandHandler
     except (ImportError, AttributeError) as e:
         logger.debug("phase2_import_failed_path3", error=str(e))
     
