@@ -68,7 +68,7 @@ from discord_interface import EmbedBuilder
 
 @pytest.fixture
 def mock_interaction() -> MagicMock:
-    """Create a type-safe mock Discord interaction.
+    """Create a type-safe mock Discord interaction with defer/is_done support.
     
     This fixture provides a properly typed discord.Interaction mock with all
     required async and sync methods for testing command handlers.
@@ -81,18 +81,25 @@ def mock_interaction() -> MagicMock:
         - interaction.user.name: str = "TestUser"
         - interaction.response.send_message: Callable[..., Awaitable[None]]
         - interaction.response.defer: Callable[..., Awaitable[None]]
+        - interaction.response.is_done: Callable[[], bool] -> False (default)
         - interaction.followup.send: Callable[..., Awaitable[None]]
     
     Coverage:
         - Lines: user property access (id, name)
         - Lines: response async methods (send_message, defer)
+        - Lines: response.is_done() check before defer/send_message
         - Lines: followup.send() async calls
+        
+    Notes:
+        - is_done() returns False by default (allows defer/send_message)
+        - Tests can override: mock_interaction.response.is_done.return_value = True
     """
     interaction = MagicMock(spec=discord.Interaction)
     interaction.user.id = 12345
     interaction.user.name = "TestUser"
     interaction.response.send_message = AsyncMock()
     interaction.response.defer = AsyncMock()
+    interaction.response.is_done = MagicMock(return_value=False)
     interaction.followup.send = AsyncMock()
     return interaction
 
