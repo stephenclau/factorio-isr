@@ -5,7 +5,7 @@ title: Deployment
 
 # Production Deployment Guide
 
-Complete guide for deploying Factorio ISR to production.
+Complete guide for deploying Factorio ISR to production with multi-server support.
 
 ## Table of Contents
 
@@ -23,12 +23,31 @@ Complete guide for deploying Factorio ISR to production.
 
 ### System Requirements
 
-- **OS:** Linux (recommended), macOS, Windows
-- **Python:** 3.11 or higher
-- **Docker:** 20.10+ (for Docker deployment)
-- **Memory:** 256MB minimum, 512MB recommended
-- **CPU:** 1 core minimum
-- **Disk:** 100MB application + logs
+**Realistic resource requirements per deployment:**
+
+| Servers Managed | Memory (RAM) | CPU | Disk Space | Network |
+|----------------|--------------|-----|------------|----------|
+| 1 server | 256MB | 0.5 core | 100MB | Minimal |
+| 5 servers | 512MB | 1 core | 150MB | Low |
+| 10 servers | 1GB | 1-2 cores | 200MB | Moderate |
+| 20+ servers | 2GB+ | 2+ cores | 300MB+ | Monitor carefully |
+
+**Supported platforms:**
+- **Linux:** Ubuntu 22.04+, Debian 11+, RHEL 8+ (recommended)
+- **macOS:** 12+ (development only)
+- **Windows:** WSL2 or Docker Desktop (development only)
+
+**Required software:**
+- **Python:** 3.11+ (for non-Docker deployments)
+- **Docker:** 20.10+ (for Docker deployments)
+- **Network:** Outbound HTTPS to Discord API, TCP to Factorio RCON ports
+
+### Timeline Expectations
+
+- **First-time setup:** 30-60 minutes
+- **Repeat deployment:** 10-15 minutes
+- **Adding new server:** 5 minutes
+- **Troubleshooting issues:** 15-45 minutes
 
 ---
 
@@ -36,12 +55,12 @@ Complete guide for deploying Factorio ISR to production.
 
 Before deploying, gather:
 
-- ✅ Discord **bot token**
-- ✅ Discord **event channel ID**
-- ✅ Factorio log file path
-- ✅ RCON password (if using RCON)
-- ✅ Server IP/hostname
-- ✅ Network access to Factorio server
+- ✅ Discord **bot token** (`.secrets/DISCORD_BOT_TOKEN.txt`)
+- ✅ Discord **channel IDs** for each server (enable Developer Mode, right-click channel, Copy ID)
+- ✅ Factorio **log file paths** for each server
+- ✅ **RCON passwords** for each server (if using RCON/stats)
+- ✅ **Server IPs/hostnames** for each Factorio instance
+- ✅ Network access from ISR to all Factorio RCON ports
 
 ---
 
@@ -52,13 +71,13 @@ Before deploying, gather:
 ```bash
 # Production server
 cd /opt
-sudo git clone https://github.com/yourusername/factorio-isr.git
+sudo git clone https://github.com/stephenclau/factorio-isr.git
 cd factorio-isr
 
-# Or download release
-wget https://github.com/yourusername/factorio-isr/archive/v2.0.0.tar.gz
-tar -xzf v2.0.0.tar.gz
-cd factorio-isr-2.0.0
+# Or download specific release
+wget https://github.com/stephenclau/factorio-isr/archive/v2.1.0.tar.gz
+tar -xzf v2.1.0.tar.gz
+cd factorio-isr-2.1.0
 ```
 
 ---
@@ -72,39 +91,54 @@ mkdir -p .secrets
 # Add Discord bot token
 echo "your-discord-bot-token" > .secrets/DISCORD_BOT_TOKEN.txt
 
-# Add RCON password
-echo "your-rcon-password" > .secrets/RCON_PASSWORD.txt
+# Add RCON passwords per server
+echo "prod-password-123" > .secrets/RCON_PASSWORD_PROD
+echo "test-password-456" > .secrets/RCON_PASSWORD_TEST
 
 # Secure secrets
 chmod 700 .secrets
 chmod 600 .secrets/*
+
+# Verify secrets are NOT in git
+grep ".secrets" .gitignore || echo ".secrets/" >> .gitignore
 ```
 
 ---
 
-### Step 3: Configure Environment
+### Step 3: Configure Multi-Server Setup
 
-```bash
-# Copy example config
-cp .env.example .env
+**Create `config/servers.yml`** (mandatory):
 
-# Edit configuration
-nano .env
+```yaml
+servers:
+  production:
+    name: Production Server
+    log_path: /factorio/production/console.log
+    rcon_host: factorio-prod.internal
+    rcon_port: 27015
+    rcon_password: "${RCON_PASSWORD_PROD}"
+    event_channel_id: 111111111111111111
+    stats_interval: 300
+
+  testing:
+    name: Testing Server
+    log_path: /factorio/testing/console.log
+    rcon_host: factorio-test.internal
+    rcon_port: 27015
+    rcon_password: "${RCON_PASSWORD_TEST}"
+    event_channel_id: 222222222222222222
+    stats_interval: 600
 ```
 
-**Minimum production .env (bot mode only):**
+**Note:** Single-server environment variables (`RCON_ENABLED`, `RCON_HOST`, etc.) are **deprecated**. Use `servers.yml` for all deployments.
+
+---
+
+### Step 4: Configure Environment (Optional)
+
+Create `.env` for non-Docker deployments:
 
 ```bash
-# Discord Bot
-DISCORD_BOT_TOKEN=   # Will use secret file if empty
-DISCORD_EVENT_CHANNEL_ID=123456789012345678
-
-# Factorio
-FACTORIO_LOG_PATH=/path/to/factorio/console.log
-
-# Bot
-BOT_NAME=Production Factorio Server
-
 # Logging
 LOG_LEVEL=info
 LOG_FORMAT=json
@@ -112,19 +146,16 @@ LOG_FORMAT=json
 # Health Check
 HEALTH_CHECK_HOST=0.0.0.0
 HEALTH_CHECK_PORT=8080
-
-# RCON (optional)
-RCON_ENABLED=true
-RCON_HOST=localhost
-RCON_PORT=27015
-STATS_INTERVAL=300
 ```
 
-> Bot token resolution order: `.secrets/DISCORD_BOT_TOKEN.txt` → `/run/secrets/DISCORD_BOT_TOKEN` → `DISCORD_BOT_TOKEN` env.
+**What's NOT needed in .env:**
+- ❌ `DISCORD_BOT_TOKEN` (use `.secrets/DISCORD_BOT_TOKEN.txt`)
+- ❌ `RCON_*` variables (use `servers.yml` per-server)
+- ❌ `DISCORD_EVENT_CHANNEL_ID` (use `servers.yml` per-server)
 
 ---
 
-### Step 4: Create Patterns
+### Step 5: Verify Patterns
 
 ```bash
 # Verify patterns directory
@@ -132,19 +163,20 @@ ls -la patterns/
 
 # Should contain:
 # - vanilla.yml (included)
-# - research.yml / achievements.yml (optional)
 # - custom patterns (add as needed)
+
+# Test YAML syntax
+python -c "import yaml; yaml.safe_load(open('patterns/vanilla.yml'))"
 ```
 
 ---
 
-### Step 5: Security Checklist
+### Step 6: Security Checklist
 
 ```bash
 # Verify secrets not in git
+grep -r "discord.com/api" .git/ || echo "✅ No Discord URLs in git"
 grep -r "DISCORD_BOT_TOKEN" .git/ || echo "✅ No bot tokens in git"
-
-grep -r "discord.com/api" .git/ || echo "✅ No raw Discord URLs in git"
 
 # Check .gitignore
 grep ".secrets" .gitignore || echo ".secrets/" >> .gitignore
@@ -152,8 +184,11 @@ grep ".env" .gitignore || echo ".env" >> .gitignore
 
 # Verify file permissions
 ls -la .secrets/
-# Should show: drwx------ (700) for directory
-# Should show: -rw------- (600) for files
+# Expected: drwx------ (700) for directory
+# Expected: -rw------- (600) for files
+
+ls -la config/servers.yml
+# Expected: -rw-r--r-- (644) or -rw------- (600)
 ```
 
 ---
@@ -162,39 +197,42 @@ ls -la .secrets/
 
 ### Method 1: Docker Compose (Recommended)
 
-#### Step 1: Prepare docker-compose.yml
+#### Multi-Server Docker Compose Configuration
 
-Configure `docker-compose.yml` with your environment settings:
+Create `docker-compose.yml`:
 
 ```yaml
 version: '3.8'
 
 services:
   factorio-isr:
-    build: .
+    image: slautomaton/factorio-isr:latest
+    # Or build locally:
+    # build: .
     container_name: factorio-isr
     restart: unless-stopped
 
     environment:
-      - FACTORIO_LOG_PATH=/factorio/console.log
       - LOG_LEVEL=info
       - LOG_FORMAT=json
       - HEALTH_CHECK_HOST=0.0.0.0
       - HEALTH_CHECK_PORT=8080
-      - RCON_ENABLED=true
-      - RCON_HOST=factorio-server
-      - RCON_PORT=27015
-      - STATS_INTERVAL=300
-      - DISCORD_EVENT_CHANNEL_ID=123456789012345678
 
     secrets:
-      - discord_bot_token
-      - rcon_password
+      - DISCORD_BOT_TOKEN
+      - RCON_PASSWORD_PROD
+      - RCON_PASSWORD_TEST
 
     volumes:
-      - /path/to/factorio/logs:/factorio:ro
-      - ./patterns:/app/patterns:ro
+      # Factorio log directories (read-only)
+      - /factorio/production/logs:/factorio/production:ro
+      - /factorio/testing/logs:/factorio/testing:ro
+      
+      # Configuration files (read-only)
       - ./config:/app/config:ro
+      - ./patterns:/app/patterns:ro
+      
+      # Application logs (read-write)
       - ./logs:/app/logs
 
     ports:
@@ -209,21 +247,30 @@ services:
         max-size: "10m"
         max-file: "3"
 
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
 secrets:
-  discord_bot_token:
+  DISCORD_BOT_TOKEN:
     file: .secrets/DISCORD_BOT_TOKEN.txt
-  rcon_password:
-    file: .secrets/RCON_PASSWORD.txt
+  RCON_PASSWORD_PROD:
+    file: .secrets/RCON_PASSWORD_PROD
+  RCON_PASSWORD_TEST:
+    file: .secrets/RCON_PASSWORD_TEST
 
 networks:
   factorio:
     driver: bridge
 ```
 
-#### Step 2: Deploy
+#### Deploy
 
 ```bash
-# Build image
+# Build image (if building locally)
 docker-compose build
 
 # Start service
@@ -236,13 +283,24 @@ docker-compose logs -f
 docker-compose ps
 ```
 
-#### Step 3: Verify
+**Expected startup time:** 10-30 seconds
+
+#### Verify Deployment
 
 ```bash
 # Check health endpoint
 curl http://localhost:8080/health
 
-# Expected: {"status": "healthy", ...}
+# Expected response:
+{
+  "status": "healthy",
+  "uptime_seconds": 60,
+  "version": "2.1.0",
+  "servers": {
+    "production": "connected",
+    "testing": "connected"
+  }
+}
 
 # View logs
 docker-compose logs --tail=50 factorio-isr
@@ -253,7 +311,7 @@ docker ps | grep factorio-isr
 
 ---
 
-### Method 2: Docker Run
+### Method 2: Docker Run (Single Command)
 
 Without docker-compose:
 
@@ -265,19 +323,16 @@ docker build -t factorio-isr:latest .
 docker run -d \
   --name factorio-isr \
   --restart unless-stopped \
-  -e FACTORIO_LOG_PATH=/factorio/console.log \
-  -e DISCORD_EVENT_CHANNEL_ID=123456789012345678 \
-  -e BOT_NAME="Production Server" \
   -e LOG_LEVEL=info \
   -e LOG_FORMAT=json \
-  -e RCON_ENABLED=true \
-  -e RCON_HOST=localhost \
-  -e RCON_PORT=27015 \
-  -v /path/to/factorio/logs:/factorio:ro \
-  -v $(pwd)/.secrets/DISCORD_BOT_TOKEN.txt:/run/secrets/DISCORD_BOT_TOKEN:ro \
-  -v $(pwd)/.secrets/RCON_PASSWORD.txt:/run/secrets/RCON_PASSWORD:ro \
-  -v $(pwd)/patterns:/app/patterns:ro \
+  -v /factorio/production/logs:/factorio/production:ro \
+  -v /factorio/testing/logs:/factorio/testing:ro \
   -v $(pwd)/config:/app/config:ro \
+  -v $(pwd)/patterns:/app/patterns:ro \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/.secrets/DISCORD_BOT_TOKEN.txt:/run/secrets/DISCORD_BOT_TOKEN:ro \
+  -v $(pwd)/.secrets/RCON_PASSWORD_PROD:/run/secrets/RCON_PASSWORD_PROD:ro \
+  -v $(pwd)/.secrets/RCON_PASSWORD_TEST:/run/secrets/RCON_PASSWORD_TEST:ro \
   -p 8080:8080 \
   factorio-isr:latest
 
@@ -289,15 +344,14 @@ docker logs -f factorio-isr
 
 ## Systemd Deployment
 
-For deployments without Docker, follow your organization's standard systemd service deployment patterns.
+For deployments without Docker, use systemd with a Python virtual environment.
 
 ### Requirements
 
-- Python 3.11+ virtual environment
-- Service start command: `python -m src.main`
-- Working directory: `/opt/factorio-isr`
-- Environment file: `.env` with required variables
-- Restart policy: `always`
+- Python 3.11+ installed
+- Virtual environment created: `python -m venv venv`
+- Dependencies installed: `pip install -r requirements.txt`
+- Service runs as non-root user
 
 ### Basic Service Structure
 
@@ -317,11 +371,42 @@ ExecStart=/opt/factorio-isr/venv/bin/python -m src.main
 Restart=always
 RestartSec=10
 
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/factorio-isr/logs
+
 [Install]
 WantedBy=multi-user.target
 ```
 
-For production hardening guidance, contact [licensing@laudiversified.com](mailto:licensing@laudiversified.com).
+**Note:** For production hardening guidance (AppArmor, SELinux, resource limits), contact [licensing@laudiversified.com](mailto:licensing@laudiversified.com) for commercial support.
+
+### Install and Start Service
+
+```bash
+# Copy service file
+sudo cp factorio-isr.service /etc/systemd/system/
+
+# Reload systemd
+sudo systemctl daemon-reload
+
+# Enable service
+sudo systemctl enable factorio-isr
+
+# Start service
+sudo systemctl start factorio-isr
+
+# Check status
+sudo systemctl status factorio-isr
+
+# View logs
+sudo journalctl -u factorio-isr -f
+```
+
+**Expected startup time:** 5-15 seconds
 
 ---
 
@@ -333,27 +418,63 @@ For production hardening guidance, contact [licensing@laudiversified.com](mailto
 curl http://localhost:8080/health
 ```
 
-Expected response:
+**Expected response:**
 
 ```json
 {
   "status": "healthy",
   "uptime_seconds": 3600,
-  "version": "2.0.0"
+  "version": "2.1.0",
+  "servers": {
+    "production": "connected",
+    "testing": "log_only"
+  }
 }
 ```
 
+**Server status values:**
+- `"connected"` - RCON active and responding
+- `"log_only"` - No RCON configured (log tailing only)
+- `"error"` - RCON connection failed
+
 ### Logs
 
-- **Docker:**
-  ```bash
-  docker-compose logs -f factorio-isr
-  ```
+**Docker:**
+```bash
+# Live logs
+docker-compose logs -f factorio-isr
 
-- **Systemd:**
-  ```bash
-  journalctl -u factorio-isr -f
-  ```
+# Last 100 lines
+docker-compose logs --tail=100 factorio-isr
+
+# Search for errors
+docker-compose logs factorio-isr | grep -i error
+```
+
+**Systemd:**
+```bash
+# Live logs
+sudo journalctl -u factorio-isr -f
+
+# Last 100 lines
+sudo journalctl -u factorio-isr -n 100
+
+# Search for errors
+sudo journalctl -u factorio-isr | grep -i error
+```
+
+### Resource Monitoring
+
+```bash
+# Docker resource usage
+docker stats factorio-isr
+
+# Expected usage:
+# - 100-200MB RAM baseline
+# - +5-10MB per server
+# - <5% CPU (idle)
+# - <10% CPU (stats collection)
+```
 
 ---
 
@@ -361,65 +482,171 @@ Expected response:
 
 ### Updating the Application
 
+**Docker Compose:**
 ```bash
 # Pull latest changes
 cd /opt/factorio-isr
 git pull origin main
 
-# Rebuild Docker image (if using Docker)
+# Rebuild and restart
 docker-compose build
 docker-compose up -d
 
-# Or restart systemd service
-sudo systemctl restart factorio-isr
+# Verify
+docker-compose logs --tail=50 factorio-isr
+curl http://localhost:8080/health
 ```
+
+**Systemd:**
+```bash
+# Pull latest changes
+cd /opt/factorio-isr
+git pull origin main
+
+# Update dependencies
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Restart service
+sudo systemctl restart factorio-isr
+
+# Verify
+sudo systemctl status factorio-isr
+curl http://localhost:8080/health
+```
+
+**Downtime:** 10-30 seconds during restart
 
 ### Rotating Logs
 
-- Configure external log rotation for `/app/logs` or Docker json-file logs
-- Use `max-size` and `max-file` options (see docker-compose example)
+**Docker (automatic with json-file driver):**
+```yaml
+logging:
+  driver: "json-file"
+  options:
+    max-size: "10m"  # Max file size
+    max-file: "3"    # Keep 3 files
+```
+
+**Systemd (use logrotate):**
+```bash
+# /etc/logrotate.d/factorio-isr
+/opt/factorio-isr/logs/*.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+}
+```
 
 ### Backups
 
-- Backup:
-  - `patterns/`
-  - `config/` (servers.yml, mentions.yml, secmon.yml)
-  - `.env`
-  - `.secrets/` (or Docker/Swarm secrets definitions)
+**What to back up:**
+```bash
+# Configuration
+tar -czf factorio-isr-config-$(date +%Y%m%d).tar.gz \
+  config/ patterns/ .env
+
+# Secrets (encrypted backup recommended)
+tar -czf factorio-isr-secrets-$(date +%Y%m%d).tar.gz .secrets/
+# Then encrypt:
+# gpg -c factorio-isr-secrets-*.tar.gz
+```
+
+**What NOT to back up:**
+- `logs/` (ephemeral)
+- `venv/` (rebuilt from requirements.txt)
+- `.git/` (clone from GitHub)
+
+**Backup frequency:** Weekly or after configuration changes
 
 ---
 
 ## Troubleshooting
 
-- **Bot not online in Discord:**
-  - Check `DISCORD_BOT_TOKEN` is valid
-  - Verify bot is invited to the server
-  - Check `DISCORD_EVENT_CHANNEL_ID` exists and bot has permissions
+### Bot Not Online in Discord
 
-- **No events in Discord:**
-  - Verify `FACTORIO_LOG_PATH` is correct and readable
-  - Confirm Factorio is writing to `console.log`
-  - Run with `LOG_LEVEL=debug`
+**What's actually happening:** Bot token invalid, expired, or bot lacks intents.
 
-- **RCON stats not updating:**
-  - Verify `RCON_ENABLED=true`
-  - Check RCON host/port/password
-  - Confirm RCON is enabled in Factorio server config
+**Solutions:**
+1. Check `DISCORD_BOT_TOKEN` is valid (`.secrets/DISCORD_BOT_TOKEN.txt`)
+2. Verify bot is invited to the server with correct scopes (`bot`, `applications.commands`)
+3. Enable required intents in Discord Developer Portal
 
-- **Health check failing:**
-  - Check logs for errors
-  - Ensure `HEALTH_CHECK_PORT` not in use
+**Timeline:** 5-10 minutes to diagnose and fix
 
-For more details, see:
-- [Configuration Guide](configuration.md)
-- [Troubleshooting Guide](TROUBLESHOOTING.md)
+---
+
+### No Events in Discord
+
+**What's actually happening:** Log files not readable, or channel permissions missing.
+
+**Solutions:**
+1. Verify `log_path` in `servers.yml` is correct and readable
+2. Confirm Factorio is writing to `console.log`
+3. Check bot has "Send Messages" and "Embed Links" permissions in channel
+4. Run with `LOG_LEVEL=debug` to see parsing activity
+
+**Timeline:** 10-15 minutes to diagnose
+
+---
+
+### RCON Stats Not Updating
+
+**What's actually happening:** RCON connection failed, or stats disabled.
+
+**Solutions:**
+1. Verify RCON fields in `servers.yml`
+2. Check RCON host/port/password
+3. Confirm RCON is enabled in Factorio `server-settings.json`
+4. Test RCON manually: `telnet factorio-host 27015`
+
+**Timeline:** 10-20 minutes for RCON troubleshooting
+
+---
+
+### Health Check Failing
+
+**What's actually happening:** Application crashed, or port 8080 in use.
+
+**Solutions:**
+1. Check logs for errors: `docker-compose logs factorio-isr | tail -50`
+2. Ensure `HEALTH_CHECK_PORT` not in use: `netstat -tlnp | grep 8080`
+3. Verify `servers.yml` syntax: `python -c "import yaml; yaml.safe_load(open('config/servers.yml'))"`
+
+**Timeline:** 5-10 minutes
+
+---
+
+### High CPU/Memory Usage
+
+**What's actually happening:** Too many servers with low intervals, or debug logging enabled.
+
+**Solutions:**
+1. Increase `stats_interval` per server (600+ for 10+ servers)
+2. Disable debug logging: `LOG_LEVEL=info`
+3. Disable stats for unused servers: `enable_stats_collector: false`
+4. Monitor resource usage: `docker stats factorio-isr`
+
+**Timeline:** 5 minutes to adjust config, 10 minutes to verify improvement
+
+---
+
+## Next Steps
+
+- ✅ [TOPOLOGY.md](TOPOLOGY.md) – Deployment architecture patterns
+- ✅ [Configuration Guide](configuration.md) – All environment variables
+- ✅ [RCON Setup](RCON_SETUP.md) – Configure real-time stats
+- ✅ [Troubleshooting Guide](TROUBLESHOOTING.md) – Fix common issues
 
 ---
 
 > **📄 Licensing Information**
 > 
 > This project is dual-licensed:
-> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[AGPL-3.0](../LICENSE)** – Open source use (free)
 > - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
 >
 > Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)
