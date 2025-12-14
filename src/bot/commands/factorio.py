@@ -63,160 +63,114 @@ class FactorioBot(Protocol):
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 🔄 Phase 3 + Phase 4: Command Handlers (DI + Command Pattern)
+# 🎯 UNIFIED HANDLER IMPORTS
 # ════════════════════════════════════════════════════════════════════════════
 
 try:
-    # Batch 1: Player Management
-    from bot.commands.command_handlers_batch1 import (
+    from bot.commands.command_handlers import (
+        # Server Information
+        StatusCommandHandler,
+        PlayersCommandHandler,
+        VersionCommandHandler,
+        SeedCommandHandler,
+        EvolutionCommandHandler,
+        AdminsCommandHandler,
+        HealthCommandHandler,
+        # Player Management
         KickCommandHandler,
         BanCommandHandler,
         UnbanCommandHandler,
         MuteCommandHandler,
         UnmuteCommandHandler,
-    )
-    # Batch 2: Server Management
-    from bot.commands.command_handlers_batch2 import (
+        PromoteCommandHandler,
+        DemoteCommandHandler,
+        # Server Management
         SaveCommandHandler,
         BroadcastCommandHandler,
         WhisperCommandHandler,
         WhitelistCommandHandler,
-    )
-    # Batch 3: Game Control + Admin
-    from bot.commands.command_handlers_batch3 import (
+        # Game Control
         ClockCommandHandler,
         SpeedCommandHandler,
-        PromoteCommandHandler,
-        DemoteCommandHandler,
-    )
-    # Batch 4: Remaining queries
-    from bot.commands.command_handlers_batch4 import (
-        PlayersCommandHandler,
-        VersionCommandHandler,
-        SeedCommandHandler,
-        AdminsCommandHandler,
-        HealthCommandHandler,
+        ResearchCommandHandler,
+        # Advanced
         RconCommandHandler,
         HelpCommandHandler,
+        # Multi-Server
         ServersCommandHandler,
         ConnectCommandHandler,
     )
 except ImportError:
     try:
-        from src.bot.commands.command_handlers_batch1 import (  # type: ignore
+        from src.bot.commands.command_handlers import (  # type: ignore
+            # Server Information
+            StatusCommandHandler,
+            PlayersCommandHandler,
+            VersionCommandHandler,
+            SeedCommandHandler,
+            EvolutionCommandHandler,
+            AdminsCommandHandler,
+            HealthCommandHandler,
+            # Player Management
             KickCommandHandler,
             BanCommandHandler,
             UnbanCommandHandler,
             MuteCommandHandler,
             UnmuteCommandHandler,
-        )
-        from src.bot.commands.command_handlers_batch2 import (  # type: ignore
+            PromoteCommandHandler,
+            DemoteCommandHandler,
+            # Server Management
             SaveCommandHandler,
             BroadcastCommandHandler,
             WhisperCommandHandler,
             WhitelistCommandHandler,
-        )
-        from src.bot.commands.command_handlers_batch3 import (  # type: ignore
+            # Game Control
             ClockCommandHandler,
             SpeedCommandHandler,
-            PromoteCommandHandler,
-            DemoteCommandHandler,
-        )
-        from src.bot.commands.command_handlers_batch4 import (  # type: ignore
-            PlayersCommandHandler,
-            VersionCommandHandler,
-            SeedCommandHandler,
-            AdminsCommandHandler,
-            HealthCommandHandler,
+            ResearchCommandHandler,
+            # Advanced
             RconCommandHandler,
             HelpCommandHandler,
+            # Multi-Server
             ServersCommandHandler,
             ConnectCommandHandler,
         )
     except ImportError:
-        from .command_handlers_batch1 import (
+        from .command_handlers import (
+            # Server Information
+            StatusCommandHandler,
+            PlayersCommandHandler,
+            VersionCommandHandler,
+            SeedCommandHandler,
+            EvolutionCommandHandler,
+            AdminsCommandHandler,
+            HealthCommandHandler,
+            # Player Management
             KickCommandHandler,
             BanCommandHandler,
             UnbanCommandHandler,
             MuteCommandHandler,
             UnmuteCommandHandler,
-        )
-        from .command_handlers_batch2 import (
+            PromoteCommandHandler,
+            DemoteCommandHandler,
+            # Server Management
             SaveCommandHandler,
             BroadcastCommandHandler,
             WhisperCommandHandler,
             WhitelistCommandHandler,
-        )
-        from .command_handlers_batch3 import (
+            # Game Control
             ClockCommandHandler,
             SpeedCommandHandler,
-            PromoteCommandHandler,
-            DemoteCommandHandler,
-        )
-        from .command_handlers_batch4 import (
-            PlayersCommandHandler,
-            VersionCommandHandler,
-            SeedCommandHandler,
-            AdminsCommandHandler,
-            HealthCommandHandler,
+            ResearchCommandHandler,
+            # Advanced
             RconCommandHandler,
             HelpCommandHandler,
+            # Multi-Server
             ServersCommandHandler,
             ConnectCommandHandler,
         )
 
 logger = structlog.get_logger()
-
-# ════════════════════════════════════════════════════════════════════════════
-# 🔧 HELPER: Import Phase 2 Handlers
-# ════════════════════════════════════════════════════════════════════════════
-
-def _import_phase2_handlers() -> tuple[Any, Any, Any]:
-    """
-    Import Phase 2 handlers (StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler).
-    Guaranteed to return handler classes or log critical error with None values.
-    """
-    try:
-        from .command_handlers import (
-            StatusCommandHandler,
-            ResearchCommandHandler,
-            EvolutionCommandHandler,
-        )
-        logger.info("phase2_handlers_imported", path="relative_import", status="success")
-        return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
-    except (ImportError, AttributeError) as e:
-        logger.critical(
-            "phase2_handlers_import_failed",
-            error=str(e),
-            attempted_import=".command_handlers",
-            status="CRITICAL",
-        )
-    
-    try:
-        from bot.commands.command_handlers import (
-            StatusCommandHandler,
-            ResearchCommandHandler,
-            EvolutionCommandHandler,
-        )
-        logger.info("phase2_handlers_imported", path="absolute_bot_commands", status="success")
-        return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
-    except (ImportError, AttributeError) as e:
-        logger.debug("phase2_import_failed_path2", error=str(e))
-    
-    try:
-        from src.bot.commands.command_handlers import (  # type: ignore
-            StatusCommandHandler,
-            ResearchCommandHandler,
-            EvolutionCommandHandler,
-        )
-        logger.info("phase2_handlers_imported", path="absolute_src_bot_commands", status="success")
-        return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
-    except (ImportError, AttributeError) as e:
-        logger.debug("phase2_import_failed_path3", error=str(e))
-    
-    logger.warning("phase2_handlers_not_available", status="fallback_embeds_active")
-    return None, None, None
-
 
 # ════════════════════════════════════════════════════════════════════════════
 # 🔧 HELPER: Null-Safe Response Handler
@@ -237,7 +191,7 @@ async def send_command_response(
         else:
             await interaction.response.send_message(embed=result.embed, ephemeral=result.ephemeral)
     else:
-        error_embed = result.error_embed if result.error_embed else EmbedBuilder.error_embed(
+        error_embed = result.error_embed if hasattr(result, 'error_embed') and result.error_embed else EmbedBuilder.error_embed(
             "An unexpected error occurred. Please try again later."
         )
         await interaction.response.send_message(
@@ -247,61 +201,96 @@ async def send_command_response(
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 🔧 HELPER: Register All Phase 3 + 4 Command Handlers
+# 🔧 HELPER: Initialize All Command Handlers
 # ════════════════════════════════════════════════════════════════════════════
 
 # Global handler instance variables
+status_handler: Optional[StatusCommandHandler] = None
+players_handler: Optional[PlayersCommandHandler] = None
+version_handler: Optional[VersionCommandHandler] = None
+seed_handler: Optional[SeedCommandHandler] = None
+evolution_handler: Optional[EvolutionCommandHandler] = None
+admins_handler: Optional[AdminsCommandHandler] = None
+health_handler: Optional[HealthCommandHandler] = None
+
 kick_handler: Optional[KickCommandHandler] = None
 ban_handler: Optional[BanCommandHandler] = None
 unban_handler: Optional[UnbanCommandHandler] = None
 mute_handler: Optional[MuteCommandHandler] = None
 unmute_handler: Optional[UnmuteCommandHandler] = None
+promote_handler: Optional[PromoteCommandHandler] = None
+demote_handler: Optional[DemoteCommandHandler] = None
+
 save_handler: Optional[SaveCommandHandler] = None
 broadcast_handler: Optional[BroadcastCommandHandler] = None
 whisper_handler: Optional[WhisperCommandHandler] = None
 whitelist_handler: Optional[WhitelistCommandHandler] = None
+
 clock_handler: Optional[ClockCommandHandler] = None
 speed_handler: Optional[SpeedCommandHandler] = None
-promote_handler: Optional[PromoteCommandHandler] = None
-demote_handler: Optional[DemoteCommandHandler] = None
-players_handler: Optional[PlayersCommandHandler] = None
-version_handler: Optional[VersionCommandHandler] = None
-seed_handler: Optional[SeedCommandHandler] = None
-admins_handler: Optional[AdminsCommandHandler] = None
-health_handler: Optional[HealthCommandHandler] = None
+research_handler: Optional[ResearchCommandHandler] = None
+
 rcon_handler: Optional[RconCommandHandler] = None
 help_handler: Optional[HelpCommandHandler] = None
+
 servers_handler: Optional[ServersCommandHandler] = None
 connect_handler: Optional[ConnectCommandHandler] = None
 
-# Phase 2 handlers
-status_handler: Optional[Any] = None
-research_handler: Optional[Any] = None
-evolution_handler: Optional[Any] = None
-
-
-def _get_handler_name(handler_cls: Any) -> str:
-    """Safely get handler class name, handles None and Mock objects."""
-    if handler_cls is None:
-        return "None"
-    try:
-        return handler_cls.__name__
-    except AttributeError:
-        # For Mock objects in tests that don't have __name__
-        return type(handler_cls).__name__
-
 
 def _initialize_all_handlers(bot: FactorioBot) -> None:
-    """Initialize all 22 command handlers with DI."""
+    """Initialize all 25 command handlers with dependency injection."""
+    global status_handler, players_handler, version_handler, seed_handler
+    global evolution_handler, admins_handler, health_handler
     global kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler
+    global promote_handler, demote_handler
     global save_handler, broadcast_handler, whisper_handler, whitelist_handler
-    global clock_handler, speed_handler, promote_handler, demote_handler
-    global players_handler, version_handler, seed_handler, admins_handler
-    global health_handler, rcon_handler, help_handler, servers_handler, connect_handler
-    global status_handler, research_handler, evolution_handler
+    global clock_handler, speed_handler, research_handler
+    global rcon_handler, help_handler
+    global servers_handler, connect_handler
 
-    logger.info("initializing_all_handlers", count=22)
+    logger.info("initializing_all_handlers", count=25)
 
+    # Server Information (7)
+    status_handler = StatusCommandHandler(
+        user_context=bot.user_context,
+        server_manager=bot.server_manager,
+        cooldown=QUERY_COOLDOWN,
+        embed_builder=EmbedBuilder,
+        rcon_monitor=getattr(bot, "rcon_monitor", None),
+    )
+    players_handler = PlayersCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    version_handler = VersionCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    seed_handler = SeedCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    evolution_handler = EvolutionCommandHandler(
+        user_context=bot.user_context,
+        cooldown=QUERY_COOLDOWN,
+        embed_builder=EmbedBuilder,
+    )
+    admins_handler = AdminsCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    health_handler = HealthCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+        bot=bot,  # type: ignore
+    )
+
+    # Player Management (7)
     kick_handler = KickCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
@@ -327,6 +316,18 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         rate_limiter=ADMIN_COOLDOWN,
         embed_builder_type=EmbedBuilder,
     )
+    promote_handler = PromoteCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    demote_handler = DemoteCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+
+    # Server Management (4)
     save_handler = SaveCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
@@ -347,6 +348,8 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         rate_limiter=ADMIN_COOLDOWN,
         embed_builder_type=EmbedBuilder,
     )
+
+    # Game Control (3)
     clock_handler = ClockCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
@@ -357,48 +360,21 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         rate_limiter=ADMIN_COOLDOWN,
         embed_builder_type=EmbedBuilder,
     )
-    promote_handler = PromoteCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+    research_handler = ResearchCommandHandler(
+        user_context=bot.user_context,
+        cooldown=ADMIN_COOLDOWN,
+        embed_builder=EmbedBuilder,
     )
-    demote_handler = DemoteCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
-    )
-    players_handler = PlayersCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
-    )
-    version_handler = VersionCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
-    )
-    seed_handler = SeedCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
-    )
-    admins_handler = AdminsCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
-    )
-    health_handler = HealthCommandHandler(
-        user_context_provider=bot.user_context,
-        rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
-        bot=bot,  # type: ignore
-    )
+
+    # Advanced (2)
     rcon_handler = RconCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=DANGER_COOLDOWN,
         embed_builder_type=EmbedBuilder,
     )
     help_handler = HelpCommandHandler(embed_builder_type=EmbedBuilder)
+
+    # Multi-Server (2)
     servers_handler = ServersCommandHandler(
         user_context_provider=bot.user_context,
         embed_builder_type=EmbedBuilder,
@@ -409,51 +385,16 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         embed_builder_type=EmbedBuilder,
         server_manager=bot.server_manager,
     )
-    
-    # Initialize Phase 2 handlers
-    phase2_status_cls, phase2_research_cls, phase2_evolution_cls = _import_phase2_handlers()
-    
-    if phase2_status_cls:
-        status_handler = phase2_status_cls(
-            user_context=bot.user_context,
-            server_manager=bot.server_manager,
-            cooldown=QUERY_COOLDOWN,
-            embed_builder=EmbedBuilder,
-            rcon_monitor=getattr(bot, "rcon_monitor", None),
-        )
-        logger.info("status_handler_initialized", handler_class=_get_handler_name(phase2_status_cls))
-    else:
-        logger.warning("status_handler_not_initialized", reason="class_import_failed")
-    
-    if phase2_research_cls:
-        research_handler = phase2_research_cls(
-            user_context=bot.user_context,
-            cooldown=ADMIN_COOLDOWN,
-            embed_builder=EmbedBuilder,
-        )
-        logger.info("research_handler_initialized", handler_class=_get_handler_name(phase2_research_cls))
-    else:
-        logger.warning("research_handler_not_initialized", reason="class_import_failed")
-    
-    if phase2_evolution_cls:
-        evolution_handler = phase2_evolution_cls(
-            user_context=bot.user_context,
-            cooldown=QUERY_COOLDOWN,
-            embed_builder=EmbedBuilder,
-        )
-        logger.info("evolution_handler_initialized", handler_class=_get_handler_name(phase2_evolution_cls))
-    else:
-        logger.warning("evolution_handler_not_initialized", reason="class_import_failed")
-    
+
     logger.info("all_handlers_initialized_complete", total=25)
 
 
 def register_factorio_commands(bot: FactorioBot) -> None:
     """
-    Register all /factorio subcommands (Phase 1 + Phase 2 + Phase 3 + Phase 4).
+    Register all /factorio subcommands.
 
     This function creates and registers the complete /factorio command tree.
-    Discord limit: 25 subcommands per group (currently using 17/25).
+    Discord limit: 25 subcommands per group (currently using 25/25).
 
     Args:
         bot: FactorioBot instance with user_context, server_manager attributes
@@ -850,7 +791,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         try:
             if not research_handler:
                 await interaction.response.send_message(
-                    embed=EmbedBuilder.error_embed("Research handler not available (Phase 2 module not found)"),
+                    embed=EmbedBuilder.error_embed("Research handler not available"),
                     ephemeral=True,
                 )
                 return
@@ -936,5 +877,5 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         "slash_commands_registered_complete",
         root=factorio_group.name,
         command_count=len(factorio_group.commands),
-        status="17/25 commands registered and operational",
+        status="25/25 commands registered and operational",
     )
