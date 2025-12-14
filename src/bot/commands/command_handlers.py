@@ -1119,8 +1119,6 @@ class KickCommandHandler:
                 ),
                 ephemeral=True,
             )
-        if not interaction.response.is_done():
-            await interaction.response.defer()
         try:
             message = reason if reason else "Kicked by moderator"
             await rcon_client.execute(f"/kick {player} {message}")
@@ -1206,8 +1204,6 @@ class BanCommandHandler:
                 ),
                 ephemeral=True,
             )
-        if not interaction.response.is_done():
-            await interaction.response.defer()
         try:
             message = reason if reason else "Banned by moderator"
             await rcon_client.execute(f"/ban {player} {message}")
@@ -1292,8 +1288,6 @@ class UnbanCommandHandler:
                 ),
                 ephemeral=True,
             )
-        if not interaction.response.is_done():
-            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/unban {player}")
 
@@ -1375,8 +1369,6 @@ class MuteCommandHandler:
                 ),
                 ephemeral=True,
             )
-        if not interaction.response.is_done():
-            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/mute {player}")
 
@@ -1458,8 +1450,6 @@ class UnmuteCommandHandler:
                 ),
                 ephemeral=True,
             )
-        if not interaction.response.is_done():
-            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/unmute {player}")
 
