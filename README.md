@@ -12,7 +12,7 @@
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/02.yml?style=plastic&logo=google&label=OSV%20Scan%20Check)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/03.yml?style=plastic&logo=trivy&label=Trivy%20CVE)
 
-**Enterprise-grade multi-server Discord integration for Factorio.** Real-time event streaming, UPS monitoring, RCON control, and 91%+ test coverage. Deploy on Docker, Kubernetes, or self-host.
+**Enterprise-grade multi-server Discord integration for Factorio.** Real-time event streaming, UPS monitoring, RCON control, and 80%+ test coverage. Deploy on Docker, Kubernetes, or self-host.
 
 ---
 
@@ -23,10 +23,10 @@ Factorio ISR is a **production-ready system** that bridges Factorio servers and 
 - **🔄 Event Streaming** – Real-time JOIN/LEAVE/CHAT/DEATH events to Discord
 - **📊 Server Metrics** – UPS, evolution, player count, uptime monitoring
 - **⚠️ Intelligent Alerts** – Low-UPS warnings with configurable thresholds and cooldowns
-- **🎮 Discord Commands** – 25+ slash commands for server management & info
-- **🖥️ Multi-Server** – Single ISR monitors 1–N Factorio servers
+- **🎮 Discord Commands** – 25 slash commands for server management & info
+- **🖥️ Multi-Server** – A Single ISR instance monitors 1–N Factorio servers
 - **🔐 Enterprise Security** – AGPL-3.0 dual licensing, regex ReDoS protection, input sanitization
-- **✅ Proven Quality** – 1000+ tests, 91%+ coverage, production deployments
+- **✅ Proven Quality** – 1000+ tests, 80%+ coverage, production deployments
 
 ---
 
@@ -124,7 +124,7 @@ Complete step-by-step guide covering:
 - Troubleshooting common issues
 
 **Setup Time:** 15–30 minutes  
-**Difficulty:** Intermediate (Docker, YAML, Discord setup)
+**Difficulty:** Intermediate/Hard (Docker, YAML, Discord setup)
 
 ---
 
@@ -173,7 +173,7 @@ livenessProbe:
 
 ## 🧪 Testing & Quality
 
-**Test Coverage:** 91%+ across 1000+ tests
+**Test Coverage:** 80%+ across 1000+ tests
 
 ```bash
 # Run all tests
@@ -229,7 +229,7 @@ Once ISR is running, use Discord slash commands:
 /factorio clock           → Detailed time info
 /factorio evolution       → Evolution percentage
 /factorio research        → Research progress
-/factorio admin           → Admin utilities
+/factorio admins          → List admins
 ```
 
 For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
@@ -240,8 +240,8 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 
 ### Pre-Flight Checklist
 
-- [ ] Set `LOG_LEVEL=info` or `warning`
-- [ ] Set `LOG_FORMAT=json` for aggregation
+- [ ] Set `LOG_LEVEL=info` or `warning` or `debug`
+- [ ] Set `LOG_FORMAT=json` for aggregation or `console` for tailing
 - [ ] Use Docker secrets for sensitive values
 - [ ] Mount Factorio logs as read-only
 - [ ] Configure health check monitoring
@@ -264,7 +264,6 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 ### Commercial License
 ✅ **For:** Proprietary software, SaaS offerings, private modifications
 - No AGPL obligations
-- Enterprise support available
 - Contact: `licensing@laudiversified.com`
 
 **See also:** [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md)
