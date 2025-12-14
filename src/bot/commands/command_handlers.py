@@ -226,6 +226,13 @@ class StatusCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute status command with explicit dependency injection."""
+        logger.info(
+            "handler_invoked",
+            handler="StatusCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         # Rate limiting
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
@@ -428,6 +435,13 @@ class PlayersCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute players command."""
+        logger.info(
+            "handler_invoked",
+            handler="PlayersCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -506,6 +520,13 @@ class VersionCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute version command."""
+        logger.info(
+            "handler_invoked",
+            handler="VersionCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -566,6 +587,13 @@ class SeedCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute seed command."""
+        logger.info(
+            "handler_invoked",
+            handler="SeedCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -642,6 +670,14 @@ class EvolutionCommandHandler:
         self, interaction: discord.Interaction, target: str
     ) -> CommandResult:
         """Execute evolution command for single surface or aggregate all."""
+        logger.info(
+            "handler_invoked",
+            handler="EvolutionCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target=target,
+        )
+
         # Rate limiting
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
@@ -823,6 +859,13 @@ class AdminsCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute admins command."""
+        logger.info(
+            "handler_invoked",
+            handler="AdminsCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -906,6 +949,13 @@ class HealthCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute health command."""
+        logger.info(
+            "handler_invoked",
+            handler="HealthCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -999,6 +1049,14 @@ class KickCommandHandler:
         reason: Optional[str] = None,
     ) -> CommandResult:
         """Execute kick command."""
+        logger.info(
+            "handler_invoked",
+            handler="KickCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1073,6 +1131,14 @@ class BanCommandHandler:
         reason: Optional[str] = None,
     ) -> CommandResult:
         """Execute ban command."""
+        logger.info(
+            "handler_invoked",
+            handler="BanCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1146,6 +1212,14 @@ class UnbanCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute unban command."""
+        logger.info(
+            "handler_invoked",
+            handler="UnbanCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1216,6 +1290,14 @@ class MuteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute mute command."""
+        logger.info(
+            "handler_invoked",
+            handler="MuteCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1286,6 +1368,14 @@ class UnmuteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute unmute command."""
+        logger.info(
+            "handler_invoked",
+            handler="UnmuteCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1356,6 +1446,14 @@ class PromoteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute promote command."""
+        logger.info(
+            "handler_invoked",
+            handler="PromoteCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1427,6 +1525,14 @@ class DemoteCommandHandler:
         player: str,
     ) -> CommandResult:
         """Execute demote command."""
+        logger.info(
+            "handler_invoked",
+            handler="DemoteCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1503,6 +1609,14 @@ class SaveCommandHandler:
         name: Optional[str] = None,
     ) -> CommandResult:
         """Execute save command."""
+        logger.info(
+            "handler_invoked",
+            handler="SaveCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            save_name=name,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1580,6 +1694,14 @@ class BroadcastCommandHandler:
         message: str,
     ) -> CommandResult:
         """Execute broadcast command."""
+        logger.info(
+            "handler_invoked",
+            handler="BroadcastCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            message_length=len(message),
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1647,6 +1769,14 @@ class WhisperCommandHandler:
         message: str,
     ) -> CommandResult:
         """Execute whisper command."""
+        logger.info(
+            "handler_invoked",
+            handler="WhisperCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1718,6 +1848,15 @@ class WhitelistCommandHandler:
         player: Optional[str] = None,
     ) -> CommandResult:
         """Execute whitelist command with multi-action dispatch."""
+        logger.info(
+            "handler_invoked",
+            handler="WhitelistCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            action=action,
+            target_player=player,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1847,6 +1986,14 @@ class ClockCommandHandler:
         value: Optional[str] = None,
     ) -> CommandResult:
         """Execute clock command."""
+        logger.info(
+            "handler_invoked",
+            handler="ClockCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            value=value,
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -1978,6 +2125,14 @@ class SpeedCommandHandler:
         value: float,
     ) -> CommandResult:
         """Execute speed command."""
+        logger.info(
+            "handler_invoked",
+            handler="SpeedCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            speed=value,
+        )
+
         # Validate range
         if not 0.1 <= value <= 10.0:
             return CommandResult(
@@ -2064,6 +2219,15 @@ class ResearchCommandHandler:
         technology: Optional[str],
     ) -> CommandResult:
         """Execute research command with multi-force support."""
+        logger.info(
+            "handler_invoked",
+            handler="ResearchCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            force=force,
+            action=action,
+        )
+
         # Rate limiting
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
@@ -2363,6 +2527,14 @@ class RconCommandHandler:
         command: str,
     ) -> CommandResult:
         """Execute raw RCON command."""
+        logger.info(
+            "handler_invoked",
+            handler="RconCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            command=command[:50],
+        )
+
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
             return CommandResult(
@@ -2426,6 +2598,13 @@ class HelpCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute help command."""
+        logger.info(
+            "handler_invoked",
+            handler="HelpCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         help_text = (
             "**🏭 Factorio ISR Bot – Commands**\n\n"
             "**🌍 Multi-Server**\n"
@@ -2486,6 +2665,13 @@ class ServersCommandHandler:
 
     async def execute(self, interaction: discord.Interaction) -> CommandResult:
         """Execute servers command."""
+        logger.info(
+            "handler_invoked",
+            handler="ServersCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+        )
+
         if not self.server_manager:
             embed = self.embed_builder.info_embed(
                 title="📱 Server Information",
@@ -2569,6 +2755,14 @@ class ConnectCommandHandler:
         server: str,
     ) -> CommandResult:
         """Execute connect command."""
+        logger.info(
+            "handler_invoked",
+            handler="ConnectCommandHandler",
+            user=interaction.user.name,
+            user_id=interaction.user.id,
+            target_server=server,
+        )
+
         if not self.server_manager:
             return CommandResult(
                 success=False,
