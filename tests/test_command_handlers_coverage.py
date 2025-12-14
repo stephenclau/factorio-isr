@@ -34,6 +34,7 @@ from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime, timezone, timedelta
 import pytest
 
+from discord_interface import EmbedBuilder
 from bot.commands.command_handlers import (
     StatusCommandHandler,
     EvolutionCommandHandler,
@@ -502,7 +503,6 @@ class TestBatch1HandlersRconNone:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -525,7 +525,6 @@ class TestBatch1HandlersRconNone:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -548,7 +547,6 @@ class TestBatch1HandlersRconNone:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -571,7 +569,6 @@ class TestBatch1HandlersRconNone:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -594,7 +591,6 @@ class TestBatch1HandlersRconNone:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -623,7 +619,6 @@ class TestBatch1HandlersRconDisconnected:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -648,7 +643,6 @@ class TestBatch1HandlersRconDisconnected:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -673,7 +667,6 @@ class TestBatch1HandlersRconDisconnected:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -698,7 +691,6 @@ class TestBatch1HandlersRconDisconnected:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -723,7 +715,6 @@ class TestBatch1HandlersRconDisconnected:
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
             embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
-
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
