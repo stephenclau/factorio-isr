@@ -183,21 +183,37 @@ async def send_command_response(
 ) -> None:
     """
     Safely send command response handling null embeds and deferred responses.
+    
+    🔴 BUG FIX: Now respects result.followup flag to prevent double responses.
+    If handler called defer() and set followup=True, use interaction.followup.send().
+    Otherwise, use interaction.response.send_message() if not yet deferred.
     """
+    # Check if interaction is already deferred (either from handler or from defer_before_send)
+    use_followup = defer_before_send or (hasattr(result, 'followup') and result.followup)
+    
     if result.success and result.embed:
-        if defer_before_send:
-            await interaction.response.defer()
+        if use_followup:
+            # Interaction already deferred (either by handler calling defer() or by defer_before_send)
+            # Use followup.send() which is always safe after defer()
             await interaction.followup.send(embed=result.embed, ephemeral=result.ephemeral)
         else:
+            # Interaction not deferred yet, safe to use response.send_message() for first response
             await interaction.response.send_message(embed=result.embed, ephemeral=result.ephemeral)
     else:
         error_embed = result.error_embed if hasattr(result, 'error_embed') and result.error_embed else EmbedBuilder.error_embed(
             "An unexpected error occurred. Please try again later."
         )
-        await interaction.response.send_message(
-            embed=error_embed,
-            ephemeral=result.ephemeral,
-        )
+        if not interaction.response.is_done():
+            await interaction.response.send_message(
+                embed=error_embed,
+                ephemeral=result.ephemeral,
+            )
+        else:
+            # Already deferred, use followup
+            await interaction.followup.send(
+                embed=error_embed,
+                ephemeral=result.ephemeral,
+            )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -491,7 +507,10 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         except Exception as e:
             logger.error("status_command_exception", error=str(e), exc_info=True)
             embed = EmbedBuilder.error_embed(f"Status command error: {str(e)}")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
     @factorio_group.command(name="players", description="List players currently online")
     async def players_command(interaction: discord.Interaction) -> None:
