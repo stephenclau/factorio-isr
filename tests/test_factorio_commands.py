@@ -1531,20 +1531,24 @@ class TestServerAutocompleteFunction:
         mock_interaction,
     ):
         """Test server_autocomplete matching tag."""
-        # Setup mock servers
+        # Setup mock servers with properly configured attributes
         mock_bot.server_manager = MagicMock()
+        prod_config = MagicMock()
+        prod_config.configure_mock(
+            name="Production Server",
+            description="Main game server"
+        )
+        dev_config = MagicMock()
+        dev_config.configure_mock(
+            name="Development Server",
+            description="Testing only"
+        )
         mock_servers = {
-            "prod-server": MagicMock(
-                name="Production Server",
-                description="Main game server"
-            ),
-            "dev-server": MagicMock(
-                name="Development Server",
-                description="Testing only"
-            ),
+            "prod-server": prod_config,
+            "dev-server": dev_config,
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client = mock_bot  # CONNECT INTERACTION TO BOT
+        mock_interaction.client = mock_bot
         
         # Test autocomplete logic
         current_lower = 'prod'.lower()
@@ -1567,20 +1571,24 @@ class TestServerAutocompleteFunction:
         mock_interaction,
     ):
         """Test server_autocomplete matching name."""
-        # Setup
+        # Setup with properly configured MagicMock attributes
         mock_bot.server_manager = MagicMock()
+        prod_config = MagicMock()
+        prod_config.configure_mock(
+            name="Production Server",
+            description="Main"
+        )
+        dev_config = MagicMock()
+        dev_config.configure_mock(
+            name="Development",
+            description="Testing"
+        )
         mock_servers = {
-            "prod": MagicMock(
-                name="Production Server",
-                description="Main"
-            ),
-            "dev": MagicMock(
-                name="Development",
-                description="Testing"
-            ),
+            "prod": prod_config,
+            "dev": dev_config,
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client = mock_bot  # CONNECT INTERACTION TO BOT
+        mock_interaction.client = mock_bot
         
         # Test: Use OR condition like prod logic (tag OR name OR description)
         current_lower = 'production'.lower()
@@ -1644,13 +1652,14 @@ class TestServerAutocompleteFunction:
         """Test server_autocomplete truncates >25 matches to 25."""
         # Setup
         mock_bot.server_manager = MagicMock()
-        mock_servers = {
-            f"server-{i}": MagicMock(
+        mock_servers = {}
+        for i in range(50):
+            config = MagicMock()
+            config.configure_mock(
                 name=f"Server {i}",
                 description="Test"
             )
-            for i in range(50)
-        }
+            mock_servers[f"server-{i}"] = config
         mock_bot.server_manager.list_servers.return_value = mock_servers
         mock_interaction.client = mock_bot
         
@@ -1684,11 +1693,13 @@ class TestServerAutocompleteFunction:
         """Test server_autocomplete is case-insensitive."""
         # Setup
         mock_bot.server_manager = MagicMock()
+        config = MagicMock()
+        config.configure_mock(
+            name="Production",
+            description="Main"
+        )
         mock_servers = {
-            "prod-server": MagicMock(
-                name="Production",
-                description="Main"
-            ),
+            "prod-server": config,
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
         mock_interaction.client = mock_bot
@@ -1712,15 +1723,19 @@ class TestServerAutocompleteFunction:
         """Test server_autocomplete with no matches."""
         # Setup
         mock_bot.server_manager = MagicMock()
+        prod_config = MagicMock()
+        prod_config.configure_mock(
+            name="Production",
+            description="Main"
+        )
+        dev_config = MagicMock()
+        dev_config.configure_mock(
+            name="Development",
+            description="Testing"
+        )
         mock_servers = {
-            "prod": MagicMock(
-                name="Production",
-                description="Main"
-            ),
-            "dev": MagicMock(
-                name="Development",
-                description="Testing"
-            ),
+            "prod": prod_config,
+            "dev": dev_config,
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
         mock_interaction.client = mock_bot
