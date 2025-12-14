@@ -198,6 +198,67 @@ connect_handler: Optional[ConnectCommandHandler] = None
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# 🔧 HELPER: Import Phase 2 Handlers (Status, Evolution, Research)
+# ════════════════════════════════════════════════════════════════════════════
+
+def _import_phase2_handlers() -> tuple[Any, Any, Any]:
+    """
+    Import Phase 2 handlers (status_handler, evolution_handler, research_handler).
+    
+    Tries multiple import paths and returns tuple of handlers or None values.
+    
+    Returns:
+        Tuple of (status_handler, evolution_handler, research_handler)
+    """
+    status_handler = None
+    evolution_handler = None
+    research_handler = None
+    
+    # Try Path 1: Relative import from same directory
+    try:
+        from .command_handlers import (
+            status_handler as sh,
+            evolution_handler as eh,
+            research_handler as rh,
+        )
+        status_handler, evolution_handler, research_handler = sh, eh, rh
+        logger.info("phase2_handlers_imported", path="relative_from_same_directory")
+        return status_handler, evolution_handler, research_handler
+    except (ImportError, AttributeError) as e:
+        logger.debug("phase2_import_failed_path1", error=str(e))
+    
+    # Try Path 2: Absolute import via bot.commands
+    try:
+        from bot.commands.command_handlers import (
+            status_handler as sh,
+            evolution_handler as eh,
+            research_handler as rh,
+        )
+        status_handler, evolution_handler, research_handler = sh, eh, rh
+        logger.info("phase2_handlers_imported", path="absolute_bot_commands")
+        return status_handler, evolution_handler, research_handler
+    except (ImportError, AttributeError) as e:
+        logger.debug("phase2_import_failed_path2", error=str(e))
+    
+    # Try Path 3: Absolute import via src.bot.commands
+    try:
+        from src.bot.commands.command_handlers import (  # type: ignore
+            status_handler as sh,
+            evolution_handler as eh,
+            research_handler as rh,
+        )
+        status_handler, evolution_handler, research_handler = sh, eh, rh
+        logger.info("phase2_handlers_imported", path="absolute_src_bot_commands")
+        return status_handler, evolution_handler, research_handler
+    except (ImportError, AttributeError) as e:
+        logger.debug("phase2_import_failed_path3", error=str(e))
+    
+    # All paths failed
+    logger.warning("phase2_handlers_not_available", status="will_use_fallback_embeds")
+    return None, None, None
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # 🔧 HELPER: Null-Safe Response Handler
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -381,6 +442,9 @@ def register_factorio_commands(bot: Any) -> None:
     """
     # 🔄 Initialize ALL handlers
     _initialize_all_handlers(bot)
+    
+    # 🔧 Import Phase 2 handlers (may fail gracefully)
+    phase2_status_handler, phase2_evolution_handler, phase2_research_handler = _import_phase2_handlers()
 
     factorio_group = app_commands.Group(
         name="factorio",
@@ -458,9 +522,14 @@ def register_factorio_commands(bot: Any) -> None:
     @factorio_group.command(name="status", description="Show Factorio server status")
     async def status_command(interaction: discord.Interaction) -> None:
         """Get comprehensive server status (Phase 2 handler - Status + Evolution)."""
+        if not phase2_status_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Status handler not available (Phase 2 module not found)"),
+                ephemeral=True,
+            )
+            return
         try:
-            from command_handlers import status_handler as ph2_status_handler
-            result = await ph2_status_handler.execute(interaction)
+            result = await phase2_status_handler.execute(interaction)
             await send_command_response(interaction, result, defer_before_send=True)
         except Exception as e:
             logger.error("status_command_error", error=str(e))
@@ -517,9 +586,14 @@ def register_factorio_commands(bot: Any) -> None:
         target: str,
     ) -> None:
         """Show enemy evolution (Phase 2 handler - EvolutionCommandHandler)."""
+        if not phase2_evolution_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Evolution handler not available (Phase 2 module not found)"),
+                ephemeral=True,
+            )
+            return
         try:
-            from command_handlers import evolution_handler as ph2_evolution_handler
-            result = await ph2_evolution_handler.execute(interaction, target=target)
+            result = await phase2_evolution_handler.execute(interaction, target=target)
             await send_command_response(interaction, result, defer_before_send=True)
         except Exception as e:
             logger.error("evolution_command_error", error=str(e))
@@ -771,9 +845,14 @@ def register_factorio_commands(bot: Any) -> None:
         technology: Optional[str] = None,
     ) -> None:
         """Manage technology research (Phase 2 handler - ResearchCommandHandler)."""
+        if not phase2_research_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Research handler not available (Phase 2 module not found)"),
+                ephemeral=True,
+            )
+            return
         try:
-            from command_handlers import research_handler as ph2_research_handler
-            result = await ph2_research_handler.execute(
+            result = await phase2_research_handler.execute(
                 interaction, force=force, action=action, technology=technology
             )
             await send_command_response(interaction, result, defer_before_send=True)
