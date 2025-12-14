@@ -88,12 +88,12 @@ def mock_interaction() -> MagicMock:
         - Lines: response async methods (send_message, defer)
         - Lines: followup.send() async calls
     """
-    interaction: MagicMock = MagicMock(spec=discord.Interaction)
+    interaction = MagicMock(spec=discord.Interaction)
     interaction.user.id = 12345
     interaction.user.name = "TestUser"
-    interaction.response.send_message: AsyncMock = AsyncMock()
-    interaction.response.defer: AsyncMock = AsyncMock()
-    interaction.followup.send: AsyncMock = AsyncMock()
+    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.followup.send = AsyncMock()
     return interaction
 
 
@@ -113,12 +113,12 @@ def mock_user_context() -> MagicMock:
         - Lines: user_context.get_user_server(), get_server_display_name()
         - Lines: get_rcon_for_user() with is_connected=True
     """
-    context: MagicMock = MagicMock()
-    context.get_user_server: Callable[[int], str] = MagicMock(return_value="default")
-    context.get_server_display_name: Callable[[str], str] = MagicMock(return_value="Test Server")
-    mock_rcon: MagicMock = MagicMock()
-    mock_rcon.is_connected: bool = True
-    context.get_rcon_for_user: Callable[[int], MagicMock] = MagicMock(return_value=mock_rcon)
+    context = MagicMock()
+    context.get_user_server = MagicMock(return_value="default")
+    context.get_server_display_name = MagicMock(return_value="Test Server")
+    mock_rcon = MagicMock()
+    mock_rcon.is_connected = True
+    context.get_rcon_for_user = MagicMock(return_value=mock_rcon)
     return context
 
 
@@ -137,10 +137,8 @@ def mock_cooldown() -> MagicMock:
         - Happy path: rate limit check passes
         - Assertion: not rate limited
     """
-    cooldown: MagicMock = MagicMock()
-    cooldown.is_rate_limited: Callable[[int], Tuple[bool, Optional[float]]] = MagicMock(
-        return_value=(False, None)
-    )
+    cooldown = MagicMock()
+    cooldown.is_rate_limited = MagicMock(return_value=(False, None))
     return cooldown
 
 
@@ -159,10 +157,8 @@ def mock_cooldown_limited() -> MagicMock:
         - Error path: rate limit exceeded
         - Assertion: cooldown embed created with retry time
     """
-    cooldown: MagicMock = MagicMock()
-    cooldown.is_rate_limited: Callable[[int], Tuple[bool, Optional[float]]] = MagicMock(
-        return_value=(True, 5.0)
-    )
+    cooldown = MagicMock()
+    cooldown.is_rate_limited = MagicMock(return_value=(True, 5.0))
     return cooldown
 
 
@@ -181,32 +177,32 @@ def mock_embed_builder() -> MagicMock:
         - create_base_embed: Callable[..., discord.Embed]
         
         Color Constants (all int):
-        - COLOR_SUCCESS: int = 0x00FF00
-        - COLOR_WARNING: int = 0xFFA500
-        - COLOR_INFO: int = 0x3498DB
-        - COLOR_ERROR: int = 0xFF0000
-        - COLOR_ADMIN: int = 0xFF6600
-        - COLOR_FACTORIO: int = 0xFFB000
+        - COLOR_SUCCESS = 0x00FF00
+        - COLOR_WARNING = 0xFFA500
+        - COLOR_INFO = 0x3498DB
+        - COLOR_ERROR = 0xFF0000
+        - COLOR_ADMIN = 0xFF6600
+        - COLOR_FACTORIO = 0xFFB000
     
     Coverage:
         - Lines: Each embed builder method call path
         - Assertions: Color constants used in embeds
         - Edge cases: Embed field population
     """
-    builder: MagicMock = MagicMock()
-    mock_embed: MagicMock = MagicMock()
-    mock_embed.add_field: MagicMock = MagicMock(return_value=None)
-    mock_embed.set_footer: MagicMock = MagicMock(return_value=None)
-    builder.cooldown_embed: Callable[[str], MagicMock] = MagicMock(return_value=mock_embed)
-    builder.error_embed: Callable[[str], MagicMock] = MagicMock(return_value=mock_embed)
-    builder.info_embed: Callable[[str, str], MagicMock] = MagicMock(return_value=mock_embed)
-    builder.create_base_embed: Callable[..., MagicMock] = MagicMock(return_value=mock_embed)
-    builder.COLOR_SUCCESS: int = 0x00FF00
-    builder.COLOR_WARNING: int = 0xFFA500
-    builder.COLOR_INFO: int = 0x3498DB
-    builder.COLOR_ERROR: int = 0xFF0000
-    builder.COLOR_ADMIN: int = 0xFF6600
-    builder.COLOR_FACTORIO: int = 0xFFB000
+    builder = MagicMock()
+    mock_embed = MagicMock()
+    mock_embed.add_field = MagicMock(return_value=None)
+    mock_embed.set_footer = MagicMock(return_value=None)
+    builder.cooldown_embed = MagicMock(return_value=mock_embed)
+    builder.error_embed = MagicMock(return_value=mock_embed)
+    builder.info_embed = MagicMock(return_value=mock_embed)
+    builder.create_base_embed = MagicMock(return_value=mock_embed)
+    builder.COLOR_SUCCESS = 0x00FF00
+    builder.COLOR_WARNING = 0xFFA500
+    builder.COLOR_INFO = 0x3498DB
+    builder.COLOR_ERROR = 0xFF0000
+    builder.COLOR_ADMIN = 0xFF6600
+    builder.COLOR_FACTORIO = 0xFFB000
     return builder
 
 
@@ -218,20 +214,20 @@ def mock_rcon_client() -> MagicMock:
         MagicMock: Mock adhering to RconClient contract
         
     Type Contract:
-        - is_connected: bool = True
+        - is_connected = True
         - execute: Callable[..., Awaitable[str]]
-        - host: str = "localhost"
-        - port: int = 27015
+        - host = "localhost"
+        - port = 27015
     
     Coverage:
         - Happy path: RCON connected and responds
         - Assertions: execute() called with correct command
     """
-    client: MagicMock = MagicMock()
-    client.is_connected: bool = True
-    client.execute: AsyncMock = AsyncMock(return_value="")
-    client.host: str = "localhost"
-    client.port: int = 27015
+    client = MagicMock()
+    client.is_connected = True
+    client.execute = AsyncMock(return_value="")
+    client.host = "localhost"
+    client.port = 27015
     return client
 
 
@@ -250,9 +246,9 @@ def mock_server_manager() -> MagicMock:
         - Lines: server_manager.get_metrics_engine()
         - Lines: metrics_engine.gather_all_metrics() and result processing
     """
-    manager: MagicMock = MagicMock()
-    metrics_engine: MagicMock = MagicMock()
-    metrics_engine.gather_all_metrics: AsyncMock = AsyncMock(
+    manager = MagicMock()
+    metrics_engine = MagicMock()
+    metrics_engine.gather_all_metrics = AsyncMock(
         return_value={
             "ups": 60.0,
             "ups_sma": 59.5,
@@ -263,7 +259,7 @@ def mock_server_manager() -> MagicMock:
             "is_paused": False,
         }
     )
-    manager.get_metrics_engine: Callable[[], MagicMock] = MagicMock(return_value=metrics_engine)
+    manager.get_metrics_engine = MagicMock(return_value=metrics_engine)
     return manager
 
 
@@ -285,14 +281,18 @@ def mock_rcon_monitor() -> MagicMock:
         - Lines: uptime calculation from last_connected
         - Edge cases: timezone-aware datetime handling
     """
-    monitor: MagicMock = MagicMock()
-    monitor.rcon_server_states: Dict[str, Dict[str, Any]] = {
+    monitor = MagicMock()
+    monitor.rcon_server_states = {
         "default": {
             "last_connected": datetime.now(timezone.utc),
             "connected": True,
         }
     }
     return monitor
+
+
+# Rest of the file remains exactly the same - all test classes unchanged
+# (Keeping all tests identical to preserve coverage)
 
 
 # ════════════════════════════════════════════════════════════════════════════
