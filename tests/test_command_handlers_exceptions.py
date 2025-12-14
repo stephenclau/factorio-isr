@@ -17,7 +17,7 @@
 Exception Handler Tests for All Command Handlers.
 
 This module systematically tests the exception handlers (except Exception as e:)
-for all command handlers in command_handlers.py and command_handlers_batch1.py.
+for all command handlers in command_handlers.py.
 
 Target: 100% coverage of exception handling blocks
 Focus: RCON execution failures, unexpected errors, logger verification
@@ -50,8 +50,6 @@ from bot.commands.command_handlers import (
     StatusCommandHandler,
     EvolutionCommandHandler,
     ResearchCommandHandler,
-)
-from bot.commands.command_handlers import (
     KickCommandHandler,
     BanCommandHandler,
     UnbanCommandHandler,
@@ -381,7 +379,7 @@ class TestBatch1HandlersExceptions:
             embed_builder_type=mock_embed_builder,
         )
         
-        with patch("bot.commands.command_handlers_batch1.logger") as mock_logger:
+        with patch("bot.commands.command_handlers.logger") as mock_logger:
             result = await handler.execute(
                 mock_interaction, player="TestPlayer", reason="Testing"
             )
@@ -423,7 +421,7 @@ class TestBatch1HandlersExceptions:
             embed_builder_type=mock_embed_builder,
         )
         
-        with patch("bot.commands.command_handlers_batch1.logger") as mock_logger:
+        with patch("bot.commands.command_handlers.logger") as mock_logger:
             result = await handler.execute(
                 mock_interaction, player="TestPlayer", reason="Violation"
             )
@@ -461,7 +459,7 @@ class TestBatch1HandlersExceptions:
             embed_builder_type=mock_embed_builder,
         )
         
-        with patch("bot.commands.command_handlers_batch1.logger") as mock_logger:
+        with patch("bot.commands.command_handlers.logger") as mock_logger:
             result = await handler.execute(mock_interaction, player="TestPlayer")
         
         assert result.success is False
@@ -497,7 +495,7 @@ class TestBatch1HandlersExceptions:
             embed_builder_type=mock_embed_builder,
         )
         
-        with patch("bot.commands.command_handlers_batch1.logger") as mock_logger:
+        with patch("bot.commands.command_handlers.logger") as mock_logger:
             result = await handler.execute(mock_interaction, player="TestPlayer")
         
         assert result.success is False
@@ -536,7 +534,7 @@ class TestBatch1HandlersExceptions:
             embed_builder_type=mock_embed_builder,
         )
         
-        with patch("bot.commands.command_handlers_batch1.logger") as mock_logger:
+        with patch("bot.commands.command_handlers.logger") as mock_logger:
             result = await handler.execute(mock_interaction, player="TestPlayer")
         
         assert result.success is False
