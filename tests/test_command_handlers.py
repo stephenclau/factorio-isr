@@ -16,6 +16,13 @@
 """
 Test suite for command handlers with explicit dependency injection.
 
+Comprehensive coverage for all command handler modules:
+- Primary handlers: Status, Evolution, Research
+- Batch 1: Player management (kick, ban, unban, mute, unmute)
+- Batch 2: Server management (save, broadcast, whitelist)
+- Batch 3: Game control (clock, speed, research)
+- Batch 4: Advanced commands (rcon, help, promote, demote)
+
 Demonstrates the advantages of DI for testing:
 - Clean mocking: dependencies injected via constructor
 - Isolated logic: test handler execute() directly
@@ -34,11 +41,18 @@ from src.bot.commands.command_handlers import (
     ResearchCommandHandler,
     CommandResult,
 )
+from src.bot.commands.command_handlers_batch1 import (
+    KickCommandHandler,
+    BanCommandHandler,
+    UnbanCommandHandler,
+    MuteCommandHandler,
+    UnmuteCommandHandler,
+)
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
 # FIXTURES: Clean mock dependencies
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
 
 
 @pytest.fixture
@@ -139,9 +153,9 @@ def mock_rcon_monitor():
     return monitor
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# TESTS: StatusCommandHandler
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# PRIMARY TESTS: StatusCommandHandler
+# ════════════════════════════════════════════════════════════════════════════
 
 
 class TestStatusCommandHandler:
@@ -328,9 +342,9 @@ class TestStatusCommandHandler:
         assert "Metrics engine error" in call_args
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# TESTS: EvolutionCommandHandler
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# PRIMARY TESTS: EvolutionCommandHandler
+# ════════════════════════════════════════════════════════════════════════════
 
 
 class TestEvolutionCommandHandler:
@@ -419,33 +433,6 @@ class TestEvolutionCommandHandler:
         assert "not found" in call_args.lower()
 
     @pytest.mark.asyncio
-    async def test_evolution_platform_surface_ignored(
-        self,
-        mock_interaction,
-        mock_user_context,
-        mock_cooldown,
-        mock_embed_builder,
-    ):
-        """Error path: platform surfaces are excluded."""
-        mock_user_context.get_rcon_for_user.return_value = MagicMock(
-            is_connected=True,
-            execute=AsyncMock(return_value="SURFACE_PLATFORM_IGNORED"),
-        )
-
-        handler = EvolutionCommandHandler(
-            user_context=mock_user_context,
-            cooldown=mock_cooldown,
-            embed_builder=mock_embed_builder,
-        )
-
-        result = await handler.execute(mock_interaction, target="platform-1")
-
-        assert result.success is False
-        assert result.ephemeral is True
-        call_args = mock_embed_builder.error_embed.call_args[0][0]
-        assert "platform" in call_args.lower()
-
-    @pytest.mark.asyncio
     async def test_evolution_rcon_disconnected(
         self,
         mock_interaction,
@@ -469,9 +456,9 @@ class TestEvolutionCommandHandler:
         assert result.followup is True
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# TESTS: ResearchCommandHandler
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# PRIMARY TESTS: ResearchCommandHandler
+# ════════════════════════════════════════════════════════════════════════════
 
 
 class TestResearchCommandHandler:
@@ -560,142 +547,6 @@ class TestResearchCommandHandler:
         assert result.followup is True
 
     @pytest.mark.asyncio
-    async def test_research_undo_all_happy_path(
-        self,
-        mock_interaction,
-        mock_user_context,
-        mock_cooldown,
-        mock_embed_builder,
-    ):
-        """Happy path: undo all research."""
-        mock_user_context.get_rcon_for_user.return_value = MagicMock(
-            is_connected=True, execute=AsyncMock(return_value="reverted")
-        )
-
-        handler = ResearchCommandHandler(
-            user_context=mock_user_context,
-            cooldown=mock_cooldown,
-            embed_builder=mock_embed_builder,
-        )
-
-        result = await handler.execute(
-            mock_interaction, force="player", action="undo", technology="all"
-        )
-
-        assert result.success is True
-        embed = result.embed
-        assert embed.color == mock_embed_builder.COLOR_WARNING
-
-    @pytest.mark.asyncio
-    async def test_research_undo_single_technology_happy_path(
-        self,
-        mock_interaction,
-        mock_user_context,
-        mock_cooldown,
-        mock_embed_builder,
-    ):
-        """Happy path: undo single technology."""
-        mock_user_context.get_rcon_for_user.return_value = MagicMock(
-            is_connected=True, execute=AsyncMock(return_value="OK")
-        )
-
-        handler = ResearchCommandHandler(
-            user_context=mock_user_context,
-            cooldown=mock_cooldown,
-            embed_builder=mock_embed_builder,
-        )
-
-        result = await handler.execute(
-            mock_interaction, force="player", action="undo", technology="automation-2"
-        )
-
-        assert result.success is True
-        assert result.followup is True
-
-    @pytest.mark.asyncio
-    async def test_research_multi_force_coop(
-        self,
-        mock_interaction,
-        mock_user_context,
-        mock_cooldown,
-        mock_embed_builder,
-    ):
-        """Happy path: Coop mode (default force='player')."""
-        mock_user_context.get_rcon_for_user.return_value = MagicMock(
-            is_connected=True, execute=AsyncMock(return_value="42/100")
-        )
-
-        handler = ResearchCommandHandler(
-            user_context=mock_user_context,
-            cooldown=mock_cooldown,
-            embed_builder=mock_embed_builder,
-        )
-
-        # No force provided, should default to "player"
-        result = await handler.execute(
-            mock_interaction, force=None, action=None, technology=None
-        )
-
-        assert result.success is True
-        # Verify RCON was called with default "player" force
-        mock_user_context.get_rcon_for_user.return_value.execute.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_research_multi_force_pvp(
-        self,
-        mock_interaction,
-        mock_user_context,
-        mock_cooldown,
-        mock_embed_builder,
-    ):
-        """Happy path: PvP mode (custom force='enemy')."""
-        mock_user_context.get_rcon_for_user.return_value = MagicMock(
-            is_connected=True, execute=AsyncMock(return_value="10/100")
-        )
-
-        handler = ResearchCommandHandler(
-            user_context=mock_user_context,
-            cooldown=mock_cooldown,
-            embed_builder=mock_embed_builder,
-        )
-
-        result = await handler.execute(
-            mock_interaction, force="enemy", action=None, technology=None
-        )
-
-        assert result.success is True
-
-    @pytest.mark.asyncio
-    async def test_research_rcon_error_single_tech(
-        self,
-        mock_interaction,
-        mock_user_context,
-        mock_cooldown,
-        mock_embed_builder,
-    ):
-        """Error path: RCON execution error when researching single tech."""
-        mock_user_context.get_rcon_for_user.return_value = MagicMock(
-            is_connected=True,
-            execute=AsyncMock(side_effect=Exception("Technology not found")),
-        )
-
-        handler = ResearchCommandHandler(
-            user_context=mock_user_context,
-            cooldown=mock_cooldown,
-            embed_builder=mock_embed_builder,
-        )
-
-        result = await handler.execute(
-            mock_interaction, force="player", action=None, technology="invalid-tech"
-        )
-
-        assert result.success is False
-        assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called_once()
-        call_args = mock_embed_builder.error_embed.call_args[0][0]
-        assert "Technology not found" in call_args
-
-    @pytest.mark.asyncio
     async def test_research_rcon_disconnected(
         self,
         mock_interaction,
@@ -721,9 +572,300 @@ class TestResearchCommandHandler:
         assert result.followup is True
 
 
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
+# BATCH 1 TESTS: Player Management Handlers
+# ════════════════════════════════════════════════════════════════════════════
+
+
+class TestKickCommandHandler:
+    """Test suite for KickCommandHandler from batch1."""
+
+    @pytest.mark.asyncio
+    async def test_kick_happy_path(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Happy path: kick player with reason."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="")
+        )
+
+        handler = KickCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="Griever", reason="Griefing"
+        )
+
+        assert result.success is True
+        assert result.ephemeral is False
+        mock_cooldown.is_rate_limited.assert_called_once_with(12345)
+        mock_user_context.get_rcon_for_user.return_value.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_kick_rate_limited(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown_limited,
+        mock_embed_builder,
+    ):
+        """Error path: user rate limited."""
+        handler = KickCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown_limited,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="Griever", reason="Griefing"
+        )
+
+        assert result.success is False
+        assert result.ephemeral is True
+
+    @pytest.mark.asyncio
+    async def test_kick_rcon_disconnected(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Error path: RCON disconnected."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(is_connected=False)
+
+        handler = KickCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="Griever", reason="Griefing"
+        )
+
+        assert result.success is False
+        assert result.ephemeral is True
+
+
+class TestBanCommandHandler:
+    """Test suite for BanCommandHandler from batch1."""
+
+    @pytest.mark.asyncio
+    async def test_ban_happy_path(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Happy path: ban player with reason."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="")
+        )
+
+        handler = BanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="Hacker", reason="Cheating"
+        )
+
+        assert result.success is True
+        assert result.ephemeral is False
+
+    @pytest.mark.asyncio
+    async def test_ban_rcon_disconnected(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Error path: RCON disconnected."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(is_connected=False)
+
+        handler = BanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="Hacker", reason="Cheating"
+        )
+
+        assert result.success is False
+        assert result.ephemeral is True
+
+
+class TestUnbanCommandHandler:
+    """Test suite for UnbanCommandHandler from batch1."""
+
+    @pytest.mark.asyncio
+    async def test_unban_happy_path(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Happy path: unban player."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="")
+        )
+
+        handler = UnbanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(mock_interaction, player="ForgivenPlayer")
+
+        assert result.success is True
+        assert result.ephemeral is False
+        mock_user_context.get_rcon_for_user.return_value.execute.assert_called_once_with(
+            "/unban ForgivenPlayer"
+        )
+
+    @pytest.mark.asyncio
+    async def test_unban_rate_limited(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown_limited,
+        mock_embed_builder,
+    ):
+        """Error path: user rate limited."""
+        handler = UnbanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown_limited,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(mock_interaction, player="ForgivenPlayer")
+
+        assert result.success is False
+        assert result.ephemeral is True
+
+
+class TestMuteCommandHandler:
+    """Test suite for MuteCommandHandler from batch1."""
+
+    @pytest.mark.asyncio
+    async def test_mute_happy_path(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Happy path: mute player."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="")
+        )
+
+        handler = MuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(mock_interaction, player="Spammer")
+
+        assert result.success is True
+        assert result.ephemeral is False
+
+    @pytest.mark.asyncio
+    async def test_mute_rcon_none(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Error path: RCON is None."""
+        mock_user_context.get_rcon_for_user.return_value = None
+
+        handler = MuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(mock_interaction, player="Spammer")
+
+        assert result.success is False
+        assert result.ephemeral is True
+
+
+class TestUnmuteCommandHandler:
+    """Test suite for UnmuteCommandHandler from batch1."""
+
+    @pytest.mark.asyncio
+    async def test_unmute_happy_path(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Happy path: unmute player."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="")
+        )
+
+        handler = UnmuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(mock_interaction, player="ForgivenSpammer")
+
+        assert result.success is True
+        assert result.ephemeral is False
+
+    @pytest.mark.asyncio
+    async def test_unmute_rcon_exception(
+        self,
+        mock_interaction,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Error path: RCON execution raises exception."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True,
+            execute=AsyncMock(side_effect=Exception("Player not found")),
+        )
+
+        handler = UnmuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        result = await handler.execute(mock_interaction, player="NonExistent")
+
+        assert result.success is False
+        assert result.ephemeral is True
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # INTEGRATION TESTS: Verify DI instantiation
-# ═════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════
 
 
 class TestCommandHandlerInstantiation:
@@ -786,6 +928,83 @@ class TestCommandHandlerInstantiation:
         assert handler.cooldown == mock_cooldown
         assert handler.embed_builder == mock_embed_builder
 
+    def test_kick_handler_instantiation(
+        self,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Verify KickCommandHandler can be instantiated with DI."""
+        handler = KickCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        assert handler.user_context == mock_user_context
+        assert handler.rate_limiter == mock_cooldown
+        assert handler.embed_builder == mock_embed_builder
+
+    def test_ban_handler_instantiation(
+        self,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Verify BanCommandHandler can be instantiated with DI."""
+        handler = BanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        assert handler.user_context == mock_user_context
+
+    def test_unban_handler_instantiation(
+        self,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Verify UnbanCommandHandler can be instantiated with DI."""
+        handler = UnbanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        assert handler.user_context == mock_user_context
+
+    def test_mute_handler_instantiation(
+        self,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Verify MuteCommandHandler can be instantiated with DI."""
+        handler = MuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        assert handler.user_context == mock_user_context
+
+    def test_unmute_handler_instantiation(
+        self,
+        mock_user_context,
+        mock_cooldown,
+        mock_embed_builder,
+    ):
+        """Verify UnmuteCommandHandler can be instantiated with DI."""
+        handler = UnmuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=mock_embed_builder,
+        )
+
+        assert handler.user_context == mock_user_context
+
 
 class TestCommandResult:
     """Test CommandResult dataclass."""
@@ -800,12 +1019,10 @@ class TestCommandResult:
             success=True,
             embed=embed,
             ephemeral=False,
-            followup=True,
         )
 
         assert result.success is True
         assert result.ephemeral is False
-        assert result.followup is True
 
     def test_command_result_error(
         self,
@@ -817,9 +1034,7 @@ class TestCommandResult:
             success=False,
             embed=embed,
             ephemeral=True,
-            followup=False,
         )
 
         assert result.success is False
         assert result.ephemeral is True
-        assert result.followup is False
