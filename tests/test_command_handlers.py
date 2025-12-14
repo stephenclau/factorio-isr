@@ -103,27 +103,31 @@ def mock_cooldown_limited():
 @pytest.fixture
 def mock_embed_builder():
     """
-    Create a mock EmbedBuilder using real static methods from discord_interface.py.
+    Create a mock EmbedBuilder with all required methods.
     
-    This fixture returns a class mock that behaves like the real EmbedBuilder,
-    allowing us to test the actual embed creation logic while mocking discord.Embed.
+    This fixture returns a mock EmbedBuilder that can be passed to handlers.
+    All embed methods return mock embed instances suitable for testing.
     """
-    # Use patch to mock discord.Embed before EmbedBuilder uses it
-    with patch('discord_interface.discord.Embed') as mock_embed_class:
-        with patch('discord_interface.discord.utils.utcnow') as mock_utcnow:
-            mock_utcnow.return_value = datetime.now(timezone.utc)
-            # Create a mock instance that discord.Embed() returns
-            mock_embed_instance = MagicMock(spec=discord.Embed)
-            mock_embed_instance.add_field = MagicMock(return_value=None)
-            mock_embed_instance.set_footer = MagicMock(return_value=None)
-            mock_embed_class.return_value = mock_embed_instance
-            
-            # Now the real EmbedBuilder will use our mocked discord.Embed
-            builder = EmbedBuilder()
-            builder.cooldown_embed = MagicMock(return_value=mock_embed_instance)
-            builder.error_embed = MagicMock(return_value=mock_embed_instance)
-            builder.info_embed = MagicMock(return_value=mock_embed_instance)
-            builder.create_base_embed = MagicMock(return_value=mock_embed_instance)
+    builder = MagicMock()
+    
+    # Create a mock embed instance (no spec - prevents InvalidSpecError)
+    mock_embed_instance = MagicMock()
+    mock_embed_instance.add_field = MagicMock(return_value=None)
+    mock_embed_instance.set_footer = MagicMock(return_value=None)
+    
+    # Configure all static/class methods to return the mock embed
+    builder.cooldown_embed = MagicMock(return_value=mock_embed_instance)
+    builder.error_embed = MagicMock(return_value=mock_embed_instance)
+    builder.info_embed = MagicMock(return_value=mock_embed_instance)
+    builder.create_base_embed = MagicMock(return_value=mock_embed_instance)
+    
+    # Add color constants (required by handlers)
+    builder.COLOR_SUCCESS = 0x00FF00
+    builder.COLOR_WARNING = 0xFFA500
+    builder.COLOR_INFO = 0x3498DB
+    builder.COLOR_ERROR = 0xFF0000
+    builder.COLOR_ADMIN = 0xFF6600
+    builder.COLOR_FACTORIO = 0xFFB000
     
     return builder
 
