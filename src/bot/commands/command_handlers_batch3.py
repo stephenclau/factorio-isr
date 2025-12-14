@@ -81,7 +81,7 @@ class ClockCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -226,7 +226,7 @@ class SpeedCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -252,9 +252,9 @@ class SpeedCommandHandler:
             )
             embed.add_field(name="New Speed", value=f"{value}x", inline=True)
             if value < 1.0:
-                embed.add_field(name="Effect", value="⬇️ Slower", inline=True)
+                embed.add_field(name="Effect", value="⬋ Slower", inline=True)
             elif value > 1.0:
-                embed.add_field(name="Effect", value="⬆️ Faster", inline=True)
+                embed.add_field(name="Effect", value="⬊ Faster", inline=True)
             else:
                 embed.add_field(name="Effect", value="➡️ Normal", inline=True)
             embed.add_field(name="Server", value=server_name, inline=True)
@@ -304,7 +304,7 @@ class PromoteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -379,7 +379,7 @@ class DemoteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -399,7 +399,7 @@ class DemoteCommandHandler:
             await rcon_client.execute(f"/demote {player}")
 
             embed = discord.Embed(
-                title="📉 Player Demoted",
+                title="📙 Player Demoted",
                 color=self.embed_builder.COLOR_WARNING,
                 timestamp=discord.utils.utcnow(),
             )
