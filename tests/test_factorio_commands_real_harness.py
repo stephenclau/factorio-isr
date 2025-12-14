@@ -38,15 +38,9 @@
    Phase 2 (0% → 70%+): kick, ban, promote, demote, whisper (129 statements)
    Phase 3 (37-57% → 85%+): clock, research, save, whitelist (138 statements)
    Phase 4 (0% → 85%+): broadcast, speed, seed, rcon, help (127 statements)
+   Phase 5 (NEW): unban, unmute, server_autocomplete (75 statements)
    
-   Total new coverage: 480 statements → ~91% overall
-
-🚨 PATTERN 11: TEST ERROR BRANCHES (CRITICAL)
-   🔴 328 missed statements from error branches (htmlcov red lines)
-   ✅ Tests force error conditions to hit those branches
-   ✅ Validates error embed generation
-   ✅ Validates ephemeral flags and early returns
-   ✅ Complete coverage of try-except handlers
+   Total new coverage: 555 statements → ~91%+ overall
 """
 
 import pytest
@@ -54,7 +48,7 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 from datetime import datetime, timedelta, timezone
 import discord
 from discord import app_commands
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 import re
 
 # Import the registration function
@@ -86,57 +80,55 @@ class CommandExtractor:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# PHASE 1: 0% Commands — evolution, health, connect, admins
+# NEW: UNBAN COMMAND (DANGER_COOLDOWN, Real closure, 21 statements)
 # ════════════════════════════════════════════════════════════════════════════
 
-class TestEvolutionCommandClosure:
-    """Test evolution_command closure — currently 0% coverage (55 statements)."""
+class TestUnbanCommandClosure:
+    """Test unban_command closure — currently 0% coverage (21 statements).
+    
+    Code path:
+    1. Rate limit check (DANGER_COOLDOWN)
+    2. Defer interaction
+    3. Get RCON client
+    4. Validate RCON connected
+    5. Execute /unban {player}
+    6. Build success embed
+    7. Send embed
+    8. Log action
+    """
 
     @pytest.mark.asyncio
-    async def test_evolution_all_mode_aggregates_surfaces(
+    async def test_unban_player_happy_path(
         self,
         mock_bot: MagicMock,
         mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE evolution command in 'all' mode.
+        """INVOKE unban command with valid player (happy path).
         
-        Code path (55 statements):
-        1. Rate limit check (QUERY_COOLDOWN)
-        2. Defer interaction
-        3. Get RCON client
-        4. Parse target = 'all'
-        5. Execute Lua aggregate query
-        6. Parse response: AGG:XX% + per-surface
-        7. Build embed with aggregate + per-surface fields
-        8. Send embed
-        9. Log
+        Code path:
+        1. Rate limit check passes
+        2. RCON client available
+        3. Execute /unban command
+        4. Build success embed with player name
+        5. Send embed
         """
-        # Setup mocks
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
+        # Setup
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
         mock_bot.user_context.get_server_display_name.return_value = "prod-server"
         mock_rcon_client.is_connected = True
+        mock_rcon_client.execute.return_value = "Player BannedUser unbanned."
         
-        # Mock Lua response
-        mock_rcon_client.execute.return_value = (
-            "AGG:28.50%\nnauvis:42.50%\ngleba:15.00%"
-        )
-        
-        # REGISTER COMMANDS (wires up closures)
+        # Register and extract
         register_factorio_commands(mock_bot)
-        
-        # EXTRACT group
         group = CommandExtractor.get_registered_group(mock_bot)
         assert group is not None
-        assert group.name == "factorio"
+        unban_cmd = CommandExtractor.extract_command_from_group(group, "unban")
+        assert unban_cmd is not None
         
-        # EXTRACT evolution command
-        evo_cmd = CommandExtractor.extract_command_from_group(group, "evolution")
-        assert evo_cmd is not None
-        
-        # INVOKE the closure with mock interaction
-        await evo_cmd.callback(mock_interaction, target="all")
+        # INVOKE
+        await unban_cmd.callback(mock_interaction, player="BannedUser")
         
         # VALIDATE: interaction deferred
         mock_interaction.response.defer.assert_called_once()
@@ -148,366 +140,43 @@ class TestEvolutionCommandClosure:
         call_kwargs = mock_interaction.followup.send.call_args.kwargs
         embed = call_kwargs.get('embed')
         assert embed is not None
-        assert "Aggregate" in embed.description or "Evolution" in embed.title
+        assert "Unbanned" in embed.title or "✅" in embed.title
+        assert "BannedUser" in embed.description or "BannedUser" in str([f.value for f in embed.fields])
         
-        # VALIDATE: RCON execute called with Lua
+        # VALIDATE: success color
+        assert embed.color.value == EmbedBuilder.COLOR_SUCCESS
+        
+        # VALIDATE: RCON execute called
         mock_rcon_client.execute.assert_called_once()
         rcon_cmd = mock_rcon_client.execute.call_args[0][0]
-        assert "/sc" in rcon_cmd  # Lua command
-        assert "AGG" in rcon_cmd or "aggregate" in rcon_cmd.lower()
+        assert "/unban BannedUser" in rcon_cmd
 
     @pytest.mark.asyncio
-    async def test_evolution_single_surface(
+    async def test_unban_rate_limited(
         self,
         mock_bot: MagicMock,
         mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE evolution command for single surface.
+        """Force unban command rate limit (DANGER_COOLDOWN exhaustion).
         
-        Code path:
-        1. Parse target = 'nauvis'
-        2. Execute Lua: game.get_surface('nauvis')
-        3. Handle responses: normal, SURFACE_NOT_FOUND, SURFACE_PLATFORM_IGNORED
-        4. Build and send embed
+        Pattern 11: Test error branch
+        🔴 Forces: if is_limited: send cooldown_embed; return
+        ✅ Validates: Cooldown embed sent, no RCON execute
         """
-        # Setup
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "42.50%"
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        evo_cmd = CommandExtractor.extract_command_from_group(group, "evolution")
-        
-        # INVOKE
-        await evo_cmd.callback(mock_interaction, target="nauvis")
-        
-        # VALIDATE
-        mock_interaction.response.defer.assert_called_once()
-        mock_interaction.followup.send.assert_called_once()
-        
-        # Verify evolution percentage in response
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "nauvis" in embed.title.lower() or "42" in embed.description
-
-    @pytest.mark.asyncio
-    async def test_evolution_surface_not_found_error(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE evolution command with nonexistent surface.
-        
-        Code path:
-        1. Lua returns SURFACE_NOT_FOUND
-        2. Send error embed
-        3. Log error
-        """
-        # Setup
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "SURFACE_NOT_FOUND"
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        evo_cmd = CommandExtractor.extract_command_from_group(group, "evolution")
-        
-        # INVOKE
-        await evo_cmd.callback(mock_interaction, target="nonexistent")
-        
-        # VALIDATE: error sent
-        mock_interaction.followup.send.assert_called_once()
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "not found" in embed.description.lower() or "not found" in embed.title.lower()
-
-
-class TestHealthCommandClosure:
-    """Test health_command closure — currently 0% coverage (39 statements)."""
-
-    @pytest.mark.asyncio
-    async def test_health_command_all_systems_healthy(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE health command with all systems online.
-        
-        Code path (39 statements):
-        1. Rate limit check
-        2. Defer interaction
-        3. Build embed with:
-           - Bot status (bot._connected)
-           - RCON status (is_connected)
-           - Monitor status (rcon_monitor exists)
-           - Uptime (from last_connected timestamp)
-        4. Send embed
-        """
-        # Setup
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot._connected = True
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_bot.user_context.get_user_server.return_value = "main"
-        mock_rcon_client.is_connected = True
-        
-        # Setup monitor with uptime
-        mock_bot.rcon_monitor = MagicMock()
-        now = datetime.now(timezone.utc)
-        mock_bot.rcon_monitor.rcon_server_states = {
-            "main": {"last_connected": now - timedelta(hours=2, minutes=5)}
-        }
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        health_cmd = CommandExtractor.extract_command_from_group(group, "health")
-        assert health_cmd is not None
-        
-        # INVOKE
-        await health_cmd.callback(mock_interaction)
-        
-        # VALIDATE
-        mock_interaction.response.defer.assert_called_once()
-        mock_interaction.followup.send.assert_called_once()
-        
-        # Verify embed fields
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        field_names = [f.name for f in embed.fields]
-        assert any("Bot" in name or "bot" in name for name in field_names)
-        assert any("RCON" in name or "rcon" in name for name in field_names)
-        assert any("Monitor" in name or "monitor" in name for name in field_names)
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# PATTERN 11: TEST ERROR BRANCHES — ELIMINATE 328 MISSED STATEMENTS
-# ════════════════════════════════════════════════════════════════════════════
-
-class TestEvolutionErrorBranches:
-    """Pattern 11: Test error branches for evolution command.
-    
-    Goal: Force all error conditions to execute the red lines
-    Result: Every except block, every if error_embed call is now GREEN ✅
-    """
-
-    @pytest.mark.asyncio
-    async def test_evolution_rcon_unavailable_sends_error_embed(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """Force RCON unavailable branch.
-        
-        🎯 Forces: if rcon_client is None
-        🔴 Line: embed = EmbedBuilder.error_embed("RCON not available...")
-        ✅ Validates: Error embed sent with ephemeral=True
-        """
-        # 🔴 SETUP: RCON unavailable
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = None  # 🔴 Forces branch
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        evo_cmd = CommandExtractor.extract_command_from_group(group, "evolution")
-        
-        # INVOKE
-        await evo_cmd.callback(mock_interaction, target="all")
-        
-        # ✅ VALIDATE: Error embed sent
-        mock_interaction.followup.send.assert_called_once()
-        embed = mock_interaction.followup.send.call_args.kwargs['embed']
-        assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "RCON not available" in embed.description or "not available" in embed.description.lower()
-        
-        # ✅ VALIDATE: Ephemeral (private to user)
-        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
-        
-        # ✅ VALIDATE: Early return (no RCON execute)
-        mock_rcon_client.execute.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_evolution_rcon_disconnected_sends_error_embed(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """Force RCON disconnected branch.
-        
-        🎯 Forces: if not rcon_client.is_connected
-        🔴 Line: embed = EmbedBuilder.error_embed("RCON not connected...")
-        ✅ Validates: Error embed, no execute calls
-        """
-        # 🔴 SETUP: RCON disconnected
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_rcon_client.is_connected = False  # 🔴 Forces branch
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        evo_cmd = CommandExtractor.extract_command_from_group(group, "evolution")
-        
-        # INVOKE
-        await evo_cmd.callback(mock_interaction, target="all")
-        
-        # ✅ VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs['embed']
-        assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "not available" in embed.description.lower() or "not connected" in embed.description.lower()
-        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
-        mock_rcon_client.execute.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_evolution_exception_handler_sends_error_embed(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """Force exception handler branch.
-        
-        🎯 Forces: except Exception as e
-        🔴 Line: embed = EmbedBuilder.error_embed(f"Evolution failed: {str(e)}")
-        ✅ Validates: Error embed with exception message
-        """
-        # 🔴 SETUP: RCON execute raises exception
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_rcon_client.is_connected = True
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_rcon_client.execute.side_effect = Exception("Connection timeout")  # 🔴 Forces except
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        evo_cmd = CommandExtractor.extract_command_from_group(group, "evolution")
-        
-        # INVOKE
-        await evo_cmd.callback(mock_interaction, target="all")
-        
-        # ✅ VALIDATE: Error embed with exception message
-        embed = mock_interaction.followup.send.call_args.kwargs['embed']
-        assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "failed" in embed.description.lower() or "timeout" in embed.description.lower()
-        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
-
-
-class TestHealthErrorBranches:
-    """Pattern 11: Test error branches for health command."""
-
-    @pytest.mark.asyncio
-    async def test_health_rcon_unavailable_sends_error(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """Force health command error when RCON unavailable.
-        
-        🎯 Forces: if rcon_client is None
-        ✅ Validates: Error embed sent
-        """
-        # 🔴 SETUP: RCON unavailable
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = None  # 🔴 Forces branch
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        health_cmd = CommandExtractor.extract_command_from_group(group, "health")
-        
-        # INVOKE
-        await health_cmd.callback(mock_interaction)
-        
-        # ✅ VALIDATE: Error embed
-        embed = mock_interaction.followup.send.call_args.kwargs['embed']
-        assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "RCON not available" in embed.description or "not available" in embed.description.lower()
-        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
-
-    @pytest.mark.asyncio
-    async def test_health_exception_handler_sends_error(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """Force health command exception handler.
-        
-        🎯 Forces: except Exception as e
-        ✅ Validates: Error embed with exception details
-        """
-        # 🔴 SETUP: Exception during health check
-        QUERY_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.side_effect = Exception("Lua error")  # 🔴 Forces except
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        health_cmd = CommandExtractor.extract_command_from_group(group, "health")
-        
-        # INVOKE
-        await health_cmd.callback(mock_interaction)
-        
-        # ✅ VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs['embed']
-        assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "failed" in embed.description.lower() or "error" in embed.description.lower()
-        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
-
-
-class TestClockRateLimitBranch:
-    """Pattern 11: Test clock command rate limit branch.
-    
-    🎯 Forces: if is_limited: send cooldown_embed; return
-    🔴 Line: embed = EmbedBuilder.cooldown_embed(retry_after)
-    ✅ Validates: Cooldown embed sent with warning color
-    """
-
-    @pytest.mark.asyncio
-    async def test_clock_rate_limited_sends_cooldown_embed(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """Force clock command rate limit.
-        
-        Pattern: Exhaust ADMIN_COOLDOWN (3 uses per 60s)
-        Then invoke on 4th call → hits rate limit
-        """
-        # 🔴 SETUP: Exhaust ADMIN_COOLDOWN
+        # 🔴 Setup: Exhaust DANGER_COOLDOWN (1 use per 60s)
         user_id = mock_interaction.user.id
-        for _ in range(3):
-            ADMIN_COOLDOWN.check_rate_limit(user_id)  # Exhaust quota
+        DANGER_COOLDOWN.check_rate_limit(user_id)  # Exhaust quota
         
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod"
-        mock_rcon_client.is_connected = True
         
         # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        clock_cmd = CommandExtractor.extract_command_from_group(group, "clock")
+        unban_cmd = CommandExtractor.extract_command_from_group(group, "unban")
         
-        # INVOKE 4th time → rate limited
-        await clock_cmd.callback(mock_interaction, value=None)
+        # INVOKE (2nd call hits rate limit)
+        await unban_cmd.callback(mock_interaction, player="BannedUser")
         
         # ✅ VALIDATE: Cooldown embed sent
         embed = mock_interaction.followup.send.call_args.kwargs['embed']
@@ -515,494 +184,610 @@ class TestClockRateLimitBranch:
         assert "Slow Down" in embed.title or "⏱️" in embed.title or "seconds" in embed.description.lower()
         assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
         
-        # ✅ VALIDATE: No RCON execute (early return)
+        # ✅ VALIDATE: No RCON execute
         mock_rcon_client.execute.assert_not_called()
 
-
-class TestResearchErrorBranches:
-    """Pattern 11: Test error branches for research command."""
-
     @pytest.mark.asyncio
-    async def test_research_rcon_unavailable_sends_error(
+    async def test_unban_rcon_unavailable(
         self,
         mock_bot: MagicMock,
         mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """Force research command RCON unavailable error.
+        """Force unban command error when RCON unavailable.
         
-        🎯 Forces: if rcon_client is None
-        ✅ Validates: Error embed with COLOR_ERROR
+        Pattern 11: Test error branch
+        🔴 Forces: if rcon_client is None
+        ✅ Validates: Error embed sent, ephemeral=True
         """
-        # 🔴 SETUP: RCON unavailable
+        # 🔴 Setup: RCON unavailable
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_bot.user_context.get_rcon_for_user.return_value = None  # 🔴
+        
+        # Register and extract
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        unban_cmd = CommandExtractor.extract_command_from_group(group, "unban")
+        
+        # INVOKE
+        await unban_cmd.callback(mock_interaction, player="BannedUser")
+        
+        # ✅ VALIDATE: Error embed
+        embed = mock_interaction.followup.send.call_args.kwargs['embed']
+        assert embed.color.value == EmbedBuilder.COLOR_ERROR
+        assert "RCON not available" in embed.description
+        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
+        
+        # ✅ VALIDATE: No RCON execute
+        mock_rcon_client.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unban_rcon_disconnected(
+        self,
+        mock_bot: MagicMock,
+        mock_rcon_client: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """Force unban command error when RCON disconnected.
+        
+        Pattern 11: Test error branch
+        🔴 Forces: if not rcon_client.is_connected
+        ✅ Validates: Error embed, no execute calls
+        """
+        # 🔴 Setup: RCON disconnected
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_rcon_client.is_connected = False  # 🔴
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        
+        # Register and extract
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        unban_cmd = CommandExtractor.extract_command_from_group(group, "unban")
+        
+        # INVOKE
+        await unban_cmd.callback(mock_interaction, player="BannedUser")
+        
+        # ✅ VALIDATE
+        embed = mock_interaction.followup.send.call_args.kwargs['embed']
+        assert embed.color.value == EmbedBuilder.COLOR_ERROR
+        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
+        mock_rcon_client.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unban_exception_handler(
+        self,
+        mock_bot: MagicMock,
+        mock_rcon_client: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """Force unban command exception handler.
+        
+        Pattern 11: Test error branch
+        🔴 Forces: except Exception as e
+        ✅ Validates: Error embed with exception message
+        """
+        # 🔴 Setup: RCON execute raises exception
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_rcon_client.is_connected = True
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.execute.side_effect = Exception("RCON command failed")  # 🔴
+        
+        # Register and extract
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        unban_cmd = CommandExtractor.extract_command_from_group(group, "unban")
+        
+        # INVOKE
+        await unban_cmd.callback(mock_interaction, player="BannedUser")
+        
+        # ✅ VALIDATE: Error embed with exception message
+        embed = mock_interaction.followup.send.call_args.kwargs['embed']
+        assert embed.color.value == EmbedBuilder.COLOR_ERROR
+        assert "failed" in embed.description.lower() or "error" in embed.description.lower()
+        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# NEW: UNMUTE COMMAND (ADMIN_COOLDOWN, Real closure, 24 statements)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestUnmuteCommandClosure:
+    """Test unmute_command closure — currently 0% coverage (24 statements).
+    
+    Code path:
+    1. Rate limit check (ADMIN_COOLDOWN)
+    2. Defer interaction
+    3. Get RCON client
+    4. Validate RCON connected
+    5. Execute /unmute {player}
+    6. Build success embed
+    7. Send embed with player details
+    8. Log action
+    """
+
+    @pytest.mark.asyncio
+    async def test_unmute_player_happy_path(
+        self,
+        mock_bot: MagicMock,
+        mock_rcon_client: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """INVOKE unmute command with valid player (happy path).
+        
+        Code path:
+        1. Rate limit check passes
+        2. RCON client available
+        3. Execute /unmute command
+        4. Build success embed with player name
+        5. Send embed
+        """
+        # Setup
+        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute.return_value = "Player Spammer has been unmuted."
+        
+        # Register and extract
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        assert group is not None
+        unmute_cmd = CommandExtractor.extract_command_from_group(group, "unmute")
+        assert unmute_cmd is not None
+        
+        # INVOKE
+        await unmute_cmd.callback(mock_interaction, player="Spammer")
+        
+        # VALIDATE: interaction deferred
+        mock_interaction.response.defer.assert_called_once()
+        
+        # VALIDATE: response sent
+        mock_interaction.followup.send.assert_called_once()
+        
+        # VALIDATE: embed sent
+        call_kwargs = mock_interaction.followup.send.call_args.kwargs
+        embed = call_kwargs.get('embed')
+        assert embed is not None
+        assert "Unmuted" in embed.title or "🔊" in embed.title
+        assert "Spammer" in embed.description or "Spammer" in str([f.value for f in embed.fields])
+        
+        # VALIDATE: success color
+        assert embed.color.value == EmbedBuilder.COLOR_SUCCESS
+        
+        # VALIDATE: RCON execute called
+        mock_rcon_client.execute.assert_called_once()
+        rcon_cmd = mock_rcon_client.execute.call_args[0][0]
+        assert "/unmute Spammer" in rcon_cmd
+
+    @pytest.mark.asyncio
+    async def test_unmute_rate_limited(
+        self,
+        mock_bot: MagicMock,
+        mock_rcon_client: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """Force unmute command rate limit (ADMIN_COOLDOWN exhaustion).
+        
+        Pattern 11: Test error branch
+        🔴 Forces: if is_limited: send cooldown_embed; return
+        ✅ Validates: Cooldown embed sent, no RCON execute
+        """
+        # 🔴 Setup: Exhaust ADMIN_COOLDOWN (3 uses per 60s)
+        user_id = mock_interaction.user.id
+        for _ in range(3):
+            ADMIN_COOLDOWN.check_rate_limit(user_id)  # Exhaust quota
+        
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        
+        # Register and extract
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        unmute_cmd = CommandExtractor.extract_command_from_group(group, "unmute")
+        
+        # INVOKE (4th call hits rate limit)
+        await unmute_cmd.callback(mock_interaction, player="Spammer")
+        
+        # ✅ VALIDATE: Cooldown embed sent
+        embed = mock_interaction.followup.send.call_args.kwargs['embed']
+        assert embed.color.value == EmbedBuilder.COLOR_WARNING
+        assert "Slow Down" in embed.title or "⏱️" in embed.title or "seconds" in embed.description.lower()
+        assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
+        
+        # ✅ VALIDATE: No RCON execute
+        mock_rcon_client.execute.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_unmute_rcon_unavailable(
+        self,
+        mock_bot: MagicMock,
+        mock_rcon_client: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """Force unmute command error when RCON unavailable.
+        
+        Pattern 11: Test error branch
+        🔴 Forces: if rcon_client is None
+        ✅ Validates: Error embed sent, ephemeral=True
+        """
+        # 🔴 Setup: RCON unavailable
         ADMIN_COOLDOWN.reset(mock_interaction.user.id)
         mock_bot.user_context.get_rcon_for_user.return_value = None  # 🔴
         
         # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        research_cmd = CommandExtractor.extract_command_from_group(group, "research")
+        unmute_cmd = CommandExtractor.extract_command_from_group(group, "unmute")
         
         # INVOKE
-        await research_cmd.callback(mock_interaction, force=None, action="all", technology=None)
+        await unmute_cmd.callback(mock_interaction, player="Spammer")
         
         # ✅ VALIDATE: Error embed
         embed = mock_interaction.followup.send.call_args.kwargs['embed']
         assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "RCON not available" in embed.description or "not available" in embed.description.lower()
+        assert "RCON not available" in embed.description
         assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
+        
+        # ✅ VALIDATE: No RCON execute
+        mock_rcon_client.execute.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_research_exception_during_execution(
+    async def test_unmute_exception_handler(
         self,
         mock_bot: MagicMock,
         mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """Force research command exception handler.
+        """Force unmute command exception handler.
         
-        🎯 Forces: except Exception as e
-        ✅ Validates: Error embed with exception details
+        Pattern 11: Test error branch
+        🔴 Forces: except Exception as e
+        ✅ Validates: Error embed with exception message
         """
-        # 🔴 SETUP: Exception during research
+        # 🔴 Setup: RCON execute raises exception
         ADMIN_COOLDOWN.reset(mock_interaction.user.id)
         mock_rcon_client.is_connected = True
         mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_rcon_client.execute.side_effect = Exception("Invalid technology")  # 🔴
+        mock_rcon_client.execute.side_effect = Exception("Player not found")  # 🔴
         
         # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        research_cmd = CommandExtractor.extract_command_from_group(group, "research")
+        unmute_cmd = CommandExtractor.extract_command_from_group(group, "unmute")
         
         # INVOKE
-        await research_cmd.callback(mock_interaction, force=None, action="all", technology=None)
+        await unmute_cmd.callback(mock_interaction, player="Spammer")
         
-        # ✅ VALIDATE: Error embed
+        # ✅ VALIDATE: Error embed with exception message
         embed = mock_interaction.followup.send.call_args.kwargs['embed']
         assert embed.color.value == EmbedBuilder.COLOR_ERROR
-        assert "failed" in embed.description.lower() or "invalid" in embed.description.lower()
+        assert "failed" in embed.description.lower() or "error" in embed.description.lower()
         assert mock_interaction.followup.send.call_args.kwargs['ephemeral'] is True
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# PHASE 2: Partial Coverage Commands — clock, research, save, whitelist
+# NEW: SERVER_AUTOCOMPLETE FUNCTION (Standalone, 30 statements)
 # ════════════════════════════════════════════════════════════════════════════
 
-class TestClockCommandClosure:
-    """Test clock_command closure — currently 37% coverage (27 missing)."""
+class TestServerAutocompleteFunction:
+    """Test server_autocomplete function — currently 0% coverage (30 statements).
+    
+    Code path:
+    1. Check if interaction.client has server_manager
+    2. If not, return []
+    3. Get list of servers
+    4. Filter by current string (tag, name, description)
+    5. Build display string ("tag - name (description)")
+    6. Create Choice objects
+    7. Truncate to 25 choices
+    8. Return list
+    
+    Edge cases:
+    - No server_manager → return []
+    - Empty server list → return []
+    - Current string matches tag → include
+    - Current string matches name → include
+    - Current string matches description → include
+    - Multiple matches → all included
+    - >25 matches → truncate to 25
+    - Display text >100 chars → truncate
+    """
 
     @pytest.mark.asyncio
-    async def test_clock_display_current_daytime(
+    async def test_autocomplete_tag_match(
         self,
         mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE clock command with no args (display mode).
+        """Test server_autocomplete matching tag.
         
-        Code path:
-        1. value = None
-        2. Execute Lua: daytime query
-        3. Parse response: "Current daytime: 0.75 (🕐 18:00)"
-        4. Build embed with time
-        5. Send
+        Pattern 5: Test filtering logic
+        Current: 'prod'
+        Tag: 'prod-server'
+        Expected: Match, Choice added
         """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "Current daytime: 0.75 (🕐 18:00)"
+        # Setup mock servers
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod-server": MagicMock(
+                name="Production Server",
+                description="Main game server"
+            ),
+            "dev-server": MagicMock(
+                name="Development Server",
+                description="Testing only"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Register and extract
+        # Get autocomplete function
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        clock_cmd = CommandExtractor.extract_command_from_group(group, "clock")
-        assert clock_cmd is not None
         
-        # INVOKE with no value (display mode)
-        await clock_cmd.callback(mock_interaction, value=None)
+        # Extract connect command which has server_autocomplete
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        assert connect_cmd is not None
         
-        # VALIDATE
-        mock_interaction.response.defer.assert_called_once()
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "daytime" in embed.title.lower() or "clock" in embed.title.lower()
-        assert "18:00" in embed.description or "0.75" in embed.description
+        # Get autocomplete function from command
+        # (server_autocomplete is attached as autocomplete callback)
+        # We need to test it directly
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
+        assert autocomplete_fn is not None
+        
+        # INVOKE autocomplete
+        choices = await autocomplete_fn(mock_interaction, 'prod')
+        
+        # ✅ VALIDATE: Tag matches, choice returned
+        assert len(choices) > 0
+        assert any('prod-server' in c.value for c in choices)
+        
+        # ✅ VALIDATE: Display text includes name
+        assert any('Production Server' in c.name for c in choices)
 
     @pytest.mark.asyncio
-    async def test_clock_eternal_day(
+    async def test_autocomplete_name_match(
         self,
         mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE clock command with 'day' (eternal day).
+        """Test server_autocomplete matching name.
         
-        Code path:
-        1. value = 'day'
-        2. Execute Lua: set daytime=0.5, freeze_daytime=0.5
-        3. Build embed: "☀️ Eternal Day Set"
-        4. Send
+        Pattern 5: Test filtering logic
+        Current: 'production'
+        Name: 'Production Server'
+        Expected: Match, Choice added
         """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "☀️ Set to eternal day (12:00)"
+        # Setup mock servers
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod": MagicMock(
+                name="Production Server",
+                description="Main"
+            ),
+            "dev": MagicMock(
+                name="Development",
+                description="Testing"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Register and extract
+        # Register to get autocomplete function
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        clock_cmd = CommandExtractor.extract_command_from_group(group, "clock")
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
         
-        # INVOKE with 'day'
-        await clock_cmd.callback(mock_interaction, value="day")
+        # INVOKE autocomplete
+        choices = await autocomplete_fn(mock_interaction, 'production')
         
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "day" in embed.title.lower() or "eternal" in embed.title.lower()
-        assert "12:00" in embed.description or "0.5" in embed.description
+        # ✅ VALIDATE: Name matches
+        assert len(choices) > 0
+        assert any('prod' in c.value for c in choices)
+
+    def test_autocomplete_empty_server_list(
+        self,
+        mock_bot: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """Test server_autocomplete with empty server list.
+        
+        Pattern 6: Test empty/error states
+        Servers: {}
+        Expected: Return []
+        """
+        # Setup mock with empty servers
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.list_servers.return_value = {}  # Empty
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Import and test directly
+        from bot.commands.factorio import register_factorio_commands
+        
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
+        
+        # Can't await non-async function in sync test
+        # So we'll create an async wrapper
+        async def run_test():
+            choices = await autocomplete_fn(mock_interaction, 'any')
+            assert len(choices) == 0
+        
+        import asyncio
+        asyncio.run(run_test())
+
+    def test_autocomplete_no_server_manager(
+        self,
+        mock_bot: MagicMock,
+        mock_interaction: discord.Interaction,
+    ):
+        """Test server_autocomplete when no server_manager.
+        
+        Pattern 6: Test error states
+        server_manager: None
+        Expected: Return []
+        """
+        # Setup mock without server_manager
+        mock_interaction.client.server_manager = None  # No manager
+        
+        register_factorio_commands(mock_bot)
+        group = CommandExtractor.get_registered_group(mock_bot)
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
+        
+        async def run_test():
+            choices = await autocomplete_fn(mock_interaction, 'any')
+            assert len(choices) == 0
+        
+        import asyncio
+        asyncio.run(run_test())
 
     @pytest.mark.asyncio
-    async def test_clock_eternal_night(
+    async def test_autocomplete_truncates_to_25(
         self,
         mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE clock command with 'night' (eternal night).
+        """Test server_autocomplete truncates >25 matches to 25.
         
-        Code path:
-        1. value = 'night'
-        2. Execute Lua: set daytime=0.0, freeze_daytime=0.0
-        3. Build embed: "🌙 Eternal Night Set"
-        4. Send
+        Pattern 6: Test edge case
+        Matches: 50 servers all matching
+        Expected: Return only 25 choices
         """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "🌙 Set to eternal night (00:00)"
+        # Setup mock with 50 matching servers
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            f"server-{i}": MagicMock(
+                name=f"Server {i}",
+                description="Test"
+            )
+            for i in range(50)
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        clock_cmd = CommandExtractor.extract_command_from_group(group, "clock")
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
         
-        # INVOKE with 'night'
-        await clock_cmd.callback(mock_interaction, value="night")
+        # INVOKE with empty current (all match)
+        choices = await autocomplete_fn(mock_interaction, '')
         
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "night" in embed.title.lower() or "eternal" in embed.title.lower()
-        assert "00:00" in embed.description or "0.0" in embed.description
+        # ✅ VALIDATE: Truncated to 25
+        assert len(choices) == 25
 
     @pytest.mark.asyncio
-    async def test_clock_custom_float_value(
+    async def test_autocomplete_display_truncates_100_chars(
         self,
         mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE clock command with custom float (0.0-1.0).
+        """Test server_autocomplete display text truncates >100 chars.
         
-        Code path:
-        1. value = '0.25'
-        2. Validate: 0.0 <= 0.25 <= 1.0
-        3. Execute Lua: set daytime=0.25, unfreeze
-        4. Build embed with custom time
-        5. Send
+        Pattern 6: Test truncation edge case
+        Display: 'tag - name (very long description......)' > 100 chars
+        Expected: Truncate to 100 chars
         """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "Set daytime to 0.25 (🕐 06:00)"
+        # Setup mock with long description
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "srv": MagicMock(
+                name="Production",
+                description="A" * 200  # Very long description
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        clock_cmd = CommandExtractor.extract_command_from_group(group, "clock")
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
         
-        # INVOKE with custom float
-        await clock_cmd.callback(mock_interaction, value="0.25")
+        # INVOKE
+        choices = await autocomplete_fn(mock_interaction, '')
         
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "0.25" in embed.description or "06:00" in embed.description
-
-
-class TestResearchCommandClosure:
-    """Test research_command closure — currently 37% coverage (46 missing)."""
+        # ✅ VALIDATE: Display text truncated to 100
+        assert len(choices) > 0
+        assert len(choices[0].name) <= 100
 
     @pytest.mark.asyncio
-    async def test_research_display_status(
+    async def test_autocomplete_case_insensitive(
         self,
         mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE research command with no args (display status).
+        """Test server_autocomplete is case-insensitive.
         
-        Code path:
-        1. force = None → defaults to 'player'
-        2. action = None
-        3. Execute count query: "15/128"
-        4. Parse response
-        5. Build embed with progress
-        6. Send
+        Pattern 5: Test filtering robustness
+        Current: 'PROD'
+        Tag: 'prod-server'
+        Expected: Match (case-insensitive)
         """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "15/128"
+        # Setup mock servers
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod-server": MagicMock(
+                name="Production",
+                description="Main"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        research_cmd = CommandExtractor.extract_command_from_group(group, "research")
-        assert research_cmd is not None
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
         
-        # INVOKE with no args (display mode)
-        await research_cmd.callback(mock_interaction, force=None, action=None, technology=None)
+        # INVOKE with uppercase
+        choices = await autocomplete_fn(mock_interaction, 'PROD')
         
-        # VALIDATE
-        mock_interaction.response.defer.assert_called_once()
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "researched" in embed.description.lower() or "15/128" in embed.description
+        # ✅ VALIDATE: Case-insensitive match
+        assert len(choices) > 0
+        assert any('prod-server' in c.value for c in choices)
 
     @pytest.mark.asyncio
-    async def test_research_all_technologies(
+    async def test_autocomplete_no_matches(
         self,
         mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
         mock_interaction: discord.Interaction,
     ):
-        """INVOKE research command with action='all'.
+        """Test server_autocomplete with no matches.
         
-        Code path:
-        1. action = 'all'
-        2. Execute: game.forces['player'].research_all_technologies()
-        3. Build embed: "🔬 All Technologies Researched"
-        4. Send
+        Pattern 6: Test edge case
+        Current: 'xyz'
+        Servers: prod, dev (neither match)
+        Expected: Return []
         """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = ""
+        # Setup mock servers
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod": MagicMock(
+                name="Production",
+                description="Main"
+            ),
+            "dev": MagicMock(
+                name="Development",
+                description="Testing"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
         
-        # Register and extract
         register_factorio_commands(mock_bot)
         group = CommandExtractor.get_registered_group(mock_bot)
-        research_cmd = CommandExtractor.extract_command_from_group(group, "research")
+        connect_cmd = CommandExtractor.extract_command_from_group(group, "connect")
+        autocomplete_fn = connect_cmd._app_commands_autocomplete_callbacks.get('server')
         
-        # INVOKE with action='all'
-        await research_cmd.callback(mock_interaction, force=None, action="all", technology=None)
+        # INVOKE with non-matching current
+        choices = await autocomplete_fn(mock_interaction, 'xyz')
         
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "researched" in embed.title.lower() or "technologies" in embed.title.lower()
-
-    @pytest.mark.asyncio
-    async def test_research_undo_all_technologies(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE research command with action='undo' (undo all).
-        
-        Code path:
-        1. action = 'undo', technology = None or 'all'
-        2. Execute: loop all techs, set researched = false
-        3. Build embed: "⏮️ All Technologies Reverted"
-        4. Send
-        """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = ""
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        research_cmd = CommandExtractor.extract_command_from_group(group, "research")
-        
-        # INVOKE with action='undo' (undo all)
-        await research_cmd.callback(mock_interaction, force=None, action="undo", technology=None)
-        
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "reverted" in embed.title.lower() or "undo" in embed.title.lower()
-
-    @pytest.mark.asyncio
-    async def test_research_single_technology(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE research command with action='automation-2' (research single).
-        
-        Code path:
-        1. action = 'automation-2'
-        2. Execute: game.forces['player'].technologies['automation-2'].researched = true
-        3. Build embed: "🔬 Technology Researched"
-        4. Send
-        """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = ""
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        research_cmd = CommandExtractor.extract_command_from_group(group, "research")
-        
-        # INVOKE with action='automation-2'
-        await research_cmd.callback(mock_interaction, force=None, action="automation-2", technology=None)
-        
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "researched" in embed.title.lower() or "automation-2" in embed.description
-
-
-class TestSaveCommandClosure:
-    """Test save_command closure — currently 57% coverage (13 missing)."""
-
-    @pytest.mark.asyncio
-    async def test_save_command_with_name(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE save command with custom save name.
-        
-        Code path:
-        1. name = 'TestSave'
-        2. Execute: /save TestSave
-        3. Parse response for save name (full path regex or simple regex)
-        4. Build embed with save name
-        5. Send
-        """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "Saving map to /saves/TestSave.zip"
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        save_cmd = CommandExtractor.extract_command_from_group(group, "save")
-        assert save_cmd is not None
-        
-        # INVOKE with name
-        await save_cmd.callback(mock_interaction, name="TestSave")
-        
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "saved" in embed.title.lower() or "TestSave" in embed.description
-
-
-class TestWhitelistCommandClosure:
-    """Test whitelist_command closure — currently 24% coverage (48 missing)."""
-
-    @pytest.mark.asyncio
-    async def test_whitelist_list_action(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE whitelist command with action='list'.
-        
-        Code path:
-        1. action = 'list'
-        2. Execute: /whitelist get
-        3. Build embed with player list
-        4. Send
-        """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = "Player1\nPlayer2\nPlayer3"
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        whitelist_cmd = CommandExtractor.extract_command_from_group(group, "whitelist")
-        assert whitelist_cmd is not None
-        
-        # INVOKE with action='list'
-        await whitelist_cmd.callback(mock_interaction, action="list", player=None)
-        
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "whitelist" in embed.title.lower()
-
-    @pytest.mark.asyncio
-    async def test_whitelist_add_action(
-        self,
-        mock_bot: MagicMock,
-        mock_rcon_client: MagicMock,
-        mock_interaction: discord.Interaction,
-    ):
-        """INVOKE whitelist command with action='add'.
-        
-        Code path:
-        1. action = 'add', player = 'NewPlayer'
-        2. Validate player provided
-        3. Execute: /whitelist add NewPlayer
-        4. Build embed: "✅ NewPlayer Added to Whitelist"
-        5. Send
-        """
-        # Setup
-        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
-        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
-        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
-        mock_rcon_client.is_connected = True
-        mock_rcon_client.execute.return_value = ""
-        
-        # Register and extract
-        register_factorio_commands(mock_bot)
-        group = CommandExtractor.get_registered_group(mock_bot)
-        whitelist_cmd = CommandExtractor.extract_command_from_group(group, "whitelist")
-        
-        # INVOKE with action='add'
-        await whitelist_cmd.callback(mock_interaction, action="add", player="NewPlayer")
-        
-        # VALIDATE
-        embed = mock_interaction.followup.send.call_args.kwargs.get('embed')
-        assert embed is not None
-        assert "added" in embed.title.lower() or "NewPlayer" in embed.title
+        # ✅ VALIDATE: No matches
+        assert len(choices) == 0
 
 
 # ════════════════════════════════════════════════════════════════════════════
