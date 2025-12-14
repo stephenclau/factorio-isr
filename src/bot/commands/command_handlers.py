@@ -64,53 +64,52 @@ logger = structlog.get_logger()
 class UserContextProvider(Protocol):
     """Interface for user context management (per-user server selection)."""
 
-    def get_user_server(self, user_id: int) -> str:
-        """Get currently selected server tag for user."""
-        ...
+    def get_user_server(self, user_id: int) -> str: ...
+    """Get currently selected server tag for user."""
+        
 
-    def get_server_display_name(self, user_id: int) -> str:
-        """Get display name for user's current server."""
-        ...
+    def get_server_display_name(self, user_id: int) -> str: ...
+    """Get display name for user's current server."""
+    
 
-    def get_rcon_for_user(self, user_id: int) -> Optional[Any]:
-        """Get RCON client for user's current server."""
-        ...
+    def get_rcon_for_user(self, user_id: int) -> Optional[Any]: ...
+    """Get RCON client for user's current server."""
+     
 
-    def set_user_server(self, user_id: int, server: str) -> None:
-        """Set user's active server context."""
-        ...
+    def set_user_server(self, user_id: int, server: str) -> None: ...
+    """Set user's active server context."""
+    
 
 
 class RconMetricsProvider(Protocol):
     """Interface for gathering metrics from Factorio server."""
 
-    async def gather_all_metrics(self) -> Dict[str, Any]:
-        """Gather comprehensive metrics (UPS, players, evolution, etc)."""
-        ...
+    async def gather_all_metrics(self) -> Dict[str, Any]: ...
+    """Gather comprehensive metrics (UPS, players, evolution, etc)."""
+    
 
 
 class ServerManagerProvider(Protocol):
     """Interface for server management and metrics."""
 
-    def get_metrics_engine(self, server_tag: str) -> Optional[RconMetricsProvider]:
-        """Get metrics engine for a server."""
-        ...
+    def get_metrics_engine(self, server_tag: str) -> Optional[RconMetricsProvider]:...
+    """Get metrics engine for a server."""
+        
 
-    def list_servers(self) -> Dict[str, Any]:
-        """List all available servers."""
-        ...
+    def list_servers(self) -> Dict[str, Any]: ...
+    """List all available servers."""
+        
 
-    def get_config(self, server: str) -> Any:
-        """Get configuration for specific server."""
-        ...
+    def get_config(self, server: str) -> Any: ...
+    """Get configuration for specific server."""
 
-    def get_status_summary(self) -> Dict[str, bool]:
-        """Get connection status summary for all servers."""
-        ...
+    def get_status_summary(self) -> Dict[str, bool]: ...
+    """Get connection status summary for all servers."""
 
-    def get_client(self, server: str) -> Any:
-        """Get RCON client for specific server."""
-        ...
+
+    def get_client(self, server: str) -> Any: ...
+    """Get RCON client for specific server."""
+        
 
     clients: Dict[str, Any]
 
@@ -119,55 +118,58 @@ class RconClientProvider(Protocol):
     """Interface for RCON command execution."""
 
     @property
-    def is_connected(self) -> bool:
-        """Whether RCON is connected."""
-        ...
-
-    async def execute(self, command: str) -> str:
-        """Execute RCON command and return response."""
-        ...
+    def is_connected(self) -> bool: ...
+    """Whether RCON is connected."""
+       
+    async def execute(self, command: str) -> str: ...        
+    """Execute RCON command and return response."""
+       
 
 
 class RateLimiter(Protocol):
     """Interface for rate limiting."""
 
-    def is_rate_limited(self, user_id: int) -> tuple[bool, Optional[float]]:
-        """Check if user is rate limited. Returns (is_limited, retry_after)."""
-        ...
-
+    def is_rate_limited(self, user_id: int) -> tuple[bool, Optional[float]]: ...
+    """Check if user is rate limited. Returns (is_limited, retry_after).""" 
 
 class EmbedBuilderType(Protocol):
-    """Interface for embed building utilities.
+    """Protocol for embed builder dependency injection."""
     
-    This protocol matches the actual EmbedBuilder implementation:
-    - Colors are class variables (ClassVar)
-    - cooldown_embed accepts int (retry_seconds from rate limiter)
-    """
-
+    # Color constants as ClassVars
     COLOR_SUCCESS: ClassVar[int]
     COLOR_WARNING: ClassVar[int]
     COLOR_INFO: ClassVar[int]
     COLOR_ADMIN: ClassVar[int]
-
+    COLOR_ERROR: ClassVar[int]
+    
     @staticmethod
-    def cooldown_embed(retry_seconds: int) -> discord.Embed:
-        """Create rate limit embed."""
-        ...
-
+    def create_base_embed(
+        title: str,
+        description: str | None = None,
+        color: int | None = None
+    ) -> Any:
+        """Create a base embed with title, optional description, and color."""
+    
     @staticmethod
-    def error_embed(message: str) -> discord.Embed:
-        """Create error embed."""
-        ...
-
+    def admin_action_embed(
+        action: str,
+        player: str,
+        moderator: str,
+        reason: str | None = None,
+        response: str | None = None
+    ) -> Any:
+        """Create an embed for admin actions."""
     @staticmethod
-    def info_embed(title: str, message: str) -> discord.Embed:
-        """Create info embed."""
-        ...
-
+    def error_embed(message: str) -> Any:
+        """Create an error embed."""
+    
     @staticmethod
-    def create_base_embed(title: str, color: int) -> discord.Embed:
-        """Create base embed with title and color."""
-        ...
+    def cooldown_embed(retry_after: float) -> Any:
+        """Create a cooldown warning embed."""
+        
+    @staticmethod
+    def info_embed(title: str, message: str) -> Any:
+        """Create an info embed (used heavily by handlers)."""
 
 
 class RconMonitorType(Protocol):
