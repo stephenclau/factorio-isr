@@ -255,38 +255,38 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         user_context=bot.user_context,
         server_manager=bot.server_manager,
         cooldown=QUERY_COOLDOWN,
-        embed_builder=EmbedBuilder,
+        embed_builder=EmbedBuilder, #type: ignore
         rcon_monitor=getattr(bot, "rcon_monitor", None),
     )
     players_handler = PlayersCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     version_handler = VersionCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     seed_handler = SeedCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     evolution_handler = EvolutionCommandHandler(
         user_context=bot.user_context,
         cooldown=QUERY_COOLDOWN,
-        embed_builder=EmbedBuilder,
+        embed_builder=EmbedBuilder, #type: ignore
     )
     admins_handler = AdminsCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     health_handler = HealthCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=QUERY_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
         bot=bot,  # type: ignore
     )
 
@@ -294,95 +294,95 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
     kick_handler = KickCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     ban_handler = BanCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     unban_handler = UnbanCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     mute_handler = MuteCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     unmute_handler = UnmuteCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     promote_handler = PromoteCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     demote_handler = DemoteCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
 
     # Server Management (4)
     save_handler = SaveCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     broadcast_handler = BroadcastCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     whisper_handler = WhisperCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     whitelist_handler = WhitelistCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
 
     # Game Control (3)
     clock_handler = ClockCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     speed_handler = SpeedCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=ADMIN_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
     research_handler = ResearchCommandHandler(
         user_context=bot.user_context,
         cooldown=ADMIN_COOLDOWN,
-        embed_builder=EmbedBuilder,
+        embed_builder=EmbedBuilder, #type: ignore
     )
 
     # Advanced (2)
     rcon_handler = RconCommandHandler(
         user_context_provider=bot.user_context,
         rate_limiter=DANGER_COOLDOWN,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
     )
-    help_handler = HelpCommandHandler(embed_builder_type=EmbedBuilder)
+    help_handler = HelpCommandHandler(embed_builder_type=EmbedBuilder) #type: ignore
 
     # Multi-Server (2)
     servers_handler = ServersCommandHandler(
         user_context_provider=bot.user_context,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
         server_manager=bot.server_manager,
     )
     connect_handler = ConnectCommandHandler(
         user_context_provider=bot.user_context,
-        embed_builder_type=EmbedBuilder,
+        embed_builder_type=EmbedBuilder, #type: ignore
         server_manager=bot.server_manager,
     )
 
