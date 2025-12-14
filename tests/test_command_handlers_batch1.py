@@ -37,7 +37,7 @@ from unittest.mock import AsyncMock, MagicMock
 from typing import Optional
 import discord
 
-from bot.commands.command_handlers_batch1 import (
+from bot.commands.command_handlers import (
     KickCommandHandler,
     BanCommandHandler,
     UnbanCommandHandler,

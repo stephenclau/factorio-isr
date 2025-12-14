@@ -54,7 +54,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 import discord
 
-from bot.commands.command_handlers_batch4 import (
+from bot.commands.command_handlers import (
     PlayersCommandHandler,
     VersionCommandHandler,
     SeedCommandHandler,

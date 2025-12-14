@@ -45,7 +45,7 @@ from unittest.mock import AsyncMock, MagicMock
 from typing import Optional
 import discord
 
-from bot.commands.command_handlers_batch3 import (
+from bot.commands.command_handlers import (
     ClockCommandHandler,
     SpeedCommandHandler,
     PromoteCommandHandler,

@@ -39,7 +39,7 @@ from bot.commands.command_handlers import (
     EvolutionCommandHandler,
     ResearchCommandHandler,
 )
-from bot.commands.command_handlers_batch1 import (
+from bot.commands.command_handlers import (
     KickCommandHandler,
     BanCommandHandler,
     UnbanCommandHandler,
