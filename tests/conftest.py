@@ -326,6 +326,62 @@ def mock_cooldown() -> MagicMock:
 
 
 @pytest.fixture
+def mock_embed_builder() -> MagicMock:
+    """Create a type-safe embed builder mock.
+    
+    Returns:
+        MagicMock: Mock adhering to EmbedBuilderType contract
+        
+    Type Contract:
+        - COLOR_SUCCESS: int = 0x00FF00 (green)
+        - COLOR_WARNING: int = 0xFFAA00 (orange)
+        - COLOR_ERROR: int = 0xFF0000 (red)
+        - COLOR_INFO: int = 0x0099FF (blue)
+        - COLOR_ADMIN: int = 0x9B59B6 (purple)
+        - cooldown_embed: Callable[[Optional[float]], discord.Embed]
+        - error_embed: Callable[[str], discord.Embed]
+        - info_embed: Callable[[str, str], discord.Embed]
+        - create_base_embed: Callable[[str, int], discord.Embed]
+    
+    Coverage:
+        - Color constants for embed styling
+        - Cooldown/rate limit embeds
+        - Error message embeds
+        - Info message embeds
+        - Base embed creation
+    """
+    builder: MagicMock = MagicMock()
+    
+    # Color constants
+    builder.COLOR_SUCCESS: int = 0x00FF00
+    builder.COLOR_WARNING: int = 0xFFAA00
+    builder.COLOR_ERROR: int = 0xFF0000
+    builder.COLOR_INFO: int = 0x0099FF
+    builder.COLOR_ADMIN: int = 0x9B59B6
+    
+    # Mock embed methods
+    mock_embed = MagicMock(spec=discord.Embed)
+    mock_embed.add_field = MagicMock()
+    mock_embed.set_footer = MagicMock()
+    mock_embed.color = builder.COLOR_INFO
+    
+    builder.cooldown_embed: Callable[[Optional[float]], MagicMock] = MagicMock(
+        return_value=mock_embed
+    )
+    builder.error_embed: Callable[[str], MagicMock] = MagicMock(
+        return_value=mock_embed
+    )
+    builder.info_embed: Callable[[str, str], MagicMock] = MagicMock(
+        return_value=mock_embed
+    )
+    builder.create_base_embed: Callable[[str, int], MagicMock] = MagicMock(
+        return_value=mock_embed
+    )
+    
+    return builder
+
+
+@pytest.fixture
 def mock_rcon_monitor() -> MagicMock:
     """Create a type-safe RCON monitor mock.
     
