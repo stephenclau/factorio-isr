@@ -153,7 +153,7 @@ class KickCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -235,7 +235,7 @@ class BanCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -313,7 +313,7 @@ class UnbanCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -388,7 +388,7 @@ class MuteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -463,7 +463,7 @@ class UnmuteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
