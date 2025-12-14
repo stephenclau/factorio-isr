@@ -1,1 +1,960 @@
-\"\"\"Factorio slash command group registration.\n\nAll /factorio subcommands are defined in this single file to respect Discord's\n25 subcommand-per-group limit. Currently using 25/25 slots.\n\nCommand Breakdown:\n- Multi-Server Commands: 2/25 (servers, connect)\n- Server Information: 7/25 (status, players, version, seed, evolution, admins, health)\n- Player Management: 7/25 (kick, ban, unban, mute, unmute, promote, demote)\n- Server Management: 4/25 (save, broadcast, whisper, whitelist)\n- Game Control: 3/25 (clock, speed, research)\n- Advanced: 2/25 (rcon, help)\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\nTOTAL: 25/25 (all slots used)\n\n\ud83d\udd04 Phase 4 Status: \ud83c\udf1f **ALL 25/25 COMMANDS PRODUCTION-READY** \ud83c\udf1f\n\"\"\"\n\nfrom typing import Any, List, Optional\nfrom datetime import datetime, timezone\nimport discord\nfrom discord import app_commands\nimport re\nimport structlog\n\ntry:\n    # Try flat layout first (when run from src/ directory)\n    from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN\n    from discord_interface import EmbedBuilder\nexcept ImportError:\n    try:\n        # Fallback to package style (when installed as package)\n        from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore\n        from src.discord_interface import EmbedBuilder  # type: ignore\n    except ImportError:\n        # Last resort: use relative imports from parent\n        try:\n            from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore\n            from ..discord_interface import EmbedBuilder  # type: ignore\n        except ImportError:\n            raise ImportError(\n                \"Could not import rate_limiting or discord_interface from any path\"\n            )\n\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n# \ud83d\udd04 Phase 3 + Phase 4: Command Handlers (DI + Command Pattern)\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\ntry:\n    # Batch 1: Player Management\n    from bot.commands.command_handlers_batch1 import (\n        KickCommandHandler,\n        BanCommandHandler,\n        UnbanCommandHandler,\n        MuteCommandHandler,\n        UnmuteCommandHandler,\n    )\n    # Batch 2: Server Management\n    from bot.commands.command_handlers_batch2 import (\n        SaveCommandHandler,\n        BroadcastCommandHandler,\n        WhisperCommandHandler,\n        WhitelistCommandHandler,\n    )\n    # Batch 3: Game Control + Admin\n    from bot.commands.command_handlers_batch3 import (\n        ClockCommandHandler,\n        SpeedCommandHandler,\n        PromoteCommandHandler,\n        DemoteCommandHandler,\n    )\n    # Batch 4: Remaining queries\n    from bot.commands.command_handlers_batch4 import (\n        PlayersCommandHandler,\n        VersionCommandHandler,\n        SeedCommandHandler,\n        AdminsCommandHandler,\n        HealthCommandHandler,\n        RconCommandHandler,\n        HelpCommandHandler,\n        ServersCommandHandler,\n        ConnectCommandHandler,\n    )\nexcept ImportError:\n    try:\n        from src.bot.commands.command_handlers_batch1 import (  # type: ignore\n            KickCommandHandler,\n            BanCommandHandler,\n            UnbanCommandHandler,\n            MuteCommandHandler,\n            UnmuteCommandHandler,\n        )\n        from src.bot.commands.command_handlers_batch2 import (  # type: ignore\n            SaveCommandHandler,\n            BroadcastCommandHandler,\n            WhisperCommandHandler,\n            WhitelistCommandHandler,\n        )\n        from src.bot.commands.command_handlers_batch3 import (  # type: ignore\n            ClockCommandHandler,\n            SpeedCommandHandler,\n            PromoteCommandHandler,\n            DemoteCommandHandler,\n        )\n        from src.bot.commands.command_handlers_batch4 import (  # type: ignore\n            PlayersCommandHandler,\n            VersionCommandHandler,\n            SeedCommandHandler,\n            AdminsCommandHandler,\n            HealthCommandHandler,\n            RconCommandHandler,\n            HelpCommandHandler,\n            ServersCommandHandler,\n            ConnectCommandHandler,\n        )\n    except ImportError:\n        from .command_handlers_batch1 import (\n            KickCommandHandler,\n            BanCommandHandler,\n            UnbanCommandHandler,\n            MuteCommandHandler,\n            UnmuteCommandHandler,\n        )\n        from .command_handlers_batch2 import (\n            SaveCommandHandler,\n            BroadcastCommandHandler,\n            WhisperCommandHandler,\n            WhitelistCommandHandler,\n        )\n        from .command_handlers_batch3 import (\n            ClockCommandHandler,\n            SpeedCommandHandler,\n            PromoteCommandHandler,\n            DemoteCommandHandler,\n        )\n        from .command_handlers_batch4 import (\n            PlayersCommandHandler,\n            VersionCommandHandler,\n            SeedCommandHandler,\n            AdminsCommandHandler,\n            HealthCommandHandler,\n            RconCommandHandler,\n            HelpCommandHandler,\n            ServersCommandHandler,\n            ConnectCommandHandler,\n        )\n\nlogger = structlog.get_logger()\n\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n# \ud83d\udd04 Global Handler Instances (22 total: 3 Phase 2 + 13 Phase 3 + 9 Phase 4 - 3 reused = 22 unique)\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\n# Batch 1: Player Management\nkick_handler: Optional[KickCommandHandler] = None\nban_handler: Optional[BanCommandHandler] = None\nunban_handler: Optional[UnbanCommandHandler] = None\nmute_handler: Optional[MuteCommandHandler] = None\nunmute_handler: Optional[UnmuteCommandHandler] = None\n\n# Batch 2: Server Management\nsave_handler: Optional[SaveCommandHandler] = None\nbroadcast_handler: Optional[BroadcastCommandHandler] = None\nwhisper_handler: Optional[WhisperCommandHandler] = None\nwhitelist_handler: Optional[WhitelistCommandHandler] = None\n\n# Batch 3: Game Control + Admin\nclock_handler: Optional[ClockCommandHandler] = None\nspeed_handler: Optional[SpeedCommandHandler] = None\npromote_handler: Optional[PromoteCommandHandler] = None\ndemote_handler: Optional[DemoteCommandHandler] = None\n\n# Batch 4: Remaining queries + advanced\nplayers_handler: Optional[PlayersCommandHandler] = None\nversion_handler: Optional[VersionCommandHandler] = None\nseed_handler: Optional[SeedCommandHandler] = None\nadmins_handler: Optional[AdminsCommandHandler] = None\nhealth_handler: Optional[HealthCommandHandler] = None\nrcon_handler: Optional[RconCommandHandler] = None\nhelp_handler: Optional[HelpCommandHandler] = None\nservers_handler: Optional[ServersCommandHandler] = None\nconnect_handler: Optional[ConnectCommandHandler] = None\n\n\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n# \ud83d\udd27 HELPER: Import Phase 2 Handlers (Status + Research)\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\ndef _import_phase2_handlers() -> tuple[Any, Any]:\n    \"\"\"\n    Import Phase 2 handlers (StatusCommandHandler, ResearchCommandHandler).\n    \n    Evolution handler removed - now using function-based implementation.\n    Tries multiple import paths and returns tuple of handlers or None values.\n    \n    Returns:\n        Tuple of (StatusCommandHandler, ResearchCommandHandler)\n    \"\"\"\n    StatusCommandHandler = None\n    ResearchCommandHandler = None\n    \n    # Try Path 1: Relative import from same directory\n    try:\n        from .command_handlers import (\n            StatusCommandHandler as sh,\n            ResearchCommandHandler as rh,\n        )\n        StatusCommandHandler, ResearchCommandHandler = sh, rh\n        logger.info(\"phase2_handlers_imported\", path=\"relative_from_same_directory\")\n        return StatusCommandHandler, ResearchCommandHandler\n    except (ImportError, AttributeError) as e:\n        logger.debug(\"phase2_import_failed_path1\", error=str(e))\n    \n    # Try Path 2: Absolute import via bot.commands\n    try:\n        from bot.commands.command_handlers import (\n            StatusCommandHandler as sh,\n            ResearchCommandHandler as rh,\n        )\n        StatusCommandHandler, ResearchCommandHandler = sh, rh\n        logger.info(\"phase2_handlers_imported\", path=\"absolute_bot_commands\")\n        return StatusCommandHandler, ResearchCommandHandler\n    except (ImportError, AttributeError) as e:\n        logger.debug(\"phase2_import_failed_path2\", error=str(e))\n    \n    # Try Path 3: Absolute import via src.bot.commands\n    try:\n        from src.bot.commands.command_handlers import (  # type: ignore\n            StatusCommandHandler as sh,\n            ResearchCommandHandler as rh,\n        )\n        StatusCommandHandler, ResearchCommandHandler = sh, rh\n        logger.info(\"phase2_handlers_imported\", path=\"absolute_src_bot_commands\")\n        return StatusCommandHandler, ResearchCommandHandler\n    except (ImportError, AttributeError) as e:\n        logger.debug(\"phase2_import_failed_path3\", error=str(e))\n    \n    # All paths failed\n    logger.warning(\"phase2_handlers_not_available\", status=\"will_use_fallback_embeds\")\n    return None, None\n\n\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n# \ud83d\udd27 HELPER: Null-Safe Response Handler\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\nasync def send_command_response(\n    interaction: discord.Interaction,\n    result: Any,\n    defer_before_send: bool = False,\n) -> None:\n    \"\"\"\n    Safely send command response handling null embeds and deferred responses.\n    \n    Args:\n        interaction: Discord interaction object\n        result: CommandResult with success, embed, error_embed, ephemeral attributes\n        defer_before_send: If True, defer interaction before sending via followup\n    \"\"\"\n    if result.success and result.embed:\n        # Success case with valid embed\n        if defer_before_send:\n            await interaction.response.defer()\n            await interaction.followup.send(embed=result.embed, ephemeral=result.ephemeral)\n        else:\n            await interaction.response.send_message(embed=result.embed, ephemeral=result.ephemeral)\n    else:\n        # Error case - always have error_embed (or create default)\n        error_embed = result.error_embed if result.error_embed else EmbedBuilder.error_embed(\n            \"An unexpected error occurred. Please try again later.\"\n        )\n        await interaction.response.send_message(\n            embed=error_embed,\n            ephemeral=result.ephemeral,\n        )\n\n\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n# \ud83d\udd04 Composition Root - Initialize ALL 22 handlers\n# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n\ndef _initialize_all_handlers(bot: Any) -> None:\n    \"\"\"Initialize all 22 command handlers with DI.\"\"\"\n    global kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler\n    global save_handler, broadcast_handler, whisper_handler, whitelist_handler\n    global clock_handler, speed_handler, promote_handler, demote_handler\n    global players_handler, version_handler, seed_handler, admins_handler\n    global health_handler, rcon_handler, help_handler, servers_handler, connect_handler\n\n    logger.info(\"initializing_all_handlers\", count=22)\n\n    # \ud83d\udd34 BATCH 1: Player Management (5 handlers)\n    kick_handler = KickCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    ban_handler = BanCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=DANGER_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    unban_handler = UnbanCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=DANGER_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    mute_handler = MuteCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    unmute_handler = UnmuteCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    logger.info(\"batch1_initialized\", handlers=5)\n\n    # \ud83d\udfe0 BATCH 2: Server Management (4 handlers)\n    save_handler = SaveCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    broadcast_handler = BroadcastCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    whisper_handler = WhisperCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    whitelist_handler = WhitelistCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    logger.info(\"batch2_initialized\", handlers=4)\n\n    # \ud83d\udfe1 BATCH 3: Game Control + Admin (4 handlers)\n    clock_handler = ClockCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    speed_handler = SpeedCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=ADMIN_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    promote_handler = PromoteCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=DANGER_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    demote_handler = DemoteCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=DANGER_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    logger.info(\"batch3_initialized\", handlers=4)\n\n    # \ud83d\udfe2 BATCH 4: Remaining (9 handlers)\n    players_handler = PlayersCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=QUERY_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    version_handler = VersionCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=QUERY_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    seed_handler = SeedCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=QUERY_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    admins_handler = AdminsCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=QUERY_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    health_handler = HealthCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=QUERY_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n        bot=bot,\n    )\n    rcon_handler = RconCommandHandler(\n        user_context_provider=bot.user_context,\n        rate_limiter=DANGER_COOLDOWN,\n        embed_builder_type=EmbedBuilder,\n    )\n    help_handler = HelpCommandHandler(embed_builder_type=EmbedBuilder)\n    servers_handler = ServersCommandHandler(\n        user_context_provider=bot.user_context,\n        embed_builder_type=EmbedBuilder,\n        server_manager=bot.server_manager,\n    )\n    connect_handler = ConnectCommandHandler(\n        user_context_provider=bot.user_context,\n        embed_builder_type=EmbedBuilder,\n        server_manager=bot.server_manager,\n    )\n    logger.info(\"batch4_initialized\", handlers=9)\n    logger.info(\"all_handlers_initialized_complete\", total=22)\n\n\ndef register_factorio_commands(bot: Any) -> None:\n    \"\"\"\n    Register all /factorio subcommands (Phase 1 + Phase 2 + Phase 3 + Phase 4).\n\n    This function creates and registers the complete /factorio command tree.\n    Discord limit: 25 subcommands per group (we use 25/25).\n    \n    All 25 commands now use DI + Command Pattern with handler delegations.\n\n    Args:\n        bot: DiscordBot instance with user_context, server_manager attributes\n    \"\"\"\n    # \ud83d\udd04 Initialize ALL handlers\n    _initialize_all_handlers(bot)\n    \n    # \ud83d\udd27 Import Phase 2 handlers (may fail gracefully - Status + Research only)\n    phase2_status_handler, phase2_research_handler = _import_phase2_handlers()\n\n    factorio_group = app_commands.Group(\n        name=\"factorio\",\n        description=\"Factorio server status, players, and RCON management\",\n    )\n\n    # ========================================================================\n    # MULTI-SERVER COMMANDS (2/25)\n    # ========================================================================\n\n    async def server_autocomplete(\n        interaction: discord.Interaction,\n        current: str,\n    ) -> List[app_commands.Choice[str]]:\n        \"\"\"Autocomplete server tags with display names.\"\"\"\n        if not hasattr(interaction.client, \"server_manager\"):\n            return []\n\n        server_manager = interaction.client.server_manager  # type: ignore\n        if not server_manager:\n            return []\n\n        current_lower = current.lower()\n        choices = []\n        for tag, config in server_manager.list_servers().items():\n            if (\n                current_lower in tag.lower()\n                or current_lower in config.name.lower()\n                or (config.description and current_lower in config.description.lower())\n            ):\n                display = f\"{tag} - {config.name}\"\n                if config.description:\n                    display += f\" ({config.description})\"\n                choices.append(\n                    app_commands.Choice(\n                        name=display[:100],\n                        value=tag,\n                    )\n                )\n\n        return choices[:25]\n\n    @factorio_group.command(name=\"servers\", description=\"List available Factorio servers\")\n    async def servers_command(interaction: discord.Interaction) -> None:\n        \"\"\"List all configured servers. Delegates to ServersCommandHandler.\"\"\"\n        if not servers_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Server handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await servers_handler.execute(interaction)\n        await send_command_response(interaction, result, defer_before_send=False)\n\n    @factorio_group.command(\n        name=\"connect\", description=\"Connect to a specific Factorio server\"\n    )\n    @app_commands.describe(server=\"Server tag (use autocomplete or /factorio servers)\")\n    @app_commands.autocomplete(server=server_autocomplete)\n    async def connect_command(interaction: discord.Interaction, server: str) -> None:\n        \"\"\"Switch user's context to a different server. Delegates to ConnectCommandHandler.\"\"\"\n        if not connect_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Connect handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await connect_handler.execute(interaction, server=server)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    # ========================================================================\n    # SERVER INFORMATION COMMANDS (7/25)\n    # ========================================================================\n\n    @factorio_group.command(name=\"status\", description=\"Show Factorio server status\")\n    async def status_command(interaction: discord.Interaction) -> None:\n        \"\"\"Get comprehensive server status (Phase 2 handler - Status).\"\"\"\n        if not phase2_status_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Status handler not available (Phase 2 module not found)\"),\n                ephemeral=True,\n            )\n            return\n        try:\n            result = await phase2_status_handler.execute(interaction)\n            await send_command_response(interaction, result, defer_before_send=True)\n        except Exception as e:\n            logger.error(\"status_command_error\", error=str(e))\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(f\"Failed to get status: {str(e)}\"),\n                ephemeral=True,\n            )\n\n    @factorio_group.command(name=\"players\", description=\"List players currently online\")\n    async def players_command(interaction: discord.Interaction) -> None:\n        \"\"\"List online players. Delegates to PlayersCommandHandler.\"\"\"\n        if not players_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Players handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await players_handler.execute(interaction)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"version\", description=\"Show Factorio server version\")\n    async def version_command(interaction: discord.Interaction) -> None:\n        \"\"\"Get Factorio server version. Delegates to VersionCommandHandler.\"\"\"\n        if not version_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Version handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await version_handler.execute(interaction)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"seed\", description=\"Show map seed\")\n    async def seed_command(interaction: discord.Interaction) -> None:\n        \"\"\"Get map seed. Delegates to SeedCommandHandler.\"\"\"\n        if not seed_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Seed handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await seed_handler.execute(interaction)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(\n        name=\"evolution\",\n        description=\"Show evolution for a surface or all non-platform surfaces\",\n    )\n    @app_commands.describe(\n        target='Surface/planet name (e.g. \"nauvis\") or the keyword \"all\"',\n    )\n    async def evolution_command(\n        interaction: discord.Interaction,\n        target: str,\n    ) -> None:\n        \"\"\"\n        Show enemy evolution - Function-based implementation.\n        /factorio evolution all -> aggregate evolution across all non-platform surfaces\n        /factorio evolution nauvis -> evolution for surface 'nauvis' only\n        \"\"\"\n        await interaction.response.defer()\n\n        # Get user-specific RCON client\n        rcon_client = bot.get_rcon_for_user(interaction.user.id)\n        if rcon_client is None or not rcon_client.is_connected:\n            server_name = bot.get_server_display_name(interaction.user.id)\n            embed = EmbedBuilder.error_embed(\n                f\"RCON not available for {server_name}.\\n\\n\"\n                \"Use `/factorio servers` to see available servers.\"\n            )\n            await interaction.followup.send(embed=embed, ephemeral=True)\n            return\n\n        raw = target.strip()\n        lower = raw.lower()\n\n        try:\n            if lower == \"all\":\n                # Aggregate + detailed per-surface evolution, skipping platform surfaces\n                lua = (\n                    \"/sc \"\n                    \"local f = game.forces['enemy']; \"\n                    \"local total = 0; local count = 0; \"\n                    \"local lines = {}; \"\n                    \"for _, s in pairs(game.surfaces) do \"\n                    \"  if not string.find(string.lower(s.name), 'platform') then \"\n                    \"    local evo = f.get_evolution_factor(s); \"\n                    \"    total = total + evo; count = count + 1; \"\n                    \"    table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); \"\n                    \"  end \"\n                    \"end; \"\n                    \"if count > 0 then \"\n                    \"  local avg = total / count; \"\n                    \"  rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); \"\n                    \"else \"\n                    \"  rcon.print('AGG:0.00%'); \"\n                    \"end; \"\n                    \"for _, line in ipairs(lines) do \"\n                    \"  rcon.print(line); \"\n                    \"end\"\n                )\n                resp = await rcon_client.execute(lua)\n                lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]\n                agg_line = next((ln for ln in lines if ln.startswith(\"AGG:\")), None)\n                per_surface = [ln for ln in lines if not ln.startswith(\"AGG:\")]\n\n                agg_value = \"0.00%\"\n                if agg_line:\n                    agg_value = agg_line.replace(\"AGG:\", \"\", 1).strip()\n\n                if not per_surface:\n                    title = \"\ud83d\udc1b Evolution \u2013 All Surfaces\"\n                    message = (\n                        f\"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\\n\\n\"\n                        \"No individual non-platform surfaces returned evolution data.\"\n                    )\n                else:\n                    formatted = \"\\n\".join(f\"\u2022 `{ln}`\" for ln in per_surface)\n                    title = \"\ud83d\udc1b Evolution \u2013 All Non-platform Surfaces\"\n                    message = (\n                        f\"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\\n\\n\"\n                        \"Per-surface evolution:\\n\\n\"\n                        f\"{formatted}\"\n                    )\n\n                embed = EmbedBuilder.info_embed(title=title, message=message)\n                await interaction.followup.send(embed=embed)\n                logger.info(\n                    \"evolution_requested\",\n                    moderator=interaction.user.name,\n                    target=\"all\",\n                )\n                return\n\n            # Single-surface mode\n            surface = raw\n            lua = (\n                \"/sc \"\n                f\"local s = game.get_surface('{surface}'); \"\n                \"if not s then \"\n                \"  rcon.print('SURFACE_NOT_FOUND'); \"\n                \"  return \"\n                \"end; \"\n                \"if string.find(string.lower(s.name), 'platform') then \"\n                \"  rcon.print('SURFACE_PLATFORM_IGNORED'); \"\n                \"  return \"\n                \"end; \"\n                \"local evo = game.forces['enemy'].get_evolution_factor(s); \"\n                \"rcon.print(string.format('%.2f%%', evo * 100))\"\n            )\n            resp = await rcon_client.execute(lua)\n            resp_str = resp.strip()\n\n            if resp_str == \"SURFACE_NOT_FOUND\":\n                embed = EmbedBuilder.error_embed(\n                    f\"Surface `{surface}` was not found.\\n\\n\"\n                    \"Use map tools or an admin command to list available surfaces.\"\n                )\n                await interaction.followup.send(embed=embed, ephemeral=True)\n                return\n\n            if resp_str == \"SURFACE_PLATFORM_IGNORED\":\n                embed = EmbedBuilder.error_embed(\n                    f\"Surface `{surface}` is a platform surface and is ignored for evolution queries.\"\n                )\n                await interaction.followup.send(embed=embed, ephemeral=True)\n                return\n\n            title = f\"\ud83d\udc1b Evolution \u2013 Surface `{surface}`\"\n            message = (\n                f\"Enemy evolution on `{surface}`: **{resp_str}**\\n\\n\"\n                \"Higher evolution means stronger biters!\"\n            )\n            embed = EmbedBuilder.info_embed(title=title, message=message)\n            await interaction.followup.send(embed=embed)\n            logger.info(\n                \"evolution_requested\",\n                moderator=interaction.user.name,\n                target=surface,\n            )\n\n        except Exception as e:\n            embed = EmbedBuilder.error_embed(f\"Failed to get evolution: {str(e)}\")\n            await interaction.followup.send(embed=embed, ephemeral=True)\n            logger.error(\n                \"evolution_command_failed\",\n                error=str(e),\n                target=target,\n            )\n\n    @factorio_group.command(name=\"admins\", description=\"List server administrators\")\n    async def admins_command(interaction: discord.Interaction) -> None:\n        \"\"\"Get list of admins. Delegates to AdminsCommandHandler.\"\"\"\n        if not admins_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Admins handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await admins_handler.execute(interaction)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"health\", description=\"Check bot and server health\")\n    async def health_command(interaction: discord.Interaction) -> None:\n        \"\"\"Check overall health status. Delegates to HealthCommandHandler.\"\"\"\n        if not health_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Health handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await health_handler.execute(interaction)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    # ========================================================================\n    # PLAYER MANAGEMENT COMMANDS (7/25)\n    # ========================================================================\n\n    @factorio_group.command(name=\"kick\", description=\"Kick a player from the server\")\n    @app_commands.describe(player=\"Player name\", reason=\"Reason for kick (optional)\")\n    async def kick_command(\n        interaction: discord.Interaction,\n        player: str,\n        reason: Optional[str] = None,\n    ) -> None:\n        \"\"\"Kick a player. Delegates to KickCommandHandler.\"\"\"\n        if not kick_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Kick handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await kick_handler.execute(interaction, player=player, reason=reason)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"ban\", description=\"Ban a player from the server\")\n    @app_commands.describe(player=\"Player name\", reason=\"Reason for ban (optional)\")\n    async def ban_command(\n        interaction: discord.Interaction,\n        player: str,\n        reason: Optional[str] = None,\n    ) -> None:\n        \"\"\"Ban a player. Delegates to BanCommandHandler.\"\"\"\n        if not ban_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Ban handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await ban_handler.execute(interaction, player=player, reason=reason)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"unban\", description=\"Unban a player\")\n    @app_commands.describe(player=\"Player name\")\n    async def unban_command(\n        interaction: discord.Interaction,\n        player: str,\n    ) -> None:\n        \"\"\"Unban a player. Delegates to UnbanCommandHandler.\"\"\"\n        if not unban_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Unban handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await unban_handler.execute(interaction, player=player)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"mute\", description=\"Mute a player\")\n    @app_commands.describe(player=\"Player name\")\n    async def mute_command(interaction: discord.Interaction, player: str) -> None:\n        \"\"\"Mute a player from chat. Delegates to MuteCommandHandler.\"\"\"\n        if not mute_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Mute handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await mute_handler.execute(interaction, player=player)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"unmute\", description=\"Unmute a player\")\n    @app_commands.describe(player=\"Player name\")\n    async def unmute_command(interaction: discord.Interaction, player: str) -> None:\n        \"\"\"Unmute a player. Delegates to UnmuteCommandHandler.\"\"\"\n        if not unmute_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Unmute handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await unmute_handler.execute(interaction, player=player)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"promote\", description=\"Promote player to admin\")\n    @app_commands.describe(player=\"Player name\")\n    async def promote_command(interaction: discord.Interaction, player: str) -> None:\n        \"\"\"Promote a player to admin. Delegates to PromoteCommandHandler.\"\"\"\n        if not promote_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Promote handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await promote_handler.execute(interaction, player=player)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"demote\", description=\"Demote player from admin\")\n    @app_commands.describe(player=\"Player name\")\n    async def demote_command(interaction: discord.Interaction, player: str) -> None:\n        \"\"\"Demote a player from admin. Delegates to DemoteCommandHandler.\"\"\"\n        if not demote_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Demote handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await demote_handler.execute(interaction, player=player)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    # ========================================================================\n    # SERVER MANAGEMENT COMMANDS (4/25)\n    # ========================================================================\n\n    @factorio_group.command(name=\"save\", description=\"Save the game\")\n    @app_commands.describe(name=\"Save name (optional, defaults to auto-save)\")\n    async def save_command(interaction: discord.Interaction, name: Optional[str] = None) -> None:\n        \"\"\"Save the game. Delegates to SaveCommandHandler.\"\"\"\n        if not save_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Save handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await save_handler.execute(interaction, name=name)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"broadcast\", description=\"Send message to all players\")\n    @app_commands.describe(message=\"Message to broadcast\")\n    async def broadcast_command(interaction: discord.Interaction, message: str) -> None:\n        \"\"\"Broadcast a message to all players. Delegates to BroadcastCommandHandler.\"\"\"\n        if not broadcast_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Broadcast handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await broadcast_handler.execute(interaction, message=message)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"whisper\", description=\"Send private message to a player\")\n    @app_commands.describe(player=\"Player name\", message=\"Message to send\")\n    async def whisper_command(\n        interaction: discord.Interaction,\n        player: str,\n        message: str,\n    ) -> None:\n        \"\"\"Send a private message to a player. Delegates to WhisperCommandHandler.\"\"\"\n        if not whisper_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Whisper handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await whisper_handler.execute(interaction, player=player, message=message)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"whitelist\", description=\"Manage server whitelist\")\n    @app_commands.describe(\n        action=\"Action to perform (add/remove/list/enable/disable)\",\n        player=\"Player name (required for add/remove)\",\n    )\n    async def whitelist_command(\n        interaction: discord.Interaction,\n        action: str,\n        player: Optional[str] = None,\n    ) -> None:\n        \"\"\"Manage the server whitelist. Delegates to WhitelistCommandHandler.\"\"\"\n        if not whitelist_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Whitelist handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await whitelist_handler.execute(interaction, action=action, player=player)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    # ========================================================================\n    # GAME CONTROL COMMANDS (3/25)\n    # ========================================================================\n\n    @factorio_group.command(name=\"clock\", description=\"Set or display game daytime\")\n    @app_commands.describe(value=\"'day'/'night' or 0.0-1.0, or leave empty to view\")\n    async def clock_command(interaction: discord.Interaction, value: Optional[str] = None) -> None:\n        \"\"\"Set or display the game clock. Delegates to ClockCommandHandler.\"\"\"\n        if not clock_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Clock handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await clock_handler.execute(interaction, value=value)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"speed\", description=\"Set game speed\")\n    @app_commands.describe(value=\"Game speed (0.1-10.0, 1.0 = normal)\")\n    async def speed_command(interaction: discord.Interaction, value: float) -> None:\n        \"\"\"Set game speed. Delegates to SpeedCommandHandler.\"\"\"\n        if not speed_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Speed handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await speed_handler.execute(interaction, value=value)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(\n        name=\"research\",\n        description=\"Manage technology research (Coop: player force, PvP: specify force)\"\n    )\n    @app_commands.describe(\n        force='Force name (e.g., \"player\", \"enemy\"). Defaults to \"player\".',\n        action='Action: \"all\", tech name, \"undo\", or empty to display status',\n        technology='Technology name (for undo operations with specific tech)',\n    )\n    async def research_command(\n        interaction: discord.Interaction,\n        force: Optional[str] = None,\n        action: Optional[str] = None,\n        technology: Optional[str] = None,\n    ) -> None:\n        \"\"\"Manage technology research (Phase 2 handler - ResearchCommandHandler).\"\"\"\n        if not phase2_research_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Research handler not available (Phase 2 module not found)\"),\n                ephemeral=True,\n            )\n            return\n        try:\n            result = await phase2_research_handler.execute(\n                interaction, force=force, action=action, technology=technology\n            )\n            await send_command_response(interaction, result, defer_before_send=True)\n        except Exception as e:\n            logger.error(\"research_command_error\", error=str(e))\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(f\"Failed to manage research: {str(e)}\"),\n                ephemeral=True,\n            )\n\n    # ========================================================================\n    # ADVANCED COMMANDS (2/25)\n    # ========================================================================\n\n    @factorio_group.command(name=\"rcon\", description=\"Run raw RCON command\")\n    @app_commands.describe(command=\"RCON command to execute\")\n    async def rcon_command(interaction: discord.Interaction, command: str) -> None:\n        \"\"\"Execute a raw RCON command. Delegates to RconCommandHandler.\"\"\"\n        if not rcon_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"RCON handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await rcon_handler.execute(interaction, command=command)\n        await send_command_response(interaction, result, defer_before_send=True)\n\n    @factorio_group.command(name=\"help\", description=\"Show available Factorio commands\")\n    async def help_command(interaction: discord.Interaction) -> None:\n        \"\"\"Display comprehensive help message. Delegates to HelpCommandHandler.\"\"\"\n        if not help_handler:\n            await interaction.response.send_message(\n                embed=EmbedBuilder.error_embed(\"Help handler not initialized\"),\n                ephemeral=True,\n            )\n            return\n        result = await help_handler.execute(interaction)\n        # HelpCommandHandler returns success but result.embed is None (plain text format by design)\n        # Send help text as message content directly\n        if result.success:\n            help_text = (\n                \"**\ud83c\udfed Factorio ISR Bot \u2013 Commands**\\n\\n\"\n                \"**\ud83c\udf0d Multi-Server**\\n\"\n                \"`/factorio servers` \u2013 List available servers\\n\"\n                \"`/factorio connect <server>` \u2013 Switch to a server\\n\\n\"\n                \"**\ud83d\udcca Server Information**\\n\"\n                \"`/factorio status` \u2013 Show server status and uptime\\n\"\n                \"`/factorio players` \u2013 List players currently online\\n\"\n                \"`/factorio version` \u2013 Show Factorio server version\\n\"\n                \"`/factorio seed` \u2013 Show map seed\\n\"\n                \"`/factorio evolution [target]` \u2013 Show enemy evolution\\n\"\n                \"`/factorio admins` \u2013 List server administrators\\n\"\n                \"`/factorio health` \u2013 Check bot and server health\\n\\n\"\n                \"**\ud83d\udc65 Player Management**\\n\"\n                \"`/factorio kick <player> [reason]` \u2013 Kick a player\\n\"\n                \"`/factorio ban <player> [reason]` \u2013 Ban a player\\n\"\n                \"`/factorio unban <player>` \u2013 Unban a player\\n\"\n                \"`/factorio mute <player>` \u2013 Mute a player from chat\\n\"\n                \"`/factorio unmute <player>` \u2013 Unmute a player\\n\"\n                \"`/factorio promote <player>` \u2013 Promote player to admin\\n\"\n                \"`/factorio demote <player>` \u2013 Demote player from admin\\n\\n\"\n                \"**\ud83d\udd27 Server Management**\\n\"\n                \"`/factorio broadcast <message>` \u2013 Send message to all players\\n\"\n                \"`/factorio whisper <player> <message>` \u2013 Send private message\\n\"\n                \"`/factorio save [name]` \u2013 Save the game\\n\"\n                \"`/factorio whitelist <action> [player]` \u2013 Manage whitelist\\n\\n\"\n                \"**\ud83c\udfae Game Control**\\n\"\n                \"`/factorio clock [value]` \u2013 Show/set game time\\n\"\n                \"`/factorio speed <value>` \u2013 Set game speed (0.1-10.0)\\n\"\n                \"`/factorio research <technology>` \u2013 Force research tech\\n\\n\"\n                \"**\ud83d\udee0\ufe0f Advanced**\\n\"\n                \"`/factorio rcon <command>` \u2013 Run raw RCON command\\n\"\n                \"`/factorio help` \u2013 Show this help message\\n\\n\"\n                \"_Most commands require RCON to be enabled._\"\n            )\n            await interaction.response.send_message(help_text, ephemeral=True)\n        else:\n            await interaction.response.send_message(\n                embed=result.error_embed or EmbedBuilder.error_embed(\"Help command failed\"),\n                ephemeral=True,\n            )\n\n    # ========================================================================\n    # Register the command group\n    # ========================================================================\n\n    bot.tree.add_command(factorio_group)\n    logger.info(\n        \"slash_commands_registered_complete\",\n        root=factorio_group.name,\n        command_count=len(factorio_group.commands),\n        phase=\"Phase 4: ALL 25/25 commands production-ready\",\n        total_handlers=22,\n        evolution_command=\"Function-based (no handler class)\",\n    )\n
+"""Factorio slash command group registration.
+
+All /factorio subcommands are defined in this single file to respect Discord's
+25 subcommand-per-group limit. Currently using 17/25 slots.
+
+Command Breakdown:
+- Multi-Server Commands: 2/25 (servers, connect)
+- Server Information: 7/25 (status, players, version, seed, evolution, admins, health)
+- Player Management: 7/25 (kick, ban, unban, mute, unmute, promote, demote)
+- Server Management: 4/25 (save, broadcast, whisper, whitelist)
+- Game Control: 3/25 (clock, speed, research)
+- Advanced: 2/25 (rcon, help)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TOTAL: 17/25 (8 slots available for future expansion)
+
+🔄 Phase 4 Status: 🌟 **ALL 17/17 COMMANDS REFACTORED TO DI + COMMAND PATTERN** 🌟
+"""
+
+from typing import Any, List, Optional
+from datetime import datetime, timezone
+import discord
+from discord import app_commands
+import re
+import structlog
+
+try:
+    # Try flat layout first (when run from src/ directory)
+    from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
+    from discord_interface import EmbedBuilder
+except ImportError:
+    try:
+        # Fallback to package style (when installed as package)
+        from src.utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
+        from src.discord_interface import EmbedBuilder  # type: ignore
+    except ImportError:
+        # Last resort: use relative imports from parent
+        try:
+            from ..utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN  # type: ignore
+            from ..discord_interface import EmbedBuilder  # type: ignore
+        except ImportError:
+            raise ImportError(
+                "Could not import rate_limiting or discord_interface from any path"
+            )
+
+# ════════════════════════════════════════════════════════════════════════════
+# 🔄 Phase 3 + Phase 4: Command Handlers (DI + Command Pattern)
+# ════════════════════════════════════════════════════════════════════════════
+
+try:
+    # Batch 1: Player Management
+    from bot.commands.command_handlers_batch1 import (
+        KickCommandHandler,
+        BanCommandHandler,
+        UnbanCommandHandler,
+        MuteCommandHandler,
+        UnmuteCommandHandler,
+    )
+    # Batch 2: Server Management
+    from bot.commands.command_handlers_batch2 import (
+        SaveCommandHandler,
+        BroadcastCommandHandler,
+        WhisperCommandHandler,
+        WhitelistCommandHandler,
+    )
+    # Batch 3: Game Control + Admin
+    from bot.commands.command_handlers_batch3 import (
+        ClockCommandHandler,
+        SpeedCommandHandler,
+        PromoteCommandHandler,
+        DemoteCommandHandler,
+    )
+    # Batch 4: Remaining queries
+    from bot.commands.command_handlers_batch4 import (
+        PlayersCommandHandler,
+        VersionCommandHandler,
+        SeedCommandHandler,
+        AdminsCommandHandler,
+        HealthCommandHandler,
+        RconCommandHandler,
+        HelpCommandHandler,
+        ServersCommandHandler,
+        ConnectCommandHandler,
+    )
+except ImportError:
+    try:
+        from src.bot.commands.command_handlers_batch1 import (  # type: ignore
+            KickCommandHandler,
+            BanCommandHandler,
+            UnbanCommandHandler,
+            MuteCommandHandler,
+            UnmuteCommandHandler,
+        )
+        from src.bot.commands.command_handlers_batch2 import (  # type: ignore
+            SaveCommandHandler,
+            BroadcastCommandHandler,
+            WhisperCommandHandler,
+            WhitelistCommandHandler,
+        )
+        from src.bot.commands.command_handlers_batch3 import (  # type: ignore
+            ClockCommandHandler,
+            SpeedCommandHandler,
+            PromoteCommandHandler,
+            DemoteCommandHandler,
+        )
+        from src.bot.commands.command_handlers_batch4 import (  # type: ignore
+            PlayersCommandHandler,
+            VersionCommandHandler,
+            SeedCommandHandler,
+            AdminsCommandHandler,
+            HealthCommandHandler,
+            RconCommandHandler,
+            HelpCommandHandler,
+            ServersCommandHandler,
+            ConnectCommandHandler,
+        )
+    except ImportError:
+        from .command_handlers_batch1 import (
+            KickCommandHandler,
+            BanCommandHandler,
+            UnbanCommandHandler,
+            MuteCommandHandler,
+            UnmuteCommandHandler,
+        )
+        from .command_handlers_batch2 import (
+            SaveCommandHandler,
+            BroadcastCommandHandler,
+            WhisperCommandHandler,
+            WhitelistCommandHandler,
+        )
+        from .command_handlers_batch3 import (
+            ClockCommandHandler,
+            SpeedCommandHandler,
+            PromoteCommandHandler,
+            DemoteCommandHandler,
+        )
+        from .command_handlers_batch4 import (
+            PlayersCommandHandler,
+            VersionCommandHandler,
+            SeedCommandHandler,
+            AdminsCommandHandler,
+            HealthCommandHandler,
+            RconCommandHandler,
+            HelpCommandHandler,
+            ServersCommandHandler,
+            ConnectCommandHandler,
+        )
+
+logger = structlog.get_logger()
+
+# ════════════════════════════════════════════════════════════════════════════
+# 🔧 HELPER: Import Phase 2 Handlers
+# ════════════════════════════════════════════════════════════════════════════
+
+def _import_phase2_handlers() -> tuple[Any, Any, Any]:
+    """
+    Import Phase 2 handlers (StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler).
+    Tries multiple import paths and returns tuple of handlers or None values.
+    """
+    StatusCommandHandler = None
+    ResearchCommandHandler = None
+    EvolutionCommandHandler = None
+    
+    try:
+        from .command_handlers import (
+            StatusCommandHandler as sh,
+            ResearchCommandHandler as rh,
+            EvolutionCommandHandler as eh,
+        )
+        StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler = sh, rh, eh
+        logger.info("phase2_handlers_imported", path="relative")
+        return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
+    except (ImportError, AttributeError) as e:
+        logger.debug("phase2_import_failed_path1", error=str(e))
+    
+    try:
+        from bot.commands.command_handlers import (
+            StatusCommandHandler as sh,
+            ResearchCommandHandler as rh,
+            EvolutionCommandHandler as eh,
+        )
+        StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler = sh, rh, eh
+        logger.info("phase2_handlers_imported", path="absolute_bot_commands")
+        return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
+    except (ImportError, AttributeError) as e:
+        logger.debug("phase2_import_failed_path2", error=str(e))
+    
+    try:
+        from src.bot.commands.command_handlers import (  # type: ignore
+            StatusCommandHandler as sh,
+            ResearchCommandHandler as rh,
+            EvolutionCommandHandler as eh,
+        )
+        StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler = sh, rh, eh
+        logger.info("phase2_handlers_imported", path="absolute_src_bot_commands")
+        return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
+    except (ImportError, AttributeError) as e:
+        logger.debug("phase2_import_failed_path3", error=str(e))
+    
+    logger.warning("phase2_handlers_not_available", status="will_use_fallback_embeds")
+    return None, None, None
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 🔧 HELPER: Null-Safe Response Handler
+# ════════════════════════════════════════════════════════════════════════════
+
+async def send_command_response(
+    interaction: discord.Interaction,
+    result: Any,
+    defer_before_send: bool = False,
+) -> None:
+    """
+    Safely send command response handling null embeds and deferred responses.
+    """
+    if result.success and result.embed:
+        if defer_before_send:
+            await interaction.response.defer()
+            await interaction.followup.send(embed=result.embed, ephemeral=result.ephemeral)
+        else:
+            await interaction.response.send_message(embed=result.embed, ephemeral=result.ephemeral)
+    else:
+        error_embed = result.error_embed if result.error_embed else EmbedBuilder.error_embed(
+            "An unexpected error occurred. Please try again later."
+        )
+        await interaction.response.send_message(
+            embed=error_embed,
+            ephemeral=result.ephemeral,
+        )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# 🔧 HELPER: Register All Phase 3 + 4 Command Handlers
+# ════════════════════════════════════════════════════════════════════════════
+
+# Global handler instance variables
+kick_handler: Optional[KickCommandHandler] = None
+ban_handler: Optional[BanCommandHandler] = None
+unban_handler: Optional[UnbanCommandHandler] = None
+mute_handler: Optional[MuteCommandHandler] = None
+unmute_handler: Optional[UnmuteCommandHandler] = None
+save_handler: Optional[SaveCommandHandler] = None
+broadcast_handler: Optional[BroadcastCommandHandler] = None
+whisper_handler: Optional[WhisperCommandHandler] = None
+whitelist_handler: Optional[WhitelistCommandHandler] = None
+clock_handler: Optional[ClockCommandHandler] = None
+speed_handler: Optional[SpeedCommandHandler] = None
+promote_handler: Optional[PromoteCommandHandler] = None
+demote_handler: Optional[DemoteCommandHandler] = None
+players_handler: Optional[PlayersCommandHandler] = None
+version_handler: Optional[VersionCommandHandler] = None
+seed_handler: Optional[SeedCommandHandler] = None
+admins_handler: Optional[AdminsCommandHandler] = None
+health_handler: Optional[HealthCommandHandler] = None
+rcon_handler: Optional[RconCommandHandler] = None
+help_handler: Optional[HelpCommandHandler] = None
+servers_handler: Optional[ServersCommandHandler] = None
+connect_handler: Optional[ConnectCommandHandler] = None
+
+
+def _initialize_all_handlers(bot: Any) -> None:
+    """Initialize all 22 command handlers with DI."""
+    global kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler
+    global save_handler, broadcast_handler, whisper_handler, whitelist_handler
+    global clock_handler, speed_handler, promote_handler, demote_handler
+    global players_handler, version_handler, seed_handler, admins_handler
+    global health_handler, rcon_handler, help_handler, servers_handler, connect_handler
+
+    logger.info("initializing_all_handlers", count=22)
+
+    kick_handler = KickCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    ban_handler = BanCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    unban_handler = UnbanCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    mute_handler = MuteCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    unmute_handler = UnmuteCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    save_handler = SaveCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    broadcast_handler = BroadcastCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    whisper_handler = WhisperCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    whitelist_handler = WhitelistCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    clock_handler = ClockCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    speed_handler = SpeedCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=ADMIN_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    promote_handler = PromoteCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    demote_handler = DemoteCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    players_handler = PlayersCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    version_handler = VersionCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    seed_handler = SeedCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    admins_handler = AdminsCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    health_handler = HealthCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=QUERY_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+        bot=bot,
+    )
+    rcon_handler = RconCommandHandler(
+        user_context_provider=bot.user_context,
+        rate_limiter=DANGER_COOLDOWN,
+        embed_builder_type=EmbedBuilder,
+    )
+    help_handler = HelpCommandHandler(embed_builder_type=EmbedBuilder)
+    servers_handler = ServersCommandHandler(
+        user_context_provider=bot.user_context,
+        embed_builder_type=EmbedBuilder,
+        server_manager=bot.server_manager,
+    )
+    connect_handler = ConnectCommandHandler(
+        user_context_provider=bot.user_context,
+        embed_builder_type=EmbedBuilder,
+        server_manager=bot.server_manager,
+    )
+    logger.info("all_handlers_initialized_complete", total=22)
+
+
+def register_factorio_commands(bot: Any) -> None:
+    """
+    Register all /factorio subcommands (Phase 1 + Phase 2 + Phase 3 + Phase 4).
+
+    This function creates and registers the complete /factorio command tree.
+    Discord limit: 25 subcommands per group (currently using 17/25).
+
+    Args:
+        bot: DiscordBot instance with user_context, server_manager attributes
+    """
+    _initialize_all_handlers(bot)
+    
+    phase2_status_handler, phase2_research_handler, phase2_evolution_handler = _import_phase2_handlers()
+
+    factorio_group = app_commands.Group(
+        name="factorio",
+        description="Factorio server status, players, and RCON management",
+    )
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # MULTI-SERVER (2)
+    # ════════════════════════════════════════════════════════════════════════════
+
+    async def server_autocomplete(
+        interaction: discord.Interaction,
+        current: str,
+    ) -> List[app_commands.Choice[str]]:
+        """Autocomplete server tags with display names."""
+        if not hasattr(interaction.client, "server_manager"):
+            return []
+
+        server_manager = interaction.client.server_manager
+        if not server_manager:
+            return []
+
+        current_lower = current.lower()
+        choices = []
+        for tag, config in server_manager.list_servers().items():
+            if (
+                current_lower in tag.lower()
+                or current_lower in config.name.lower()
+                or (config.description and current_lower in config.description.lower())
+            ):
+                display = f"{tag} - {config.name}"
+                if config.description:
+                    display += f" ({config.description})"
+                choices.append(
+                    app_commands.Choice(
+                        name=display[:100],
+                        value=tag,
+                    )
+                )
+
+        return choices[:25]
+
+    @factorio_group.command(name="servers", description="List available Factorio servers")
+    async def servers_command(interaction: discord.Interaction) -> None:
+        if not servers_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Server handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await servers_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=False)
+
+    @factorio_group.command(
+        name="connect", description="Connect to a specific Factorio server"
+    )
+    @app_commands.describe(server="Server tag (use autocomplete or /factorio servers)")
+    @app_commands.autocomplete(server=server_autocomplete)
+    async def connect_command(interaction: discord.Interaction, server: str) -> None:
+        if not connect_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Connect handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await connect_handler.execute(interaction, server=server)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # SERVER INFORMATION (7)
+    # ════════════════════════════════════════════════════════════════════════════
+
+    @factorio_group.command(name="status", description="Show Factorio server status")
+    async def status_command(interaction: discord.Interaction) -> None:
+        if not phase2_status_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Status handler not available (Phase 2 module not found)"),
+                ephemeral=True,
+            )
+            return
+        result = await phase2_status_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="players", description="List players currently online")
+    async def players_command(interaction: discord.Interaction) -> None:
+        if not players_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Players handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await players_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="version", description="Show Factorio server version")
+    async def version_command(interaction: discord.Interaction) -> None:
+        if not version_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Version handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await version_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="seed", description="Show map seed")
+    async def seed_command(interaction: discord.Interaction) -> None:
+        if not seed_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Seed handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await seed_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(
+        name="evolution",
+        description="Show evolution for a surface or all non-platform surfaces",
+    )
+    @app_commands.describe(
+        target='Surface/planet name (e.g. "nauvis") or the keyword "all"',
+    )
+    async def evolution_command(
+        interaction: discord.Interaction,
+        target: str,
+    ) -> None:
+        """Show enemy evolution - Function-based implementation."""
+        await interaction.response.defer()
+
+        rcon_client = bot.get_rcon_for_user(interaction.user.id)
+        if rcon_client is None or not rcon_client.is_connected:
+            server_name = bot.get_server_display_name(interaction.user.id)
+            embed = EmbedBuilder.error_embed(
+                f"RCON not available for {server_name}.\n\n"
+                "Use `/factorio servers` to see available servers."
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
+        raw = target.strip()
+        lower = raw.lower()
+
+        try:
+            if lower == "all":
+                lua = (
+                    "/sc "
+                    "local f = game.forces['enemy']; "
+                    "local total = 0; local count = 0; "
+                    "local lines = {}; "
+                    "for _, s in pairs(game.surfaces) do "
+                    "  if not string.find(string.lower(s.name), 'platform') then "
+                    "    local evo = f.get_evolution_factor(s); "
+                    "    total = total + evo; count = count + 1; "
+                    "    table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
+                    "  end "
+                    "end; "
+                    "if count > 0 then "
+                    "  local avg = total / count; "
+                    "  rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); "
+                    "else "
+                    "  rcon.print('AGG:0.00%'); "
+                    "end; "
+                    "for _, line in ipairs(lines) do "
+                    "  rcon.print(line); "
+                    "end"
+                )
+                resp = await rcon_client.execute(lua)
+                lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
+                agg_line = next((ln for ln in lines if ln.startswith("AGG:")), None)
+                per_surface = [ln for ln in lines if not ln.startswith("AGG:")]
+
+                agg_value = "0.00%"
+                if agg_line:
+                    agg_value = agg_line.replace("AGG:", "", 1).strip()
+
+                if not per_surface:
+                    title = "🐛 Evolution – All Surfaces"
+                    message = (
+                        f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
+                        "No individual non-platform surfaces returned evolution data."
+                    )
+                else:
+                    formatted = "\n".join(f"• `{ln}`" for ln in per_surface)
+                    title = "🐛 Evolution – All Non-platform Surfaces"
+                    message = (
+                        f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
+                        "Per-surface evolution:\n\n"
+                        f"{formatted}"
+                    )
+
+                embed = EmbedBuilder.info_embed(title=title, message=message)
+                await interaction.followup.send(embed=embed)
+                logger.info(
+                    "evolution_requested",
+                    moderator=interaction.user.name,
+                    target="all",
+                )
+                return
+
+            surface = raw
+            lua = (
+                "/sc "
+                f"local s = game.get_surface('{surface}'); "
+                "if not s then "
+                "  rcon.print('SURFACE_NOT_FOUND'); "
+                "  return "
+                "end; "
+                "if string.find(string.lower(s.name), 'platform') then "
+                "  rcon.print('SURFACE_PLATFORM_IGNORED'); "
+                "  return "
+                "end; "
+                "local evo = game.forces['enemy'].get_evolution_factor(s); "
+                "rcon.print(string.format('%.2f%%', evo * 100))"
+            )
+            resp = await rcon_client.execute(lua)
+            resp_str = resp.strip()
+
+            if resp_str == "SURFACE_NOT_FOUND":
+                embed = EmbedBuilder.error_embed(
+                    f"Surface `{surface}` was not found.\n\n"
+                    "Use map tools or an admin command to list available surfaces."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            if resp_str == "SURFACE_PLATFORM_IGNORED":
+                embed = EmbedBuilder.error_embed(
+                    f"Surface `{surface}` is a platform surface and is ignored for evolution queries."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            title = f"🐛 Evolution – Surface `{surface}`"
+            message = (
+                f"Enemy evolution on `{surface}`: **{resp_str}**\n\n"
+                "Higher evolution means stronger biters!"
+            )
+            embed = EmbedBuilder.info_embed(title=title, message=message)
+            await interaction.followup.send(embed=embed)
+            logger.info(
+                "evolution_requested",
+                moderator=interaction.user.name,
+                target=surface,
+            )
+
+        except Exception as e:
+            embed = EmbedBuilder.error_embed(f"Failed to get evolution: {str(e)}")
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error(
+                "evolution_command_failed",
+                error=str(e),
+                target=target,
+            )
+
+    @factorio_group.command(name="admins", description="List server administrators")
+    async def admins_command(interaction: discord.Interaction) -> None:
+        if not admins_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Admins handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await admins_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="health", description="Check bot and server health")
+    async def health_command(interaction: discord.Interaction) -> None:
+        if not health_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Health handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await health_handler.execute(interaction)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # PLAYER MANAGEMENT (7)
+    # ════════════════════════════════════════════════════════════════════════════
+
+    @factorio_group.command(name="kick", description="Kick a player from the server")
+    @app_commands.describe(player="Player name", reason="Reason for kick (optional)")
+    async def kick_command(
+        interaction: discord.Interaction,
+        player: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        if not kick_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Kick handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await kick_handler.execute(interaction, player=player, reason=reason)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="ban", description="Ban a player from the server")
+    @app_commands.describe(player="Player name", reason="Reason for ban (optional)")
+    async def ban_command(
+        interaction: discord.Interaction,
+        player: str,
+        reason: Optional[str] = None,
+    ) -> None:
+        if not ban_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Ban handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await ban_handler.execute(interaction, player=player, reason=reason)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="unban", description="Unban a player")
+    @app_commands.describe(player="Player name")
+    async def unban_command(
+        interaction: discord.Interaction,
+        player: str,
+    ) -> None:
+        if not unban_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Unban handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await unban_handler.execute(interaction, player=player)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="mute", description="Mute a player")
+    @app_commands.describe(player="Player name")
+    async def mute_command(interaction: discord.Interaction, player: str) -> None:
+        if not mute_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Mute handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await mute_handler.execute(interaction, player=player)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="unmute", description="Unmute a player")
+    @app_commands.describe(player="Player name")
+    async def unmute_command(interaction: discord.Interaction, player: str) -> None:
+        if not unmute_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Unmute handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await unmute_handler.execute(interaction, player=player)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="promote", description="Promote player to admin")
+    @app_commands.describe(player="Player name")
+    async def promote_command(interaction: discord.Interaction, player: str) -> None:
+        if not promote_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Promote handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await promote_handler.execute(interaction, player=player)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="demote", description="Demote player from admin")
+    @app_commands.describe(player="Player name")
+    async def demote_command(interaction: discord.Interaction, player: str) -> None:
+        if not demote_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Demote handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await demote_handler.execute(interaction, player=player)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # SERVER MANAGEMENT (4)
+    # ════════════════════════════════════════════════════════════════════════════
+
+    @factorio_group.command(name="save", description="Save the game")
+    @app_commands.describe(name="Save name (optional, defaults to auto-save)")
+    async def save_command(interaction: discord.Interaction, name: Optional[str] = None) -> None:
+        if not save_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Save handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await save_handler.execute(interaction, name=name)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="broadcast", description="Send message to all players")
+    @app_commands.describe(message="Message to broadcast")
+    async def broadcast_command(interaction: discord.Interaction, message: str) -> None:
+        if not broadcast_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Broadcast handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await broadcast_handler.execute(interaction, message=message)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="whisper", description="Send private message to a player")
+    @app_commands.describe(player="Player name", message="Message to send")
+    async def whisper_command(
+        interaction: discord.Interaction,
+        player: str,
+        message: str,
+    ) -> None:
+        if not whisper_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Whisper handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await whisper_handler.execute(interaction, player=player, message=message)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="whitelist", description="Manage server whitelist")
+    @app_commands.describe(
+        action="Action to perform (add/remove/list/enable/disable)",
+        player="Player name (required for add/remove)",
+    )
+    async def whitelist_command(
+        interaction: discord.Interaction,
+        action: str,
+        player: Optional[str] = None,
+    ) -> None:
+        if not whitelist_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Whitelist handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await whitelist_handler.execute(interaction, action=action, player=player)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # GAME CONTROL (3)
+    # ════════════════════════════════════════════════════════════════════════════
+
+    @factorio_group.command(name="clock", description="Set or display game daytime")
+    @app_commands.describe(value="'day'/'night' or 0.0-1.0, or leave empty to view")
+    async def clock_command(interaction: discord.Interaction, value: Optional[str] = None) -> None:
+        if not clock_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Clock handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await clock_handler.execute(interaction, value=value)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="speed", description="Set game speed")
+    @app_commands.describe(value="Game speed (0.1-10.0, 1.0 = normal)")
+    async def speed_command(interaction: discord.Interaction, value: float) -> None:
+        if not speed_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Speed handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await speed_handler.execute(interaction, value=value)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(
+        name="research",
+        description="Manage technology research (Coop: player force, PvP: specify force)"
+    )
+    @app_commands.describe(
+        force='Force name (e.g., "player", "enemy"). Defaults to "player".',
+        action='Action: "all", tech name, "undo", or empty to display status',
+        technology='Technology name (for undo operations with specific tech)',
+    )
+    async def research_command(
+        interaction: discord.Interaction,
+        force: Optional[str] = None,
+        action: Optional[str] = None,
+        technology: Optional[str] = None,
+    ) -> None:
+        if not phase2_research_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Research handler not available (Phase 2 module not found)"),
+                ephemeral=True,
+            )
+            return
+        result = await phase2_research_handler.execute(
+            interaction, force=force, action=action, technology=technology
+        )
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    # ════════════════════════════════════════════════════════════════════════════
+    # ADVANCED (2)
+    # ════════════════════════════════════════════════════════════════════════════
+
+    @factorio_group.command(name="rcon", description="Run raw RCON command")
+    @app_commands.describe(command="RCON command to execute")
+    async def rcon_command(interaction: discord.Interaction, command: str) -> None:
+        if not rcon_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("RCON handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await rcon_handler.execute(interaction, command=command)
+        await send_command_response(interaction, result, defer_before_send=True)
+
+    @factorio_group.command(name="help", description="Show available Factorio commands")
+    async def help_command(interaction: discord.Interaction) -> None:
+        if not help_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Help handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await help_handler.execute(interaction)
+        if result.success:
+            help_text = (
+                "**🏭 Factorio ISR Bot – Commands**\n\n"
+                "**🌍 Multi-Server**\n"
+                "`/factorio servers` – List available servers\n"
+                "`/factorio connect <server>` – Switch to a server\n\n"
+                "**📊 Server Information**\n"
+                "`/factorio status` – Show server status and uptime\n"
+                "`/factorio players` – List players currently online\n"
+                "`/factorio version` – Show Factorio server version\n"
+                "`/factorio seed` – Show map seed\n"
+                "`/factorio evolution [target]` – Show enemy evolution\n"
+                "`/factorio admins` – List server administrators\n"
+                "`/factorio health` – Check bot and server health\n\n"
+                "**👥 Player Management**\n"
+                "`/factorio kick <player> [reason]` – Kick a player\n"
+                "`/factorio ban <player> [reason]` – Ban a player\n"
+                "`/factorio unban <player>` – Unban a player\n"
+                "`/factorio mute <player>` – Mute a player from chat\n"
+                "`/factorio unmute <player>` – Unmute a player\n"
+                "`/factorio promote <player>` – Promote player to admin\n"
+                "`/factorio demote <player>` – Demote player from admin\n\n"
+                "**🔧 Server Management**\n"
+                "`/factorio broadcast <message>` – Send message to all players\n"
+                "`/factorio whisper <player> <message>` – Send private message\n"
+                "`/factorio save [name]` – Save the game\n"
+                "`/factorio whitelist <action> [player]` – Manage whitelist\n\n"
+                "**🎮 Game Control**\n"
+                "`/factorio clock [value]` – Show/set game time\n"
+                "`/factorio speed <value>` – Set game speed (0.1-10.0)\n"
+                "`/factorio research <technology>` – Force research tech\n\n"
+                "**🛠️ Advanced**\n"
+                "`/factorio rcon <command>` – Run raw RCON command\n"
+                "`/factorio help` – Show this help message\n\n"
+                "_Most commands require RCON to be enabled._"
+            )
+            await interaction.response.send_message(help_text, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                embed=result.error_embed or EmbedBuilder.error_embed("Help command failed"),
+                ephemeral=True,
+            )
+
+    bot.tree.add_command(factorio_group)
+    logger.info(
+        "slash_commands_registered_complete",
+        root=factorio_group.name,
+        command_count=len(factorio_group.commands),
+        status="17/25 commands registered and operational",
+    )
