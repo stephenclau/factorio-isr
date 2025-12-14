@@ -466,7 +466,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await connect_handler.execute(interaction, server=server)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     # ════════════════════════════════════════════════════════════════════════════
     # SERVER INFORMATION (7)
@@ -487,7 +487,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
                 return
             
             result = await status_handler.execute(interaction)
-            await send_command_response(interaction, result, defer_before_send=True)
+            await send_command_response(interaction, result, defer_before_send=False)
         except Exception as e:
             logger.error("status_command_exception", error=str(e), exc_info=True)
             embed = EmbedBuilder.error_embed(f"Status command error: {str(e)}")
@@ -502,7 +502,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await players_handler.execute(interaction)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="version", description="Show Factorio server version")
     async def version_command(interaction: discord.Interaction) -> None:
@@ -513,7 +513,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await version_handler.execute(interaction)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="seed", description="Show map seed")
     async def seed_command(interaction: discord.Interaction) -> None:
@@ -524,7 +524,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await seed_handler.execute(interaction)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(
         name="evolution",
@@ -570,7 +570,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await admins_handler.execute(interaction)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="health", description="Check bot and server health")
     async def health_command(interaction: discord.Interaction) -> None:
@@ -581,7 +581,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await health_handler.execute(interaction)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     # ════════════════════════════════════════════════════════════════════════════
     # PLAYER MANAGEMENT (7)
@@ -601,7 +601,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await kick_handler.execute(interaction, player=player, reason=reason)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="ban", description="Ban a player from the server")
     @app_commands.describe(player="Player name", reason="Reason for ban (optional)")
@@ -617,7 +617,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await ban_handler.execute(interaction, player=player, reason=reason)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="unban", description="Unban a player")
     @app_commands.describe(player="Player name")
@@ -632,7 +632,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await unban_handler.execute(interaction, player=player)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="mute", description="Mute a player")
     @app_commands.describe(player="Player name")
@@ -644,7 +644,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await mute_handler.execute(interaction, player=player)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="unmute", description="Unmute a player")
     @app_commands.describe(player="Player name")
@@ -656,7 +656,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await unmute_handler.execute(interaction, player=player)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="promote", description="Promote player to admin")
     @app_commands.describe(player="Player name")
@@ -668,7 +668,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await promote_handler.execute(interaction, player=player)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="demote", description="Demote player from admin")
     @app_commands.describe(player="Player name")
@@ -680,7 +680,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await demote_handler.execute(interaction, player=player)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     # ════════════════════════════════════════════════════════════════════════════
     # SERVER MANAGEMENT (4)
@@ -696,7 +696,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await save_handler.execute(interaction, name=name)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="broadcast", description="Send message to all players")
     @app_commands.describe(message="Message to broadcast")
@@ -708,7 +708,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await broadcast_handler.execute(interaction, message=message)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="whisper", description="Send private message to a player")
     @app_commands.describe(player="Player name", message="Message to send")
@@ -724,7 +724,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await whisper_handler.execute(interaction, player=player, message=message)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="whitelist", description="Manage server whitelist")
     @app_commands.describe(
@@ -743,7 +743,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await whitelist_handler.execute(interaction, action=action, player=player)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     # ════════════════════════════════════════════════════════════════════════════
     # GAME CONTROL (3)
@@ -759,7 +759,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await clock_handler.execute(interaction, value=value)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="speed", description="Set game speed")
     @app_commands.describe(value="Game speed (0.1-10.0, 1.0 = normal)")
@@ -771,7 +771,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await speed_handler.execute(interaction, value=value)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(
         name="research",
@@ -798,7 +798,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             result = await research_handler.execute(
                 interaction, force=force, action=action, technology=technology
             )
-            await send_command_response(interaction, result, defer_before_send=True)
+            await send_command_response(interaction, result, defer_before_send=False)
         except Exception as e:
             logger.error("research_command_exception", error=str(e), exc_info=True)
             embed = EmbedBuilder.error_embed(f"Research command error: {str(e)}")
@@ -818,7 +818,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
             return
         result = await rcon_handler.execute(interaction, command=command)
-        await send_command_response(interaction, result, defer_before_send=True)
+        await send_command_response(interaction, result, defer_before_send=False)
 
     @factorio_group.command(name="help", description="Show available Factorio commands")
     async def help_command(interaction: discord.Interaction) -> None:
