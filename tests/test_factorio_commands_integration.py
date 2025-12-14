@@ -229,7 +229,7 @@ class TestStatusCommandIntegration:
         
         # Mock Phase 2 handler import and send_command_response
         with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
-             patch('bot.commands.factorio.send_command_response') as mock_send:
+             patch('bot.commands.factorio.send_command_response', new_callable=AsyncMock) as mock_send:
             
             # Create mock Phase 2 StatusCommandHandler
             mock_status_handler_class = MagicMock()
@@ -248,8 +248,8 @@ class TestStatusCommandIntegration:
             # Return (StatusHandlerClass, EvolutionHandlerClass, ResearchHandlerClass)
             mock_import.return_value = (mock_status_handler_class, None, None)
             
-            # Mock send_command_response to call defer/followup
-            async def send_response(interaction, result):
+            # Mock send_command_response to call defer/followup (as AsyncMock)
+            async def send_response(interaction, result, defer_before_send=False):
                 if result.defer_before_send:
                     await interaction.response.defer()
                 if result.embed:
@@ -441,7 +441,7 @@ class TestResearchCommandIntegration:
         
         # Mock Phase 2 handler import and send_command_response
         with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
-             patch('bot.commands.factorio.send_command_response') as mock_send:
+             patch('bot.commands.factorio.send_command_response', new_callable=AsyncMock) as mock_send:
             
             mock_research_handler_class = MagicMock()
             mock_research_handler = MagicMock()
@@ -459,8 +459,8 @@ class TestResearchCommandIntegration:
             # Return (StatusHandlerClass, EvolutionHandlerClass, ResearchHandlerClass)
             mock_import.return_value = (None, None, mock_research_handler_class)
             
-            # Mock send_command_response
-            async def send_response(interaction, result):
+            # Mock send_command_response (AsyncMock)
+            async def send_response(interaction, result, defer_before_send=False):
                 if result.defer_before_send:
                     await interaction.response.defer()
                 if result.embed:
@@ -497,7 +497,7 @@ class TestResearchCommandIntegration:
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
         with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
-             patch('bot.commands.factorio.send_command_response') as mock_send:
+             patch('bot.commands.factorio.send_command_response', new_callable=AsyncMock) as mock_send:
             
             mock_research_handler_class = MagicMock()
             mock_research_handler = MagicMock()
@@ -513,7 +513,7 @@ class TestResearchCommandIntegration:
             mock_research_handler_class.return_value = mock_research_handler
             mock_import.return_value = (None, None, mock_research_handler_class)
             
-            async def send_response(interaction, result):
+            async def send_response(interaction, result, defer_before_send=False):
                 if result.defer_before_send:
                     await interaction.response.defer()
                 if result.embed:
