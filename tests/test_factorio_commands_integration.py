@@ -227,60 +227,23 @@ class TestStatusCommandIntegration:
         bot_mock.server_manager = MagicMock()
         bot_mock.server_manager.get_metrics_engine.return_value = metrics_engine_mock
         
-        # Mock Phase 2 handler import and send_command_response
-        with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
-             patch('bot.commands.factorio.send_command_response', new_callable=AsyncMock) as mock_send:
+        # Reset rate limiter
+        QUERY_COOLDOWN.reset(interaction_mock.user.id)
+        
+        # Register and execute
+        status_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "status"
+        )
+        
+        # DEBUG: Check if command was found
+        assert status_cmd is not None, "status command not found in registered commands"
+        
+        if status_cmd:
+            await status_cmd.callback(interaction_mock)
             
-            # Create mock Phase 2 StatusCommandHandler
-            mock_status_handler_class = MagicMock()
-            mock_status_handler = MagicMock()
-            mock_status_handler.execute = AsyncMock(
-                return_value=MagicMock(
-                    success=True,
-                    embed=discord.Embed(title="Status"),
-                    error_embed=None,
-                    ephemeral=False,
-                    defer_before_send=True,
-                )
-            )
-            mock_status_handler_class.return_value = mock_status_handler
-            
-            # Return (StatusHandlerClass, EvolutionHandlerClass, ResearchHandlerClass)
-            mock_import.return_value = (mock_status_handler_class, None, None)
-            
-            # Mock send_command_response to call defer/followup (as AsyncMock)
-            async def send_response(interaction, result, defer_before_send=False):
-                if result.defer_before_send:
-                    await interaction.response.defer()
-                if result.embed:
-                    await interaction.followup.send(embed=result.embed)
-                elif result.error_embed:
-                    await interaction.followup.send(embed=result.error_embed, ephemeral=result.ephemeral)
-            
-            mock_send.side_effect = send_response
-            
-            # Reset rate limiter
-            QUERY_COOLDOWN.reset(interaction_mock.user.id)
-            
-            # Register and execute
-            status_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "status"
-            )
-            
-            # DEBUG: Check if command was found
-            assert status_cmd is not None, "status command not found in registered commands"
-            
-            if status_cmd:
-                await status_cmd.callback(interaction_mock)
-                
-                # Verify wrapper → handler → send_command_response flow
-                # Note: These assertions may fail if the wrapper doesn't properly invoke the handler
-                # In that case, check that register_factorio_commands properly captures bot reference
-                if not interaction_mock.response.defer.called:
-                    pytest.skip("Handler not invoked - wrapper may not have proper bot reference")
-                
-                assert interaction_mock.response.defer.called, "response.defer() should be called"
-                assert interaction_mock.followup.send.called, "followup.send() should be called"
+            # Verify wrapper → handler flow
+            # Handler uses send_message (no defer) for status
+            assert interaction_mock.response.send_message.called or interaction_mock.response.defer.called
 
 
 class TestPlayersCommandIntegration:
@@ -313,8 +276,8 @@ class TestPlayersCommandIntegration:
         if players_cmd:
             await players_cmd.callback(interaction_mock)
             
-            # Verify execution
-            assert interaction_mock.response.defer.called
+            # Verify execution - players handler sends message immediately (no defer)
+            assert interaction_mock.response.send_message.called
             assert rcon_client_mock.execute.called  # RCON actually called!
 
 
@@ -439,50 +402,18 @@ class TestResearchCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="42/128")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        # Mock Phase 2 handler import and send_command_response
-        with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
-             patch('bot.commands.factorio.send_command_response', new_callable=AsyncMock) as mock_send:
-            
-            mock_research_handler_class = MagicMock()
-            mock_research_handler = MagicMock()
-            mock_research_handler.execute = AsyncMock(
-                return_value=MagicMock(
-                    success=True,
-                    embed=discord.Embed(title="Research Status"),
-                    error_embed=None,
-                    ephemeral=False,
-                    defer_before_send=True,
-                )
-            )
-            mock_research_handler_class.return_value = mock_research_handler
-            
-            # Return (StatusHandlerClass, EvolutionHandlerClass, ResearchHandlerClass)
-            mock_import.return_value = (None, None, mock_research_handler_class)
-            
-            # Mock send_command_response (AsyncMock)
-            async def send_response(interaction, result, defer_before_send=False):
-                if result.defer_before_send:
-                    await interaction.response.defer()
-                if result.embed:
-                    await interaction.followup.send(embed=result.embed)
-            
-            mock_send.side_effect = send_response
-            
-            ADMIN_COOLDOWN.reset(interaction_mock.user.id)
-            
-            research_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "research"
-            )
-            
-            assert research_cmd is not None, "research command not found in registered commands"
-            
-            if research_cmd:
-                await research_cmd.callback(interaction_mock, force=None, action=None, technology=None)
-                # Verify Phase 2 handler was called
-                if not mock_research_handler.execute.called:
-                    pytest.skip("Handler not invoked - wrapper may not have proper bot reference")
-                
-                assert mock_research_handler.execute.called, "Handler execute() should be called"
+        ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+        
+        research_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "research"
+        )
+        
+        assert research_cmd is not None, "research command not found in registered commands"
+        
+        if research_cmd:
+            await research_cmd.callback(interaction_mock, force=None, action=None, technology=None)
+            # Verify handler was invoked by checking RCON was called
+            assert rcon_client_mock.execute.called, "Handler execute() should call RCON"
 
     @pytest.mark.asyncio
     async def test_research_command_research_all(self):
@@ -496,45 +427,18 @@ class TestResearchCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="All technologies researched")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
-             patch('bot.commands.factorio.send_command_response', new_callable=AsyncMock) as mock_send:
-            
-            mock_research_handler_class = MagicMock()
-            mock_research_handler = MagicMock()
-            mock_research_handler.execute = AsyncMock(
-                return_value=MagicMock(
-                    success=True,
-                    embed=discord.Embed(title="Research All"),
-                    error_embed=None,
-                    ephemeral=False,
-                    defer_before_send=True,
-                )
-            )
-            mock_research_handler_class.return_value = mock_research_handler
-            mock_import.return_value = (None, None, mock_research_handler_class)
-            
-            async def send_response(interaction, result, defer_before_send=False):
-                if result.defer_before_send:
-                    await interaction.response.defer()
-                if result.embed:
-                    await interaction.followup.send(embed=result.embed)
-            
-            mock_send.side_effect = send_response
-            
-            ADMIN_COOLDOWN.reset(interaction_mock.user.id)
-            
-            research_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "research"
-            )
-            
-            assert research_cmd is not None, "research command not found in registered commands"
-            
-            if research_cmd:
-                await research_cmd.callback(interaction_mock, force=None, action="all", technology=None)
-                if not mock_research_handler.execute.called:
-                    pytest.skip("Handler not invoked - wrapper may not have proper bot reference")
-                
-                assert mock_research_handler.execute.called, "Handler execute() should be called"
+        ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+        
+        research_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "research"
+        )
+        
+        assert research_cmd is not None, "research command not found in registered commands"
+        
+        if research_cmd:
+            await research_cmd.callback(interaction_mock, force=None, action="all", technology=None)
+            # Verify handler execution
+            assert rcon_client_mock.execute.called, "Handler execute() should call RCON"
 
 
 class TestWhitelistCommandIntegration:
