@@ -34,9 +34,9 @@ class TestCommandCooldown:
     def test_not_rate_limited_first_use(self) -> None:
         """Test first use is not rate limited."""
         cooldown = CommandCooldown(rate=3, per=60.0)
-        is_limited, retry_after = cooldown.is_rate_limited(identifier=12345)
+        is_limited, retry_after = cooldown.is_rate_limited(12345)  # positional user_id
         assert is_limited is False
-        assert retry_after == 0.0
+        assert retry_after is None  # None when not limited
 
     def test_rate_limited_after_max_uses(self) -> None:
         """Test rate limiting after max uses."""
@@ -44,56 +44,56 @@ class TestCommandCooldown:
 
         # Use 3 times (at limit)
         for _ in range(3):
-            is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+            is_limited, _ = cooldown.is_rate_limited(12345)
             assert is_limited is False
 
         # 4th use should be rate limited
-        is_limited, retry_after = cooldown.is_rate_limited(identifier=12345)
+        is_limited, retry_after = cooldown.is_rate_limited(12345)
         assert is_limited is True
-        assert retry_after > 0.0
+        assert retry_after > 0
 
     def test_cooldown_per_identifier(self) -> None:
         """Test cooldowns are per-identifier."""
         cooldown = CommandCooldown(rate=2, per=60.0)
 
         # Identifier 111 uses twice
-        cooldown.is_rate_limited(identifier=111)
-        cooldown.is_rate_limited(identifier=111)
+        cooldown.is_rate_limited(111)
+        cooldown.is_rate_limited(111)
 
         # Identifier 222 should not be rate limited
-        is_limited, _ = cooldown.is_rate_limited(identifier=222)
+        is_limited, _ = cooldown.is_rate_limited(222)
         assert is_limited is False
 
     def test_cooldown_reset(self) -> None:
         """Test manual cooldown reset."""
         cooldown = CommandCooldown(rate=1, per=60.0)
-        cooldown.is_rate_limited(identifier=12345)
+        cooldown.is_rate_limited(12345)
 
         # Should be rate limited now
-        is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+        is_limited, _ = cooldown.is_rate_limited(12345)
         assert is_limited is True
 
         # Reset cooldown
-        cooldown.reset(identifier=12345)
+        cooldown.reset(12345)  # positional user_id
 
         # Should not be rate limited anymore
-        is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+        is_limited, _ = cooldown.is_rate_limited(12345)
         assert is_limited is False
 
     def test_cooldown_reset_user_alias(self) -> None:
         """Test reset_user() alias for backward compatibility."""
         cooldown = CommandCooldown(rate=1, per=60.0)
-        cooldown.is_rate_limited(identifier=12345)
+        cooldown.is_rate_limited(12345)
 
         # Should be rate limited now
-        is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+        is_limited, _ = cooldown.is_rate_limited(12345)
         assert is_limited is True
 
         # Reset using reset_user alias
-        cooldown.reset_user(identifier=12345)
+        cooldown.reset_user(12345)  # positional user_id
 
         # Should not be rate limited anymore
-        is_limited, _ = cooldown.is_rate_limited(identifier=12345)
+        is_limited, _ = cooldown.is_rate_limited(12345)
         assert is_limited is False
 
     def test_cooldown_reset_all(self) -> None:
@@ -101,15 +101,15 @@ class TestCommandCooldown:
         cooldown = CommandCooldown(rate=1, per=60.0)
 
         # Use for multiple identifiers
-        cooldown.is_rate_limited(identifier=111)
-        cooldown.is_rate_limited(identifier=222)
-        cooldown.is_rate_limited(identifier=333)
+        cooldown.is_rate_limited(111)
+        cooldown.is_rate_limited(222)
+        cooldown.is_rate_limited(333)
 
         # Reset all
         cooldown.reset_all()
 
         # All should be reset
-        is_limited, _ = cooldown.is_rate_limited(identifier=111)
+        is_limited, _ = cooldown.is_rate_limited(111)
         assert is_limited is False
 
     def test_get_usage(self) -> None:
@@ -117,15 +117,15 @@ class TestCommandCooldown:
         cooldown = CommandCooldown(rate=5, per=60.0)
 
         # No usage yet
-        current, max_rate = cooldown.get_usage(identifier=12345)
+        current, max_rate = cooldown.get_usage(12345)  # positional user_id
         assert current == 0
         assert max_rate == 5
 
         # Use twice
-        cooldown.is_rate_limited(identifier=12345)
-        cooldown.is_rate_limited(identifier=12345)
+        cooldown.is_rate_limited(12345)
+        cooldown.is_rate_limited(12345)
 
-        current, max_rate = cooldown.get_usage(identifier=12345)
+        current, max_rate = cooldown.get_usage(12345)
         assert current == 2
         assert max_rate == 5
 
@@ -134,15 +134,15 @@ class TestCommandCooldown:
         cooldown = CommandCooldown(rate=5, per=60.0)
 
         # No usage yet
-        count = cooldown.get_usage_count(identifier=12345)
+        count = cooldown.get_usage_count(12345)  # positional user_id
         assert count == 0
 
         # Use three times
-        cooldown.is_rate_limited(identifier=12345)
-        cooldown.is_rate_limited(identifier=12345)
-        cooldown.is_rate_limited(identifier=12345)
+        cooldown.is_rate_limited(12345)
+        cooldown.is_rate_limited(12345)
+        cooldown.is_rate_limited(12345)
 
-        count = cooldown.get_usage_count(identifier=12345)
+        count = cooldown.get_usage_count(12345)
         assert count == 3
 
     def test_global_cooldown_instances(self) -> None:

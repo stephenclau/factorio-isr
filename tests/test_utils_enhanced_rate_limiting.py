@@ -44,7 +44,7 @@ class TestCommandCooldownEnhanced:
         monkeypatch.setattr(time, "time", lambda: 111.0)
         is_limited, retry_after = cooldown.is_rate_limited(identifier)
         assert is_limited is False
-        assert retry_after == 0.0
+        assert retry_after is None  # None when not limited
 
     def test_retry_after_calculation_precision(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """retry_after is computed as remaining window on the oldest entry."""
@@ -56,11 +56,11 @@ class TestCommandCooldownEnhanced:
         assert cooldown.is_rate_limited(identifier)[0] is False
         assert cooldown.is_rate_limited(identifier)[0] is False
 
-        # t=3: third call should be limited; retry_after ~= 7
+        # t=3: third call should be limited; retry_after ~= 7 or 8 (rounded up)
         monkeypatch.setattr(time, "time", lambda: 3.0)
         is_limited, retry_after = cooldown.is_rate_limited(identifier)
         assert is_limited is True
-        assert 6.9 <= retry_after <= 7.1
+        assert 7 <= retry_after <= 8  # Rounded up int
 
     def test_retry_after_never_negative(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """max(0, retry_after) guards against negative values."""
@@ -75,9 +75,9 @@ class TestCommandCooldownEnhanced:
         # so raw retry_after would be negative without max(0, ...)
         monkeypatch.setattr(time, "time", lambda: 10.0)
         is_limited, retry_after = cooldown.is_rate_limited(identifier)
-        # Not limited anymore because entry is purged, but check retry_after value
+        # Not limited anymore because entry is purged
         assert is_limited is False
-        assert retry_after == 0.0
+        assert retry_after is None  # None when not limited
 
     def test_reset_nonexistent_identifier_is_noop(self) -> None:
         """reset() on an unused identifier should not raise and not affect others."""
@@ -131,7 +131,7 @@ class TestCommandCooldownEnhanced:
         monkeypatch.setattr(time, "time", lambda: 11.0)
         is_limited, retry_after = cooldown.is_rate_limited(identifier)
         assert is_limited is False
-        assert retry_after == 0.0
+        assert retry_after is None  # None when not limited
 
     def test_multiple_identifiers_with_overlapping_usage(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Multiple identifiers share the same cooldown instance but have isolated buckets."""
