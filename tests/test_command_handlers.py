@@ -51,7 +51,7 @@ from bot.commands.command_handlers import (
     ResearchCommandHandler,
     CommandResult,
 )
-from bot.commands.command_handlers_batch1 import (
+from bot.commands.command_handlers import (
     KickCommandHandler,
     BanCommandHandler,
     UnbanCommandHandler,
