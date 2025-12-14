@@ -2134,7 +2134,7 @@ class ClockCommandHandler:
                     + resp,
                 )
                 logger.info("eternal_day_set", moderator=interaction.user.name)
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             elif value_lower in ["night", "eternal-night"]:
                 resp = await rcon_client.execute(
@@ -2148,7 +2148,7 @@ class ClockCommandHandler:
                     + resp,
                 )
                 logger.info("eternal_night_set", moderator=interaction.user.name)
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             else:
                 try:
