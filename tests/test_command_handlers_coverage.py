@@ -501,7 +501,8 @@ class TestBatch1HandlersRconNone:
         handler = KickCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -523,7 +524,8 @@ class TestBatch1HandlersRconNone:
         handler = BanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -545,7 +547,8 @@ class TestBatch1HandlersRconNone:
         handler = UnbanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -567,7 +570,8 @@ class TestBatch1HandlersRconNone:
         handler = MuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -589,7 +593,8 @@ class TestBatch1HandlersRconNone:
         handler = UnmuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -617,7 +622,8 @@ class TestBatch1HandlersRconDisconnected:
         handler = KickCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -641,7 +647,8 @@ class TestBatch1HandlersRconDisconnected:
         handler = BanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -665,7 +672,8 @@ class TestBatch1HandlersRconDisconnected:
         handler = UnbanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -689,7 +697,8 @@ class TestBatch1HandlersRconDisconnected:
         handler = MuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")
@@ -713,7 +722,8 @@ class TestBatch1HandlersRconDisconnected:
         handler = UnmuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+
         )
         
         result = await handler.execute(mock_interaction, player="Player1")

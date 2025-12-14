@@ -45,7 +45,7 @@ Handlers Covered:
 from typing import Any
 from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
-
+from discord_interface import EmbedBuilder
 from bot.commands.command_handlers import (
     StatusCommandHandler,
     EvolutionCommandHandler,
@@ -376,7 +376,7 @@ class TestBatch1HandlersExceptions:
         handler = KickCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]  # type: ignore[arg-type]
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -418,7 +418,7 @@ class TestBatch1HandlersExceptions:
         handler = BanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -456,7 +456,7 @@ class TestBatch1HandlersExceptions:
         handler = UnbanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -492,7 +492,7 @@ class TestBatch1HandlersExceptions:
         handler = MuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -531,7 +531,7 @@ class TestBatch1HandlersExceptions:
         handler = UnmuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
