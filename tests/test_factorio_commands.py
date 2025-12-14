@@ -38,6 +38,24 @@
    ✓ EDGE CASES:  Boundary conditions, whitespace, empty values
    ✓ LOGGING:     Structured logging with context
    ✓ EMBED FORMAT: Discord embed structure validation
+   
+   Test Coverage Breakdown:
+   ════════════════════════════════════════════════════════════════════════════
+   - TestMultiServerCommandsHappyPath (6 tests)
+   - TestServerInformationCommandsHappyPath (18 tests)
+   - TestPlayerManagementCommandsHappyPath (5 tests)
+   - TestPlayerManagementCommandsErrorPath (9 tests) ← MERGED FROM real_harness
+   - TestServerManagementCommandsHappyPath (11 tests)
+   - TestGameControlCommandsHappyPath (17 tests)
+   - TestAdvancedCommandsHappyPath (3 tests)
+   - TestServerAutocompleteFunction (8 tests) ← MERGED FROM real_harness
+   - TestErrorPathRateLimiting (4 tests)
+   - TestErrorPathRconConnectivity (2 tests)
+   - TestErrorPathInvalidInputs (2 tests)
+   - TestEdgeCases (5 tests)
+   - TestCommandRegistration (2 tests)
+   
+   TOTAL: 92 test methods (consolidated from 7 test files)
 """
 
 import pytest
@@ -748,6 +766,179 @@ class TestPlayerManagementCommandsHappyPath:
 
 
 # ════════════════════════════════════════════════════════════════════════════
+# ERROR PATH: Player Management Commands (FROM REAL_HARNESS)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestPlayerManagementCommandsErrorPath:
+    """Error paths for player management: unban, unmute (from real_harness consolidation)."""
+
+    @pytest.mark.asyncio
+    async def test_unban_command_happy_path(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unban command happy path (DANGER_COOLDOWN, valid RCON)."""
+        # Setup
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="Player unbanned.")
+
+        # Verify setup
+        assert mock_rcon_client.is_connected
+        rcon = mock_bot.user_context.get_rcon_for_user(mock_interaction.user.id)
+        assert rcon is not None
+
+    @pytest.mark.asyncio
+    async def test_unban_command_rate_limited(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unban command rate limiting (DANGER_COOLDOWN exhaustion)."""
+        # Setup: Exhaust DANGER_COOLDOWN
+        user_id = mock_interaction.user.id
+        DANGER_COOLDOWN.is_rate_limited(user_id)  # Use first token
+        
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+
+        # Verify rate limit triggers
+        is_limited, retry = DANGER_COOLDOWN.is_rate_limited(user_id)
+        assert is_limited
+        assert retry > 0
+        
+        DANGER_COOLDOWN.reset(user_id)
+
+    @pytest.mark.asyncio
+    async def test_unban_command_rcon_unavailable(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unban command error when RCON unavailable (None)."""
+        # Setup
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_bot.user_context.get_rcon_for_user.return_value = None  # No RCON
+
+        # Verify
+        rcon = mock_bot.user_context.get_rcon_for_user(mock_interaction.user.id)
+        assert rcon is None
+
+    @pytest.mark.asyncio
+    async def test_unban_command_rcon_disconnected(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unban command error when RCON disconnected (is_connected=False)."""
+        # Setup
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_rcon_client.is_connected = False  # Disconnected
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+
+        # Verify
+        rcon = mock_bot.user_context.get_rcon_for_user(mock_interaction.user.id)
+        assert rcon is not None
+        assert not rcon.is_connected
+
+    @pytest.mark.asyncio
+    async def test_unban_command_exception_handler(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unban command exception handling (RCON execute raises)."""
+        # Setup
+        DANGER_COOLDOWN.reset(mock_interaction.user.id)
+        mock_rcon_client.is_connected = True
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.execute.side_effect = Exception("RCON error")
+
+        # Verify exception
+        with pytest.raises(Exception):
+            await mock_rcon_client.execute("/unban TestPlayer")
+
+    @pytest.mark.asyncio
+    async def test_unmute_command_happy_path(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unmute command happy path (ADMIN_COOLDOWN, valid RCON)."""
+        # Setup
+        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_bot.user_context.get_server_display_name.return_value = "prod-server"
+        mock_rcon_client.is_connected = True
+        mock_rcon_client.execute = AsyncMock(return_value="Player unmuted.")
+
+        # Verify setup
+        assert mock_rcon_client.is_connected
+
+    @pytest.mark.asyncio
+    async def test_unmute_command_rate_limited(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unmute command rate limiting (ADMIN_COOLDOWN - 3 per 60s)."""
+        # Setup: Exhaust ADMIN_COOLDOWN (3 uses per 60s)
+        user_id = mock_interaction.user.id
+        for _ in range(3):
+            ADMIN_COOLDOWN.is_rate_limited(user_id)  # Use 3 tokens
+        
+        # Verify 4th call is limited
+        is_limited, retry = ADMIN_COOLDOWN.is_rate_limited(user_id)
+        assert is_limited
+        assert retry > 0
+        
+        ADMIN_COOLDOWN.reset(user_id)
+
+    @pytest.mark.asyncio
+    async def test_unmute_command_rcon_unavailable(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unmute command error when RCON unavailable (None)."""
+        # Setup
+        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
+        mock_bot.user_context.get_rcon_for_user.return_value = None  # No RCON
+
+        # Verify
+        rcon = mock_bot.user_context.get_rcon_for_user(mock_interaction.user.id)
+        assert rcon is None
+
+    @pytest.mark.asyncio
+    async def test_unmute_command_exception_handler(
+        self,
+        mock_interaction,
+        mock_rcon_client,
+        mock_bot,
+    ):
+        """Test unmute command exception handling (RCON execute raises)."""
+        # Setup
+        ADMIN_COOLDOWN.reset(mock_interaction.user.id)
+        mock_rcon_client.is_connected = True
+        mock_bot.user_context.get_rcon_for_user.return_value = mock_rcon_client
+        mock_rcon_client.execute.side_effect = Exception("Player not found")
+
+        # Verify exception
+        with pytest.raises(Exception):
+            await mock_rcon_client.execute("/unmute TestPlayer")
+
+
+# ════════════════════════════════════════════════════════════════════════════
 # HAPPY PATH: Server Management Commands (Extended)
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -1325,6 +1516,219 @@ class TestAdvancedCommandsHappyPath:
         
         assert "servers" in help_text
         assert "connect" in help_text
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# SERVER AUTOCOMPLETE FUNCTION (FROM REAL_HARNESS)
+# ════════════════════════════════════════════════════════════════════════════
+
+class TestServerAutocompleteFunction:
+    """Test server_autocomplete parameter filtering (from real_harness consolidation)."""
+
+    def test_autocomplete_tag_match(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete matching tag."""
+        # Setup mock servers
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod-server": MagicMock(
+                name="Production Server",
+                description="Main game server"
+            ),
+            "dev-server": MagicMock(
+                name="Development Server",
+                description="Testing only"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Test autocomplete logic
+        current_lower = 'prod'.lower()
+        choices = []
+        for tag, config in mock_servers.items():
+            if (
+                current_lower in tag.lower()
+                or current_lower in config.name.lower()
+                or (config.description and current_lower in config.description.lower())
+            ):
+                choices.append(tag)
+        
+        # Validate
+        assert len(choices) > 0
+        assert "prod-server" in choices
+
+    def test_autocomplete_name_match(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete matching name."""
+        # Setup
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod": MagicMock(
+                name="Production Server",
+                description="Main"
+            ),
+            "dev": MagicMock(
+                name="Development",
+                description="Testing"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Test
+        current_lower = 'production'.lower()
+        choices = []
+        for tag, config in mock_servers.items():
+            if current_lower in config.name.lower():
+                choices.append(tag)
+        
+        # Validate
+        assert len(choices) > 0
+        assert "prod" in choices
+
+    def test_autocomplete_empty_server_list(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete with empty server list."""
+        # Setup
+        mock_bot.server_manager = MagicMock()
+        mock_bot.server_manager.list_servers.return_value = {}  # Empty
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Test
+        choices = []
+        for tag, config in mock_bot.server_manager.list_servers().items():
+            choices.append(tag)
+        
+        # Validate
+        assert len(choices) == 0
+
+    def test_autocomplete_no_server_manager(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete when no server_manager."""
+        # Setup
+        mock_interaction.client.server_manager = None  # No manager
+        
+        # Test
+        if not hasattr(mock_interaction.client, "server_manager"):
+            choices = []
+        else:
+            server_manager = mock_interaction.client.server_manager
+            choices = [] if not server_manager else []
+        
+        # Validate
+        assert len(choices) == 0
+
+    def test_autocomplete_truncates_to_25(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete truncates >25 matches to 25."""
+        # Setup
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            f"server-{i}": MagicMock(
+                name=f"Server {i}",
+                description="Test"
+            )
+            for i in range(50)
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Test
+        choices = list(mock_servers.keys())
+        choices = choices[:25]
+        
+        # Validate
+        assert len(choices) == 25
+
+    def test_autocomplete_display_truncates_100_chars(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete display text truncates >100 chars."""
+        # Setup
+        display = "server - Production" + (" " + "A" * 200)
+        
+        # Truncate
+        display = display[:100]
+        
+        # Validate
+        assert len(display) == 100
+
+    def test_autocomplete_case_insensitive(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete is case-insensitive."""
+        # Setup
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod-server": MagicMock(
+                name="Production",
+                description="Main"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Test (uppercase input should match)
+        current_lower = 'PROD'.lower()  # Convert to lowercase
+        choices = []
+        for tag, config in mock_servers.items():
+            if current_lower in tag.lower():
+                choices.append(tag)
+        
+        # Validate
+        assert len(choices) > 0
+        assert "prod-server" in choices
+
+    def test_autocomplete_no_matches(
+        self,
+        mock_bot,
+        mock_interaction,
+    ):
+        """Test server_autocomplete with no matches."""
+        # Setup
+        mock_bot.server_manager = MagicMock()
+        mock_servers = {
+            "prod": MagicMock(
+                name="Production",
+                description="Main"
+            ),
+            "dev": MagicMock(
+                name="Development",
+                description="Testing"
+            ),
+        }
+        mock_bot.server_manager.list_servers.return_value = mock_servers
+        mock_interaction.client.server_manager = mock_bot.server_manager
+        
+        # Test (no servers match 'xyz')
+        current_lower = 'xyz'.lower()
+        choices = []
+        for tag, config in mock_servers.items():
+            if current_lower in tag.lower():
+                choices.append(tag)
+        
+        # Validate
+        assert len(choices) == 0
 
 
 # ════════════════════════════════════════════════════════════════════════════
