@@ -29,6 +29,7 @@ operational excellence standards:
 - ✅ Response defer: Both is_done() branches covered
 - ✅ Real EmbedBuilder: Used in exception tests for coverage
 - 🔴 CRITICAL FIX: All handler tests now invoke execute()
+- 🔴 OPTION B: Handlers no longer defer internally
 
 Coverage Target: 91%+ | Type Safety: Pylance/mypy compliant | 
 Ops Excellence: Production-ready
@@ -54,6 +55,11 @@ Solution Applied:
 - Every handler test now invokes: await handler.execute(mock_interaction, ...)
 - This ensures lines 460-480 EXECUTE during tests
 - Coverage improves from 85% (103 missing) to 91%+ (target achieved)
+
+🔴 OPTION B ARCHITECTURE CHANGE:
+- Handlers no longer call defer() internally
+- send_command_response() now owns response lifecycle
+- Tests verify CommandResult, not mock interaction defer calls
 """
 
 from typing import Callable, Optional, Tuple, Dict, Any
@@ -875,7 +881,7 @@ class TestResearchCommandHandlerCoverageGaps:
 # BATCH 1 PLAYER MANAGEMENT TESTS: Coverage Barrier Fixes
 # ════════════════════════════════════════════════════════════════════════════
 # 🔴 CRITICAL FIX: All tests NOW invoke handler.execute()
-# 🔴 This ensures lines 460-480 EXECUTE during tests
+# 🔴 OPTION B: Handlers no longer call defer() internally
 # ════════════════════════════════════════════════════════════════════════════
 
 
@@ -883,6 +889,7 @@ class TestKickCommandHandlerCoverageGaps:
     """Coverage gap tests for KickCommandHandler.
     
     🔴 CRITICAL: Uses REAL EmbedBuilder and invokes execute()
+    🔴 OPTION B: Handlers no longer defer, send_command_response() does
     """
 
     @pytest.mark.asyncio
@@ -922,9 +929,11 @@ class TestKickCommandHandlerCoverageGaps:
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
     ) -> None:
-        """Coverage: Response not yet deferred (should call defer).
+        """Coverage: Response not yet deferred (RCON success path).
         
-        🔴 KEY FIX: Tests True branch + invokes execute()!
+        🔴 KEY FIX: Tests handler success + invokes execute()!
+        🔴 OPTION B: Handlers no longer call defer internally.
+               Verification now focuses on CommandResult, not mock calls.
         """
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True, execute=AsyncMock(return_value="OK")
@@ -941,7 +950,6 @@ class TestKickCommandHandlerCoverageGaps:
             mock_interaction, player="TestPlayer", reason="Testing"
         )
         assert result.success is True
-        mock_interaction.response.defer.assert_called()
 
     @pytest.mark.asyncio
     async def test_kick_response_defer_already_done(
@@ -969,13 +977,13 @@ class TestKickCommandHandlerCoverageGaps:
             mock_interaction_already_deferred, player="TestPlayer", reason="Testing"
         )
         assert result.success is True
-        mock_interaction_already_deferred.response.defer.assert_not_called()
 
 
 class TestBanCommandHandlerCoverageGaps:
     """Coverage gap tests for BanCommandHandler.
     
     🔴 CRITICAL: Invokes execute() for coverage!
+    🔴 OPTION B: Handlers no longer defer internally
     """
 
     @pytest.mark.asyncio
@@ -1011,7 +1019,11 @@ class TestBanCommandHandlerCoverageGaps:
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
     ) -> None:
-        """Coverage: Response defer path."""
+        """Coverage: RCON success path (happy path).
+        
+        🔴 OPTION B: Handler no longer calls defer.
+               Verification focuses on CommandResult success.
+        """
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True, execute=AsyncMock(return_value="OK")
         )
@@ -1027,13 +1039,13 @@ class TestBanCommandHandlerCoverageGaps:
             mock_interaction, player="BadPlayer", reason="Rule violation"
         )
         assert result.success is True
-        mock_interaction.response.defer.assert_called()
 
 
 class TestUnbanCommandHandlerCoverageGaps:
     """Coverage gap tests for UnbanCommandHandler.
     
     🔴 CRITICAL: Invokes execute() for coverage!
+    🔴 OPTION B: Handlers no longer defer internally
     """
 
     @pytest.mark.asyncio
@@ -1068,7 +1080,11 @@ class TestUnbanCommandHandlerCoverageGaps:
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
     ) -> None:
-        """Coverage: Response defer path."""
+        """Coverage: RCON success path (happy path).
+        
+        🔴 OPTION B: Handler no longer calls defer.
+               Verification focuses on CommandResult success.
+        """
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True, execute=AsyncMock(return_value="OK")
         )
@@ -1082,13 +1098,13 @@ class TestUnbanCommandHandlerCoverageGaps:
         # 🔴 CRITICAL: Actually invoke execute()!
         result = await handler.execute(mock_interaction, player="ReformedPlayer")
         assert result.success is True
-        mock_interaction.response.defer.assert_called()
 
 
 class TestMuteCommandHandlerCoverageGaps:
     """Coverage gap tests for MuteCommandHandler.
     
     🔴 CRITICAL: Invokes execute() for coverage!
+    🔴 OPTION B: Handlers no longer defer internally
     """
 
     @pytest.mark.asyncio
@@ -1122,7 +1138,11 @@ class TestMuteCommandHandlerCoverageGaps:
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
     ) -> None:
-        """Coverage: Response defer path."""
+        """Coverage: RCON success path (happy path).
+        
+        🔴 OPTION B: Handler no longer calls defer.
+               Verification focuses on CommandResult success.
+        """
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True, execute=AsyncMock(return_value="OK")
         )
@@ -1136,13 +1156,13 @@ class TestMuteCommandHandlerCoverageGaps:
         # 🔴 CRITICAL: Actually invoke execute()!
         result = await handler.execute(mock_interaction, player="SpammyPlayer")
         assert result.success is True
-        mock_interaction.response.defer.assert_called()
 
 
 class TestUnmuteCommandHandlerCoverageGaps:
     """Coverage gap tests for UnmuteCommandHandler.
     
     🔴 CRITICAL: Invokes execute() for coverage!
+    🔴 OPTION B: Handlers no longer defer internally
     """
 
     @pytest.mark.asyncio
@@ -1177,7 +1197,11 @@ class TestUnmuteCommandHandlerCoverageGaps:
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
     ) -> None:
-        """Coverage: Response defer path."""
+        """Coverage: RCON success path (happy path).
+        
+        🔴 OPTION B: Handler no longer calls defer.
+               Verification focuses on CommandResult success.
+        """
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True, execute=AsyncMock(return_value="OK")
         )
@@ -1191,7 +1215,6 @@ class TestUnmuteCommandHandlerCoverageGaps:
         # 🔴 CRITICAL: Actually invoke execute()!
         result = await handler.execute(mock_interaction, player="QuietPlayer")
         assert result.success is True
-        mock_interaction.response.defer.assert_called()
 
 
 # ════════════════════════════════════════════════════════════════════════════
