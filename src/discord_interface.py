@@ -158,20 +158,34 @@ class EmbedBuilder:
         return embed
 
     @staticmethod
-    def error_embed(error_message: str) -> Any:  # Returns discord.Embed
-        """Create error embed."""
+    def error_embed(message: str) -> Any:  # Returns discord.Embed
+        """Create error embed.
+        
+        Args:
+            message: Error message to display
+            
+        Returns:
+            discord.Embed with error styling
+        """
         return EmbedBuilder.create_base_embed(
             title="❌ Error",
-            description=error_message,
+            description=message,
             color=EmbedBuilder.COLOR_ERROR
         )
 
     @staticmethod
-    def cooldown_embed(retry_after: float) -> Any:  # Returns discord.Embed
-        """Create rate limit embed."""
+    def cooldown_embed(retry_seconds: int) -> Any:  # Returns discord.Embed
+        """Create rate limit embed.
+        
+        Args:
+            retry_seconds: Seconds until user can retry (int)
+            
+        Returns:
+            discord.Embed with cooldown message
+        """
         return EmbedBuilder.create_base_embed(
             title="⏱️ Slow Down!",
-            description=f"You're using commands too quickly.\nTry again in {retry_after:.1f} seconds.",
+            description=f"You're using commands too quickly.\nTry again in {retry_seconds} seconds.",
             color=EmbedBuilder.COLOR_WARNING
         )
 
