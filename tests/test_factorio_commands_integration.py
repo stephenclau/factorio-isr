@@ -271,8 +271,8 @@ class TestStatusCommandIntegration:
                 await status_cmd.callback(interaction_mock)
                 
                 # Verify wrapper → handler → send_command_response flow
-                assert interaction_mock.response.defer.called
-                assert interaction_mock.followup.send.called
+                assert interaction_mock.response.defer.called, "response.defer() should be called"
+                assert interaction_mock.followup.send.called, "followup.send() should be called"
 
 
 class TestPlayersCommandIntegration:
@@ -469,7 +469,7 @@ class TestResearchCommandIntegration:
             if research_cmd:
                 await research_cmd.callback(interaction_mock, force=None, action=None, technology=None)
                 # Verify Phase 2 handler was called
-                assert mock_research_handler.execute.called
+                assert mock_research_handler.execute.called, "Handler execute() should be called"
 
     @pytest.mark.asyncio
     async def test_research_command_research_all(self):
@@ -516,7 +516,7 @@ class TestResearchCommandIntegration:
             
             if research_cmd:
                 await research_cmd.callback(interaction_mock, force=None, action="all", technology=None)
-                assert mock_research_handler.execute.called
+                assert mock_research_handler.execute.called, "Handler execute() should be called"
 
 
 class TestWhitelistCommandIntegration:
