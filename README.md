@@ -95,73 +95,36 @@ Discord Channels + HTTP Health Endpoint
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
 
-### Docker Compose (Recommended)
+### Multi-Step Setup Process
 
-```bash
-# Clone repository
-git clone https://github.com/stephenclau/factorio-isr.git
-cd factorio-isr
+Factorio ISR requires configuration before launch. The setup involves:
 
-# Create config directory
-mkdir -p config patterns
+1. **Create working directory** → `~/factorio-isr` with subdirectories (`config/`, `patterns/`, `.secrets/`)
+2. **Create config files** → `servers.yml` (RCON + Discord channels), `mentions.yml` (optional)
+3. **Populate pattern files** → `vanilla.yml` (core events), `custom.yml` (your patterns)
+4. **Create secrets** → `.env` file (Discord token, RCON password)
+5. **Customize docker-compose.yml** → Mount your Factorio console.log path
+6. **Create Discord bot token** → Discord Developer Portal
+7. **Launch and verify** → `docker compose up -d`, test events
 
-# Copy example config
-cp docker-compose.yml.sidecar docker-compose.yml
+### 📖 Installation Guide (15-30 minutes)
 
-# Create servers.yml
-cat > config/servers.yml << 'EOF'
-servers:
-  default:
-    name: "My Factorio Server"
-    log_path: /factorio/console.log
-    rcon_host: localhost
-    rcon_port: 27015
-    rcon_password: ${RCON_PASSWORD}
-    enable_stats_collector: true
-    collect_interval_seconds: 30
-EOF
+**🌟 START HERE:** [**docs/installation.md**](docs/installation.md)
 
-# Create .env
-cat > .env << 'EOF'
-DISCORD_BOT_TOKEN=your_bot_token_here
-RCON_PASSWORD=your_rcon_password
-EOF
+Complete step-by-step guide covering:
+- Creating directory structure
+- Writing servers.yml, mentions.yml, patterns
+- Setting up .env secrets (Discord token, RCON password)
+- Configuring docker-compose.yml (volume mounts)
+- Creating Discord bot and authorizing
+- Launching ISR and verifying connectivity
+- Testing event streaming
+- Troubleshooting common issues
 
-# Start ISR
-docker compose up -d
-
-# Verify health
-curl http://localhost:8080/health
-```
-
-**For Docker volumes setup:** See [**docs/TOPOLOGY.md**](docs/TOPOLOGY.md) (Docker Compose example).
-
-### Local Development
-
-```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env (see Docker example above)
-cat > .env << 'EOF'
-DISCORD_BOT_TOKEN=your_token
-DISCORD_EVENT_CHANNEL_ID=your_channel_id
-FACTORIO_LOG_PATH=./logs/console.log
-RCON_PASSWORD=password
-EOF
-
-# Run
-python -m src.main
-
-# Test
-pytest --cov=src --cov-report=html
-```
+**Setup Time:** 15–30 minutes  
+**Difficulty:** Intermediate (Docker, YAML, Discord setup)
 
 ---
 
@@ -238,15 +201,15 @@ pytest-watch
 
 | Guide | Purpose |
 |-------|----------|
-| **[Installation](docs/installation.md)** | Step-by-step setup |
-| **[Configuration](docs/configuration.md)** | servers.yml, environment variables |
-| **[Architecture](docs/ARCHITECTURE.md)** | System design, component layers (⭐ **Start here for ops**) |
-| **[Topology](docs/TOPOLOGY.md)** | Deployment patterns, scaling, Kubernetes (⭐ **Start here for deployment**) |
-| **[RCON Setup](docs/RCON_SETUP.md)** | Factorio server connection guide |
-| **[Patterns](docs/PATTERNS.md)** | Event pattern syntax reference |
+| **[Installation](docs/installation.md)** | 🌟 **START HERE** - Complete setup walkthrough |
+| **[Configuration](docs/configuration.md)** | All options and environment variables |
+| **[Architecture](docs/ARCHITECTURE.md)** | System design and component layers |
+| **[Topology](docs/TOPOLOGY.md)** | Deployment patterns and scaling |
+| **[RCON Setup](docs/RCON_SETUP.md)** | Factorio server commands |
+| **[Patterns](docs/PATTERNS.md)** | Event pattern syntax |
 | **[Examples](docs/EXAMPLES.md)** | Configuration scenarios |
 | **[Deployment](docs/DEPLOYMENT.md)** | Production checklist |
-| **[Troubleshooting](docs/TROUBLESHOOTING.md)** | Common issues & fixes |
+| **[Troubleshooting](docs/TROUBLESHOOTING.md)** | Common issues and fixes |
 
 ---
 
@@ -273,7 +236,7 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 
 ---
 
-## 📦 Production Deployment
+## 🛨️ Production Deployment
 
 ### Pre-Flight Checklist
 
