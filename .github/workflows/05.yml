@@ -49,9 +49,9 @@ jobs:
           provenance: true
           tags: |
             ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
-            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:stable
             ${{ vars.DOCKERHUB_USERNAME }}/factorio-isr:${{ steps.version.outputs.VERSION }}
-            ${{ vars.DOCKERHUB_USERNAME }}/factorio-isr:latest
+            ${{ vars.DOCKERHUB_USERNAME }}/factorio-isr:stable
       
       - name: Generate SBOM (SPDX JSON)
         uses: anchore/sbom-action@v0
