@@ -15,7 +15,7 @@ TOTAL: 25/25
 
 """
 
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Protocol
 from datetime import datetime, timezone
 import discord
 from discord import app_commands
@@ -40,6 +40,25 @@ except ImportError:
             raise ImportError(
                 "Could not import rate_limiting or discord_interface from any path"
             )
+
+# ════════════════════════════════════════════════════════════════════════════
+# TYPE PROTOCOL: FactorioBot (for type safety)
+# ════════════════════════════════════════════════════════════════════════════
+
+class FactorioBot(Protocol):
+    """Protocol defining expected bot attributes for Factorio commands."""
+    user_context: Any
+    server_manager: Any
+    tree: app_commands.CommandTree
+    
+    def get_rcon_for_user(self, user_id: int) -> Any:
+        """Get RCON client for a user."""
+        ...
+    
+    def get_server_display_name(self, user_id: int) -> str:
+        """Get server display name for a user."""
+        ...
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # 🔄 Phase 3 + Phase 4: Command Handlers (DI + Command Pattern)
@@ -256,7 +275,7 @@ servers_handler: Optional[ServersCommandHandler] = None
 connect_handler: Optional[ConnectCommandHandler] = None
 
 
-def _initialize_all_handlers(bot: Any) -> None:
+def _initialize_all_handlers(bot: FactorioBot) -> None:
     """Initialize all 22 command handlers with DI."""
     global kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler
     global save_handler, broadcast_handler, whisper_handler, whitelist_handler
@@ -376,7 +395,7 @@ def _initialize_all_handlers(bot: Any) -> None:
     logger.info("all_handlers_initialized_complete", total=22)
 
 
-def register_factorio_commands(bot: Any) -> None:
+def register_factorio_commands(bot: FactorioBot) -> None:
     """
     Register all /factorio subcommands (Phase 1 + Phase 2 + Phase 3 + Phase 4).
 
@@ -384,7 +403,7 @@ def register_factorio_commands(bot: Any) -> None:
     Discord limit: 25 subcommands per group (currently using 17/25).
 
     Args:
-        bot: DiscordBot instance with user_context, server_manager attributes
+        bot: FactorioBot instance with user_context, server_manager attributes
     """
     _initialize_all_handlers(bot)
     
