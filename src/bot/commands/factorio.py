@@ -15,7 +15,7 @@ TOTAL: 25/25
 
 """
 
-from typing import Any, List, Optional, Protocol
+from typing import Any, List, Optional, Protocol, runtime_checkable
 from datetime import datetime, timezone
 import asyncio
 import discord
@@ -46,6 +46,7 @@ except ImportError:
 # TYPE PROTOCOL: FactorioBot (for type safety)
 # ════════════════════════════════════════════════════════════════════════════
 
+@runtime_checkable
 class FactorioBot(Protocol):
     """Protocol defining expected bot attributes for Factorio commands."""
     user_context: Any
@@ -373,7 +374,7 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         user_context_provider=bot.user_context,
         rate_limiter=QUERY_COOLDOWN,
         embed_builder_type=EmbedBuilder,
-        bot=bot,
+        bot=bot,  # type: ignore
     )
     rcon_handler = RconCommandHandler(
         user_context_provider=bot.user_context,
@@ -425,7 +426,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         if not hasattr(interaction.client, "server_manager"):
             return []
 
-        server_manager = interaction.client.server_manager
+        server_manager = interaction.client.server_manager  # type: ignore
         if not server_manager:
             return []
 
