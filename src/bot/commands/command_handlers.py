@@ -463,6 +463,7 @@ class PlayersCommandHandler:
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
+              
             )
 
         server_name = self.user_context.get_server_display_name(interaction.user.id)
@@ -508,7 +509,7 @@ class PlayersCommandHandler:
 
             embed.set_footer(text="Factorio ISR")
             logger.info("players_command_executed", player_count=len(players))
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True,)
 
         except Exception as e:
             logger.error("players_command_failed", error=str(e))
@@ -553,6 +554,7 @@ class VersionCommandHandler:
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
+                
             )
 
         server_name = self.user_context.get_server_display_name(interaction.user.id)
@@ -580,7 +582,7 @@ class VersionCommandHandler:
             )
             embed.set_footer(text="Factorio ISR")
             logger.info("version_command_executed", version=version)
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("version_command_failed", error=str(e))
@@ -625,6 +627,7 @@ class SeedCommandHandler:
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
+                
             )
 
         server_name = self.user_context.get_server_display_name(interaction.user.id)
@@ -666,7 +669,7 @@ class SeedCommandHandler:
             )
             embed.set_footer(text="Factorio ISR")
             logger.info("seed_command_executed")
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("seed_command_failed", error=str(e))
@@ -954,7 +957,7 @@ class AdminsCommandHandler:
                 admin_count=len(admins),
                 moderator=interaction.user.name,
             )
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("admins_command_failed", error=str(e))
@@ -1552,7 +1555,7 @@ class PromoteCommandHandler:
                 moderator=interaction.user.name,
             )
 
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("promote_command_failed", error=str(e))
@@ -1636,7 +1639,7 @@ class DemoteCommandHandler:
                 moderator=interaction.user.name,
             )
 
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("demote_command_failed", error=str(e))
@@ -1733,7 +1736,7 @@ class SaveCommandHandler:
                 moderator=interaction.user.name,
             )
 
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("save_command_failed", error=str(e))
@@ -1812,7 +1815,7 @@ class BroadcastCommandHandler:
                 moderator=interaction.user.name,
             )
 
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("broadcast_command_failed", error=str(e))
@@ -1896,7 +1899,7 @@ class WhisperCommandHandler:
                 moderator=interaction.user.name,
             )
 
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("whisper_command_failed", error=str(e))
@@ -1969,21 +1972,21 @@ class WhitelistCommandHandler:
                 embed = self.embed_builder.info_embed(
                     title="📋 Whitelist", message=resp
                 )
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             elif action_lower == "enable":
                 resp = await rcon_client.execute("/whitelist enable")
                 embed = self.embed_builder.info_embed(
                     title="✅ Whitelist Enabled", message=resp
                 )
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             elif action_lower == "disable":
                 resp = await rcon_client.execute("/whitelist disable")
                 embed = self.embed_builder.info_embed(
                     title="⚠️ Whitelist Disabled", message=resp
                 )
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             elif action_lower == "add":
                 if not player:
@@ -2001,7 +2004,7 @@ class WhitelistCommandHandler:
                 logger.info(
                     "whitelist_add", player=player, moderator=interaction.user.name
                 )
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             elif action_lower == "remove":
                 if not player:
@@ -2019,7 +2022,7 @@ class WhitelistCommandHandler:
                 logger.info(
                     "whitelist_remove", player=player, moderator=interaction.user.name
                 )
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             else:
                 return CommandResult(
@@ -2115,7 +2118,7 @@ class ClockCommandHandler:
                 embed = self.embed_builder.info_embed(
                     title="🕐 Current Game Clock", message=resp
                 )
-                return CommandResult(success=True, embed=embed, ephemeral=False)
+                return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
             value_lower = value.lower().strip()
 
@@ -2281,7 +2284,7 @@ class SpeedCommandHandler:
                 moderator=interaction.user.name,
             )
 
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("speed_command_failed", error=str(e))
@@ -2680,7 +2683,7 @@ class RconCommandHandler:
                 command=command[:50],
                 user=interaction.user.name,
             )
-            return CommandResult(success=True, embed=embed, ephemeral=False)
+            return CommandResult(success=True, embed=embed, ephemeral=False, followup=True)
 
         except Exception as e:
             logger.error("rcon_command_failed", error=str(e))
