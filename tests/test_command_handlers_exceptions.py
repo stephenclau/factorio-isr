@@ -1,20 +1,4 @@
-# Copyright (c) 2025 Stephen Clau
-#
-# This file is part of Factorio ISR.
-#
-# Factorio ISR is dual-licensed:
-#
-# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
-#    See LICENSE file for full terms
-#
-# 2. Commercial License
-#    For proprietary use without AGPL requirements
-#    Contact: licensing@laudiversified.com
-#
-# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
-
-"""
-Exception Handler Tests for All Command Handlers.
+"""Exception Handler Tests for All Command Handlers.
 
 This module systematically tests the exception handlers (except Exception as e:)
 for all command handlers in command_handlers.py.
@@ -376,7 +360,7 @@ class TestBatch1HandlersExceptions:
         handler = KickCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]  # type: ignore[arg-type]
+            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
