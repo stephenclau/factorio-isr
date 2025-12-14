@@ -75,7 +75,7 @@ class TestFactorioImportErrorPaths:
     # BLOCK 1A: utils.rate_limiting Import (Relative Path)
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_import_utils_rate_limiting_path1_missing() -> None:
+    def test_import_utils_rate_limiting_path1_missing(self) -> None:
         """Test factorio.py handles missing utils.rate_limiting (relative import).
         
         Coverage:
@@ -109,7 +109,7 @@ class TestFactorioImportErrorPaths:
     # BLOCK 1B: discord_interface Import (Relative Path)
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_import_discord_interface_path1_missing() -> None:
+    def test_import_discord_interface_path1_missing(self) -> None:
         """Test factorio.py handles missing discord_interface (relative import).
         
         Coverage:
@@ -133,7 +133,7 @@ class TestFactorioImportErrorPaths:
     # BLOCK 2A: Batch Handlers Import (bot.commands Path)
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_import_batch_handlers_path1_missing() -> None:
+    def test_import_batch_handlers_path1_missing(self) -> None:
         """Test factorio.py handles missing batch handlers from bot.commands.
         
         Coverage:
@@ -165,7 +165,7 @@ class TestFactorioImportErrorPaths:
     # BLOCK 2B: Batch Handlers Import (src.bot.commands Path)
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_import_batch_handlers_path2_missing() -> None:
+    def test_import_batch_handlers_path2_missing(self) -> None:
         """Test factorio.py handles missing batch handlers from src.bot.commands.
         
         Coverage:
@@ -201,7 +201,7 @@ class TestFactorioImportErrorPaths:
     # INTEGRATION TEST: All Import Paths Exhausted
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_all_import_paths_exhausted_raises_importerror() -> None:
+    def test_all_import_paths_exhausted_raises_importerror(self) -> None:
         """Test factorio.py raises ImportError when ALL import paths fail.
         
         Coverage:
@@ -252,7 +252,7 @@ class TestFactorioImportErrorPaths:
     # EDGE CASE: Partial Imports Succeed
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_partial_import_success_path2_succeeds() -> None:
+    def test_partial_import_success_path2_succeeds(self) -> None:
         """Test factorio.py succeeds when Path 2 (src prefix) imports work.
         
         Coverage:
@@ -287,7 +287,7 @@ class TestFactorioImportErrorPaths:
     # EDGE CASE: Attribute Error During Import
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_attribute_error_during_import_fallback_triggered() -> None:
+    def test_attribute_error_during_import_fallback_triggered(self) -> None:
         """Test factorio.py handles AttributeError (missing exports) in imports.
         
         Coverage:
@@ -313,7 +313,7 @@ class TestFactorioImportErrorPaths:
     # SUMMARY: Import Error Coverage Verification
     # ════════════════════════════════════════════════════════════════════════
 
-    def test_import_error_coverage_summary() -> None:
+    def test_import_error_coverage_summary(self) -> None:
         """Verify all 6 import error paths are covered by this test suite.
         
         Coverage Summary:
@@ -348,7 +348,7 @@ class TestFactorioImportWithMocking:
     including network errors, permission errors, and partial imports.
     """
 
-    def test_import_preserves_state_after_failure() -> None:
+    def test_import_preserves_state_after_failure(self) -> None:
         """Test that factorio.py preserves valid imports after partial failure.
         
         Coverage:
@@ -375,7 +375,7 @@ class TestFactorioImportWithMocking:
         assert 'valid_import' in sys.modules
         assert sys.modules['valid_import'] is valid_module
 
-    def test_import_error_message_includes_module_names() -> None:
+    def test_import_error_message_includes_module_names(self) -> None:
         """Test that ImportError messages are descriptive and helpful.
         
         Coverage:
