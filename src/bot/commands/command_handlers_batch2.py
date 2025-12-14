@@ -82,7 +82,7 @@ class SaveCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -163,7 +163,7 @@ class BroadcastCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -234,7 +234,7 @@ class WhisperCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -309,7 +309,7 @@ class WhitelistCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
