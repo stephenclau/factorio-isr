@@ -930,7 +930,15 @@ async def test_YOUR_COMMAND_embed(mock_bot, mock_rcon_client, mock_interaction):
 
 ---
 
-## 🚨 Pattern 11: Test Error Branches (CRITICAL)
+## 🚨 Pattern 11: Test Error Branches (CRITICAL) - Directive to Generate Tests
+
+### ⚡ READER DIRECTIVE: Generate Tests That Validate the Branch Patterns Below
+
+**This section describes the branch patterns that MUST be validated by tests you generate.** For each pattern presented below, you MUST write corresponding test cases that force execution of that branch. Do not treat this section as documentation only—use it as a specification for test generation.
+
+**Your responsibility**: Read the branch patterns, understand the control flow structure, and **write test code that makes each branch execute**. The patterns shown are templates for the tests you must create.
+
+---
 
 ### 🚨 CRITICAL: Systematic 10-Line Misses in EVERY Command - Root Cause Analysis
 
