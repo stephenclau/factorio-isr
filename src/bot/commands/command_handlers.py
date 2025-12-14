@@ -243,6 +243,8 @@ class StatusCommandHandler:
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 embed=embed,
@@ -267,7 +269,8 @@ class StatusCommandHandler:
                 ephemeral=True,
                 followup=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             # Gather metrics via metrics engine
             metrics_engine = self.server_manager.get_metrics_engine(server_tag)
@@ -451,6 +454,9 @@ class PlayersCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -468,7 +474,8 @@ class PlayersCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             response = await rcon_client.execute("/players")
             players = []
@@ -537,6 +544,9 @@ class VersionCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -554,7 +564,8 @@ class VersionCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             response = await rcon_client.execute("/version")
             version = response.strip() if response else "Unknown"
@@ -605,6 +616,9 @@ class SeedCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -622,7 +636,8 @@ class SeedCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             response = await rcon_client.execute(
                 '/sc rcon.print(game.surfaces["nauvis"].map_gen_settings.seed)'
@@ -692,6 +707,8 @@ class EvolutionCommandHandler:
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 embed=embed,
@@ -713,7 +730,8 @@ class EvolutionCommandHandler:
                 ephemeral=True,
                 followup=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             raw = target.strip()
             lower = raw.lower()
@@ -879,6 +897,9 @@ class AdminsCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -896,7 +917,8 @@ class AdminsCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             response = await rcon_client.execute("/admins")
             admins = []
@@ -970,6 +992,9 @@ class HealthCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1072,6 +1097,9 @@ class KickCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1089,7 +1117,8 @@ class KickCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             message = reason if reason else "Kicked by moderator"
             await rcon_client.execute(f"/kick {player} {message}")
@@ -1155,6 +1184,9 @@ class BanCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1172,7 +1204,8 @@ class BanCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             message = reason if reason else "Banned by moderator"
             await rcon_client.execute(f"/ban {player} {message}")
@@ -1237,6 +1270,9 @@ class UnbanCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1254,7 +1290,8 @@ class UnbanCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/unban {player}")
 
@@ -1316,6 +1353,9 @@ class MuteCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1333,7 +1373,8 @@ class MuteCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/mute {player}")
 
@@ -1395,6 +1436,9 @@ class UnmuteCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1412,7 +1456,8 @@ class UnmuteCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/unmute {player}")
 
@@ -1474,6 +1519,9 @@ class PromoteCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1491,7 +1539,8 @@ class PromoteCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/promote {player}")
 
@@ -1554,6 +1603,9 @@ class DemoteCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1571,7 +1623,8 @@ class DemoteCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/demote {player}")
 
@@ -1639,6 +1692,9 @@ class SaveCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1656,7 +1712,8 @@ class SaveCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             cmd = f"/save {name}" if name else "/save"
             resp = await rcon_client.execute(cmd)
@@ -1725,6 +1782,9 @@ class BroadcastCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1742,7 +1802,8 @@ class BroadcastCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             escaped_msg = message.replace('"', '\\"')
             await rcon_client.execute(f'/sc game.print("[color=pink]{escaped_msg}[/color]")')
@@ -1801,6 +1862,9 @@ class WhisperCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1818,7 +1882,8 @@ class WhisperCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/whisper {player} {message}")
 
@@ -1882,6 +1947,9 @@ class WhitelistCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -1901,7 +1969,8 @@ class WhitelistCommandHandler:
             )
 
         action_lower = action.lower().strip()
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             if action_lower == "list":
                 resp = await rcon_client.execute("/whitelist get")
@@ -2020,6 +2089,9 @@ class ClockCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -2037,7 +2109,8 @@ class ClockCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             if value is None:
                 # Display current daytime
@@ -2170,6 +2243,9 @@ class SpeedCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -2187,7 +2263,8 @@ class SpeedCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             await rcon_client.execute(f"/sc game.speed = {value}")
 
@@ -2258,6 +2335,9 @@ class ResearchCommandHandler:
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
             embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
             return CommandResult(
                 success=False,
                 embed=embed,
@@ -2279,7 +2359,8 @@ class ResearchCommandHandler:
                 ephemeral=True,
                 followup=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             # Resolve target force (default to "player" for Coop)
             target_force = (force.lower().strip() if force else None) or "player"
@@ -2564,6 +2645,9 @@ class RconCommandHandler:
 
         is_limited, retry = self.rate_limiter.is_rate_limited(interaction.user.id)
         if is_limited:
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return CommandResult(
                 success=False,
                 error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
@@ -2581,7 +2665,8 @@ class RconCommandHandler:
                 ),
                 ephemeral=True,
             )
-
+        if not interaction.response.is_done():
+            await interaction.response.defer()
         try:
             result = await rcon_client.execute(command)
 
