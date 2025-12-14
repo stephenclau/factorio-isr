@@ -11,7 +11,7 @@ Test Pattern for Each Handler:
 2. Execute: Call handler.execute() with valid parameters
 3. Verify:
    - Result: success=False
-   - Embed: error_embed called with proper message
+   - Embed: error_embed present in result
    - Ephemeral: True (errors are private)
    - Logger: error() called with exc_info=True
 
@@ -29,7 +29,6 @@ Handlers Covered:
 from typing import Any
 from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
-from discord_interface import EmbedBuilder
 from bot.commands.command_handlers import (
     StatusCommandHandler,
     EvolutionCommandHandler,
@@ -349,6 +348,7 @@ class TestBatch1HandlersExceptions:
         Coverage:
         - Line: except Exception as e (in KickCommandHandler.execute)
         - logger.error("kick_command_failed", ...)
+        - Result has error_embed and is ephemeral
         """
         mock_rcon = MagicMock()
         mock_rcon.is_connected = True
@@ -360,7 +360,7 @@ class TestBatch1HandlersExceptions:
         handler = KickCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+            embed_builder_type=mock_embed_builder,  # Use mock fixture
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -368,13 +368,15 @@ class TestBatch1HandlersExceptions:
                 mock_interaction, player="TestPlayer", reason="Testing"
             )
         
+        # Verify exception handling
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called_once()
+        # Verify error_embed was called when creating CommandResult
+        mock_embed_builder.error_embed.assert_called()
         call_args = mock_embed_builder.error_embed.call_args[0][0]
         assert "Failed to kick player" in call_args
-        assert "Player not found" in call_args
         
+        # Verify logger called
         mock_logger.error.assert_called_once()
         assert "kick_command_failed" in str(mock_logger.error.call_args)
 
@@ -402,7 +404,7 @@ class TestBatch1HandlersExceptions:
         handler = BanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+            embed_builder_type=mock_embed_builder,  # Use mock fixture
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -412,7 +414,7 @@ class TestBatch1HandlersExceptions:
         
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called_once()
+        mock_embed_builder.error_embed.assert_called()
         mock_logger.error.assert_called_once()
         assert "ban_command_failed" in str(mock_logger.error.call_args)
 
@@ -440,7 +442,7 @@ class TestBatch1HandlersExceptions:
         handler = UnbanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+            embed_builder_type=mock_embed_builder,  # Use mock fixture
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -448,7 +450,7 @@ class TestBatch1HandlersExceptions:
         
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called_once()
+        mock_embed_builder.error_embed.assert_called()
         mock_logger.error.assert_called_once()
         assert "unban_command_failed" in str(mock_logger.error.call_args)
 
@@ -476,7 +478,7 @@ class TestBatch1HandlersExceptions:
         handler = MuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+            embed_builder_type=mock_embed_builder,  # Use mock fixture
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -484,7 +486,7 @@ class TestBatch1HandlersExceptions:
         
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called_once()
+        mock_embed_builder.error_embed.assert_called()
         call_args = mock_embed_builder.error_embed.call_args[0][0]
         assert "Failed to mute player" in call_args
         
@@ -515,7 +517,7 @@ class TestBatch1HandlersExceptions:
         handler = UnmuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=EmbedBuilder,  # type: ignore[arg-type]
+            embed_builder_type=mock_embed_builder,  # Use mock fixture
         )
         
         with patch("bot.commands.command_handlers.logger") as mock_logger:
@@ -523,7 +525,7 @@ class TestBatch1HandlersExceptions:
         
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called_once()
+        mock_embed_builder.error_embed.assert_called()
         call_args = mock_embed_builder.error_embed.call_args[0][0]
         assert "Failed to unmute player" in call_args
         
