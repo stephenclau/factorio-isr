@@ -552,7 +552,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             
             await interaction.response.defer(ephemeral=False)
             result = await evolution_handler.execute(interaction, target)
-            await send_command_response(interaction, result, defer_before_send=False)
+            await send_command_response(interaction, result, defer_before_send=True)
         except Exception as e:
             logger.error("evolution_command_exception", error=str(e), exc_info=True)
             embed = EmbedBuilder.error_embed(f"Evolution command error: {str(e)}")
