@@ -274,6 +274,11 @@ help_handler: Optional[HelpCommandHandler] = None
 servers_handler: Optional[ServersCommandHandler] = None
 connect_handler: Optional[ConnectCommandHandler] = None
 
+# Phase 2 handlers
+status_handler: Optional[Any] = None
+research_handler: Optional[Any] = None
+evolution_handler: Optional[Any] = None
+
 
 def _initialize_all_handlers(bot: FactorioBot) -> None:
     """Initialize all 22 command handlers with DI."""
@@ -282,6 +287,7 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
     global clock_handler, speed_handler, promote_handler, demote_handler
     global players_handler, version_handler, seed_handler, admins_handler
     global health_handler, rcon_handler, help_handler, servers_handler, connect_handler
+    global status_handler, research_handler, evolution_handler
 
     logger.info("initializing_all_handlers", count=22)
 
@@ -392,7 +398,34 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
         embed_builder_type=EmbedBuilder,
         server_manager=bot.server_manager,
     )
-    logger.info("all_handlers_initialized_complete", total=22)
+    
+    # Initialize Phase 2 handlers
+    phase2_status_cls, phase2_research_cls, phase2_evolution_cls = _import_phase2_handlers()
+    
+    if phase2_status_cls:
+        status_handler = phase2_status_cls(
+            user_context=bot.user_context,
+            server_manager=bot.server_manager,
+            cooldown=QUERY_COOLDOWN,
+            embed_builder=EmbedBuilder,
+            rcon_monitor=getattr(bot, "rcon_monitor", None),
+        )
+    
+    if phase2_research_cls:
+        research_handler = phase2_research_cls(
+            user_context=bot.user_context,
+            cooldown=ADMIN_COOLDOWN,
+            embed_builder=EmbedBuilder,
+        )
+    
+    if phase2_evolution_cls:
+        evolution_handler = phase2_evolution_cls(
+            user_context=bot.user_context,
+            cooldown=QUERY_COOLDOWN,
+            embed_builder=EmbedBuilder,
+        )
+    
+    logger.info("all_handlers_initialized_complete", total=25)
 
 
 def register_factorio_commands(bot: FactorioBot) -> None:
@@ -406,8 +439,6 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         bot: FactorioBot instance with user_context, server_manager attributes
     """
     _initialize_all_handlers(bot)
-    
-    phase2_status_handler, phase2_research_handler, phase2_evolution_handler = _import_phase2_handlers()
 
     factorio_group = app_commands.Group(
         name="factorio",
@@ -483,7 +514,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
     @factorio_group.command(name="status", description="Show Factorio server status")
     async def status_command(interaction: discord.Interaction) -> None:
         try:
-            if not phase2_status_handler:
+            if not status_handler:
                 await interaction.response.send_message(
                     embed=EmbedBuilder.error_embed(
                         "Status handler not available. This is a bot configuration error.\n\n"
@@ -494,7 +525,7 @@ def register_factorio_commands(bot: FactorioBot) -> None:
                 logger.error("status_command_failed_no_handler", user=interaction.user.name)
                 return
             
-            result = await phase2_status_handler.execute(interaction)
+            result = await status_handler.execute(interaction)
             await send_command_response(interaction, result, defer_before_send=True)
         except Exception as e:
             logger.error("status_command_exception", error=str(e), exc_info=True)
@@ -546,161 +577,28 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         target: str,
     ) -> None:
         """Show enemy evolution with guaranteed response handling and timeout protection."""
-        await interaction.response.defer(ephemeral=False)
-        
-        RCON_TIMEOUT = 10.0
-
         try:
-            rcon_client = bot.get_rcon_for_user(interaction.user.id)
-            if rcon_client is None or not rcon_client.is_connected:
-                server_name = bot.get_server_display_name(interaction.user.id)
-                embed = EmbedBuilder.error_embed(
-                    f"RCON not available for {server_name}.\n\n"
-                    "Use `/factorio servers` to see available servers."
+            if not evolution_handler:
+                await interaction.response.send_message(
+                    embed=EmbedBuilder.error_embed(
+                        "Evolution handler not available. This is a bot configuration error.\n\n"
+                        "Contact bot administrators."
+                    ),
+                    ephemeral=True,
                 )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-
-            raw = target.strip()
-            lower = raw.lower()
-
-            if lower == "all":
-                lua = (
-                    "/sc "
-                    "local f = game.forces['enemy']; "
-                    "local total = 0; local count = 0; "
-                    "local lines = {}; "
-                    "for _, s in pairs(game.surfaces) do "
-                    "  if not string.find(string.lower(s.name), 'platform') then "
-                    "    local evo = f.get_evolution_factor(s); "
-                    "    total = total + evo; count = count + 1; "
-                    "    table.insert(lines, s.name .. ':' .. string.format('%.2f%%', evo * 100)); "
-                    "  end "
-                    "end; "
-                    "if count > 0 then "
-                    "  local avg = total / count; "
-                    "  rcon.print('AGG:' .. string.format('%.2f%%', avg * 100)); "
-                    "else "
-                    "  rcon.print('AGG:0.00%'); "
-                    "end; "
-                    "for _, line in ipairs(lines) do "
-                    "  rcon.print(line); "
-                    "end"
-                )
-                
-                try:
-                    resp = await asyncio.wait_for(
-                        rcon_client.execute(lua),
-                        timeout=RCON_TIMEOUT
-                    )
-                except asyncio.TimeoutError:
-                    embed = EmbedBuilder.error_embed(
-                        "Evolution query timed out. Server may be unresponsive or very slow.\n\n"
-                        "Try again in a few moments."
-                    )
-                    await interaction.followup.send(embed=embed, ephemeral=True)
-                    logger.warning("evolution_aggregate_timeout", target="all")
-                    return
-                
-                lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
-                agg_line = next((ln for ln in lines if ln.startswith("AGG:")), None)
-                per_surface = [ln for ln in lines if not ln.startswith("AGG:")]
-
-                agg_value = "0.00%"
-                if agg_line:
-                    agg_value = agg_line.replace("AGG:", "", 1).strip()
-
-                if not per_surface:
-                    title = "🐛 Evolution – All Surfaces"
-                    message = (
-                        f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
-                        "No individual non-platform surfaces returned evolution data."
-                    )
-                else:
-                    formatted = "\n".join(f"• `{ln}`" for ln in per_surface)
-                    title = "🐛 Evolution – All Non-platform Surfaces"
-                    message = (
-                        f"Aggregate enemy evolution across non-platform surfaces: **{agg_value}**\n\n"
-                        "Per-surface evolution:\n\n"
-                        f"{formatted}"
-                    )
-
-                embed = EmbedBuilder.info_embed(title=title, message=message)
-                await interaction.followup.send(embed=embed)
-                logger.info(
-                    "evolution_requested",
-                    moderator=interaction.user.name,
-                    target="all",
-                )
-                return
-
-            surface = raw
-            lua = (
-                "/sc "
-                f"local s = game.get_surface('{surface}'); "
-                "if not s then "
-                "  rcon.print('SURFACE_NOT_FOUND'); "
-                "  return "
-                "end; "
-                "if string.find(string.lower(s.name), 'platform') then "
-                "  rcon.print('SURFACE_PLATFORM_IGNORED'); "
-                "  return "
-                "end; "
-                "local evo = game.forces['enemy'].get_evolution_factor(s); "
-                "rcon.print(string.format('%.2f%%', evo * 100))"
-            )
-            
-            try:
-                resp = await asyncio.wait_for(
-                    rcon_client.execute(lua),
-                    timeout=RCON_TIMEOUT
-                )
-            except asyncio.TimeoutError:
-                embed = EmbedBuilder.error_embed(
-                    f"Evolution query for surface `{surface}` timed out.\n\n"
-                    "Server may be unresponsive or very slow. Try again in a few moments."
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                logger.warning("evolution_single_timeout", surface=surface)
+                logger.error("evolution_command_failed_no_handler", user=interaction.user.name)
                 return
             
-            resp_str = resp.strip()
-
-            if resp_str == "SURFACE_NOT_FOUND":
-                embed = EmbedBuilder.error_embed(
-                    f"Surface `{surface}` was not found.\n\n"
-                    "Use map tools or an admin command to list available surfaces."
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-
-            if resp_str == "SURFACE_PLATFORM_IGNORED":
-                embed = EmbedBuilder.error_embed(
-                    f"Surface `{surface}` is a platform surface and is ignored for evolution queries."
-                )
-                await interaction.followup.send(embed=embed, ephemeral=True)
-                return
-
-            title = f"🐛 Evolution – Surface `{surface}`"
-            message = (
-                f"Enemy evolution on `{surface}`: **{resp_str}**\n\n"
-                "Higher evolution means stronger biters!"
-            )
-            embed = EmbedBuilder.info_embed(title=title, message=message)
-            await interaction.followup.send(embed=embed)
-            logger.info(
-                "evolution_requested",
-                moderator=interaction.user.name,
-                target=surface,
-            )
-
+            await interaction.response.defer(ephemeral=False)
+            result = await evolution_handler.execute(interaction, target)
+            await send_command_response(interaction, result, defer_before_send=False)
         except Exception as e:
-            logger.error("evolution_command_failed", error=str(e), target=target, exc_info=True)
-            embed = EmbedBuilder.error_embed(
-                f"Failed to get evolution: {str(e)}\n\n"
-                "This may indicate a server connectivity issue. Try again shortly."
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.error("evolution_command_exception", error=str(e), exc_info=True)
+            embed = EmbedBuilder.error_embed(f"Evolution command error: {str(e)}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                await interaction.followup.send(embed=embed, ephemeral=True)
 
     @factorio_group.command(name="admins", description="List server administrators")
     async def admins_command(interaction: discord.Interaction) -> None:
@@ -929,16 +827,21 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         action: Optional[str] = None,
         technology: Optional[str] = None,
     ) -> None:
-        if not phase2_research_handler:
-            await interaction.response.send_message(
-                embed=EmbedBuilder.error_embed("Research handler not available (Phase 2 module not found)"),
-                ephemeral=True,
+        try:
+            if not research_handler:
+                await interaction.response.send_message(
+                    embed=EmbedBuilder.error_embed("Research handler not available (Phase 2 module not found)"),
+                    ephemeral=True,
+                )
+                return
+            result = await research_handler.execute(
+                interaction, force=force, action=action, technology=technology
             )
-            return
-        result = await phase2_research_handler.execute(
-            interaction, force=force, action=action, technology=technology
-        )
-        await send_command_response(interaction, result, defer_before_send=True)
+            await send_command_response(interaction, result, defer_before_send=True)
+        except Exception as e:
+            logger.error("research_command_exception", error=str(e), exc_info=True)
+            embed = EmbedBuilder.error_embed(f"Research command error: {str(e)}")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     # ════════════════════════════════════════════════════════════════════════════
     # ADVANCED (2)
