@@ -424,7 +424,7 @@ class DiscordInterfaceFactory:
         """
         Import DiscordBot from refactored module with fallback.
         
-        Prefers discord_bot_refactored (modular architecture) but falls
+        Prefers discord_bot (modular architecture) but falls
         back to discord_bot for compatibility.
         
         Returns:
@@ -439,7 +439,7 @@ class DiscordInterfaceFactory:
             logger.info("Using refactored DiscordBot (modular architecture)")
             return DiscordBot
         except ImportError as e:
-            logger.debug(f"discord_bot_refactored not found: {e}")
+            logger.debug(f"discord_bot not found: {e}")
         
         # # Try 2: Original version (backward compatibility)
         # try:
@@ -451,8 +451,8 @@ class DiscordInterfaceFactory:
         
         # Try 3: importlib fallback
         try:
-            logger.debug("Attempting importlib fallback for discord_bot_refactored")
-            return DiscordInterfaceFactory._import_with_importlib('discord_bot_refactored', 'DiscordBot')
+            logger.debug("Attempting importlib fallback for discord_bot")
+            return DiscordInterfaceFactory._import_with_importlib('discord_bot', 'DiscordBot')
         except ImportError:
             logger.debug("Attempting importlib fallback for discord_bot")
             return DiscordInterfaceFactory._import_with_importlib('discord_bot', 'DiscordBot')
