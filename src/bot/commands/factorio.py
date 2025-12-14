@@ -280,6 +280,17 @@ research_handler: Optional[Any] = None
 evolution_handler: Optional[Any] = None
 
 
+def _get_handler_name(handler_cls: Any) -> str:
+    """Safely get handler class name, handles None and Mock objects."""
+    if handler_cls is None:
+        return "None"
+    try:
+        return handler_cls.__name__
+    except AttributeError:
+        # For Mock objects in tests that don't have __name__
+        return type(handler_cls).__name__
+
+
 def _initialize_all_handlers(bot: FactorioBot) -> None:
     """Initialize all 22 command handlers with DI."""
     global kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler
@@ -410,7 +421,7 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
             embed_builder=EmbedBuilder,
             rcon_monitor=getattr(bot, "rcon_monitor", None),
         )
-        logger.info("status_handler_initialized", handler_class=phase2_status_cls.__name__)
+        logger.info("status_handler_initialized", handler_class=_get_handler_name(phase2_status_cls))
     else:
         logger.warning("status_handler_not_initialized", reason="class_import_failed")
     
@@ -420,7 +431,7 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
             cooldown=ADMIN_COOLDOWN,
             embed_builder=EmbedBuilder,
         )
-        logger.info("research_handler_initialized", handler_class=phase2_research_cls.__name__)
+        logger.info("research_handler_initialized", handler_class=_get_handler_name(phase2_research_cls))
     else:
         logger.warning("research_handler_not_initialized", reason="class_import_failed")
     
@@ -430,7 +441,7 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
             cooldown=QUERY_COOLDOWN,
             embed_builder=EmbedBuilder,
         )
-        logger.info("evolution_handler_initialized", handler_class=phase2_evolution_cls.__name__)
+        logger.info("evolution_handler_initialized", handler_class=_get_handler_name(phase2_evolution_cls))
     else:
         logger.warning("evolution_handler_not_initialized", reason="class_import_failed")
     
