@@ -1544,7 +1544,7 @@ class TestServerAutocompleteFunction:
             ),
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client.server_manager = mock_bot.server_manager
+        mock_interaction.client = mock_bot  # CONNECT INTERACTION TO BOT
         
         # Test autocomplete logic
         current_lower = 'prod'.lower()
@@ -1580,7 +1580,7 @@ class TestServerAutocompleteFunction:
             ),
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client.server_manager = mock_bot.server_manager
+        mock_interaction.client = mock_bot  # CONNECT INTERACTION TO BOT
         
         # Test: Use OR condition like prod logic (tag OR name OR description)
         current_lower = 'production'.lower()
@@ -1606,7 +1606,7 @@ class TestServerAutocompleteFunction:
         # Setup
         mock_bot.server_manager = MagicMock()
         mock_bot.server_manager.list_servers.return_value = {}  # Empty
-        mock_interaction.client.server_manager = mock_bot.server_manager
+        mock_interaction.client = mock_bot
         
         # Test
         choices = []
@@ -1623,7 +1623,8 @@ class TestServerAutocompleteFunction:
     ):
         """Test server_autocomplete when no server_manager."""
         # Setup
-        mock_interaction.client.server_manager = None  # No manager
+        mock_interaction.client = mock_bot
+        mock_bot.server_manager = None  # No manager
         
         # Test
         if not hasattr(mock_interaction.client, "server_manager"):
@@ -1651,7 +1652,7 @@ class TestServerAutocompleteFunction:
             for i in range(50)
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client.server_manager = mock_bot.server_manager
+        mock_interaction.client = mock_bot
         
         # Test
         choices = list(mock_servers.keys())
@@ -1690,7 +1691,7 @@ class TestServerAutocompleteFunction:
             ),
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client.server_manager = mock_bot.server_manager
+        mock_interaction.client = mock_bot
         
         # Test (uppercase input should match)
         current_lower = 'PROD'.lower()  # Convert to lowercase
@@ -1722,7 +1723,7 @@ class TestServerAutocompleteFunction:
             ),
         }
         mock_bot.server_manager.list_servers.return_value = mock_servers
-        mock_interaction.client.server_manager = mock_bot.server_manager
+        mock_interaction.client = mock_bot
         
         # Test (no servers match 'xyz')
         current_lower = 'xyz'.lower()
