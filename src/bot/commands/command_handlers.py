@@ -601,7 +601,7 @@ class SeedCommandHandler:
 
             embed = discord.Embed(
                 title=f"🌍 {server_name} Map Seed",
-                description=f"``````",
+                description=f"`{seed}`",
                 color=self.embed_builder.COLOR_INFO,
                 timestamp=discord.utils.utcnow(),
             )
@@ -2386,11 +2386,11 @@ class RconCommandHandler:
                 color=self.embed_builder.COLOR_SUCCESS,
                 timestamp=discord.utils.utcnow(),
             )
-            embed.add_field(name="Command", value=f"``````", inline=False)
+            embed.add_field(name="Command", value=f"`{command}`", inline=False)
             if result:
                 result_text = result if len(result) < 1024 else result[:1021] + "..."
                 embed.add_field(
-                    name="Response", value=f"``````", inline=False
+                    name="Response", value=f"`{result_text}`", inline=False
                 )
             embed.add_field(name="Server", value=server_name, inline=True)
             embed.set_footer(text="Dangerous operation - use with caution")
