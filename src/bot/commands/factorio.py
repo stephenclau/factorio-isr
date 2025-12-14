@@ -410,6 +410,9 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
             embed_builder=EmbedBuilder,
             rcon_monitor=getattr(bot, "rcon_monitor", None),
         )
+        logger.info("status_handler_initialized", handler_class=phase2_status_cls.__name__)
+    else:
+        logger.warning("status_handler_not_initialized", reason="class_import_failed")
     
     if phase2_research_cls:
         research_handler = phase2_research_cls(
@@ -417,6 +420,9 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
             cooldown=ADMIN_COOLDOWN,
             embed_builder=EmbedBuilder,
         )
+        logger.info("research_handler_initialized", handler_class=phase2_research_cls.__name__)
+    else:
+        logger.warning("research_handler_not_initialized", reason="class_import_failed")
     
     if phase2_evolution_cls:
         evolution_handler = phase2_evolution_cls(
@@ -424,6 +430,9 @@ def _initialize_all_handlers(bot: FactorioBot) -> None:
             cooldown=QUERY_COOLDOWN,
             embed_builder=EmbedBuilder,
         )
+        logger.info("evolution_handler_initialized", handler_class=phase2_evolution_cls.__name__)
+    else:
+        logger.warning("evolution_handler_not_initialized", reason="class_import_failed")
     
     logger.info("all_handlers_initialized_complete", total=25)
 
