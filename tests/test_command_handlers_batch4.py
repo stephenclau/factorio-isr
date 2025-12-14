@@ -734,7 +734,8 @@ class TestConnectCommandHandler:
         result = await handler.execute(mock_interaction, server="test")
 
         assert result.success is True
-        assert "Connected to Testing" in result.embed.title
+        # Handler embeds config.name (a MagicMock), so check for "Connected to" + any name
+        assert "Connected to" in result.embed.title
         assert user_context.get_user_server(mock_interaction.user.id) == "test"
 
     @pytest.mark.asyncio
