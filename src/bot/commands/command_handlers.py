@@ -46,7 +46,7 @@ This approach provides:
     ✅ Type safety via Protocol/ABC
 """
 
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, ClassVar, Dict, List, Optional, Protocol
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import re
@@ -137,15 +137,20 @@ class RateLimiter(Protocol):
 
 
 class EmbedBuilderType(Protocol):
-    """Interface for embed building utilities."""
+    """Interface for embed building utilities.
+    
+    This protocol matches the actual EmbedBuilder implementation:
+    - Colors are class variables (ClassVar)
+    - cooldown_embed accepts int (retry_seconds from rate limiter)
+    """
 
-    COLOR_SUCCESS: int
-    COLOR_WARNING: int
-    COLOR_INFO: int
-    COLOR_ADMIN: int
+    COLOR_SUCCESS: ClassVar[int]
+    COLOR_WARNING: ClassVar[int]
+    COLOR_INFO: ClassVar[int]
+    COLOR_ADMIN: ClassVar[int]
 
     @staticmethod
-    def cooldown_embed(retry_after: Optional[float]) -> discord.Embed:
+    def cooldown_embed(retry_seconds: int) -> discord.Embed:
         """Create rate limit embed."""
         ...
 
@@ -236,7 +241,7 @@ class StatusCommandHandler:
         # Rate limiting
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
-            embed = self.embed_builder.cooldown_embed(retry)
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
             return CommandResult(
                 success=False,
                 embed=embed,
@@ -446,7 +451,7 @@ class PlayersCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -531,7 +536,7 @@ class VersionCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -598,7 +603,7 @@ class SeedCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -681,7 +686,7 @@ class EvolutionCommandHandler:
         # Rate limiting
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
-            embed = self.embed_builder.cooldown_embed(retry)
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
             return CommandResult(
                 success=False,
                 embed=embed,
@@ -870,7 +875,7 @@ class AdminsCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -960,7 +965,7 @@ class HealthCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1061,7 +1066,7 @@ class KickCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1143,7 +1148,7 @@ class BanCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1224,7 +1229,7 @@ class UnbanCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1302,7 +1307,7 @@ class MuteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1380,7 +1385,7 @@ class UnmuteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1458,7 +1463,7 @@ class PromoteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1537,7 +1542,7 @@ class DemoteCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1621,7 +1626,7 @@ class SaveCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1706,7 +1711,7 @@ class BroadcastCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1781,7 +1786,7 @@ class WhisperCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1861,7 +1866,7 @@ class WhitelistCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -1998,7 +2003,7 @@ class ClockCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -2147,7 +2152,7 @@ class SpeedCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
@@ -2231,7 +2236,7 @@ class ResearchCommandHandler:
         # Rate limiting
         is_limited, retry = self.cooldown.is_rate_limited(interaction.user.id)
         if is_limited:
-            embed = self.embed_builder.cooldown_embed(retry)
+            embed = self.embed_builder.cooldown_embed(int(retry or 0))
             return CommandResult(
                 success=False,
                 embed=embed,
@@ -2539,7 +2544,7 @@ class RconCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry or 0),
+                error_embed=self.embed_builder.cooldown_embed(int(retry or 0)),
                 ephemeral=True,
             )
 
