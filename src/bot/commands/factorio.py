@@ -1,18 +1,3 @@
-# Copyright (c) 2025 Stephen Clau
-#
-# This file is part of Factorio ISR.
-#
-# Factorio ISR is dual-licensed:
-#
-# 1. GNU Affero General Public License v3.0 (AGPL-3.0)
-#    See LICENSE file for full terms
-#
-# 2. Commercial License
-#    For proprietary use without AGPL requirements
-#    Contact: licensing@laudiversified.com
-#
-# SPDX-License-Identifier: AGPL-3.0-only OR Commercial
-
 """Factorio slash command group registration.
 
 All /factorio subcommands are defined in this single file to respect Discord's
@@ -883,42 +868,57 @@ def register_factorio_commands(bot: Any) -> None:
     @factorio_group.command(name="help", description="Show available Factorio commands")
     async def help_command(interaction: discord.Interaction) -> None:
         """Display comprehensive help message. Delegates to HelpCommandHandler."""
-        help_text = (
-            "**🏭 Factorio ISR Bot – Commands**\n\n"
-            "**🌍 Multi-Server**\n"
-            "`/factorio servers` – List available servers\n"
-            "`/factorio connect <server>` – Switch to a server\n\n"
-            "**📊 Server Information**\n"
-            "`/factorio status` – Show server status and uptime\n"
-            "`/factorio players` – List players currently online\n"
-            "`/factorio version` – Show Factorio server version\n"
-            "`/factorio seed` – Show map seed\n"
-            "`/factorio evolution [target]` – Show enemy evolution\n"
-            "`/factorio admins` – List server administrators\n"
-            "`/factorio health` – Check bot and server health\n\n"
-            "**👥 Player Management**\n"
-            "`/factorio kick <player> [reason]` – Kick a player\n"
-            "`/factorio ban <player> [reason]` – Ban a player\n"
-            "`/factorio unban <player>` – Unban a player\n"
-            "`/factorio mute <player>` – Mute a player from chat\n"
-            "`/factorio unmute <player>` – Unmute a player\n"
-            "`/factorio promote <player>` – Promote player to admin\n"
-            "`/factorio demote <player>` – Demote player from admin\n\n"
-            "**🔧 Server Management**\n"
-            "`/factorio broadcast <message>` – Send message to all players\n"
-            "`/factorio whisper <player> <message>` – Send private message\n"
-            "`/factorio save [name]` – Save the game\n"
-            "`/factorio whitelist <action> [player]` – Manage whitelist\n\n"
-            "**🎮 Game Control**\n"
-            "`/factorio clock [value]` – Show/set game time\n"
-            "`/factorio speed <value>` – Set game speed (0.1-10.0)\n"
-            "`/factorio research <technology>` – Force research tech\n\n"
-            "**🛠️ Advanced**\n"
-            "`/factorio rcon <command>` – Run raw RCON command\n"
-            "`/factorio help` – Show this help message\n\n"
-            "_Most commands require RCON to be enabled._"
-        )
-        await interaction.response.send_message(help_text, ephemeral=True)
+        if not help_handler:
+            await interaction.response.send_message(
+                embed=EmbedBuilder.error_embed("Help handler not initialized"),
+                ephemeral=True,
+            )
+            return
+        result = await help_handler.execute(interaction)
+        # HelpCommandHandler returns success but result.embed is None (plain text format by design)
+        # Send help text as message content directly
+        if result.success:
+            help_text = (
+                "**🏭 Factorio ISR Bot – Commands**\n\n"
+                "**🌍 Multi-Server**\n"
+                "`/factorio servers` – List available servers\n"
+                "`/factorio connect <server>` – Switch to a server\n\n"
+                "**📊 Server Information**\n"
+                "`/factorio status` – Show server status and uptime\n"
+                "`/factorio players` – List players currently online\n"
+                "`/factorio version` – Show Factorio server version\n"
+                "`/factorio seed` – Show map seed\n"
+                "`/factorio evolution [target]` – Show enemy evolution\n"
+                "`/factorio admins` – List server administrators\n"
+                "`/factorio health` – Check bot and server health\n\n"
+                "**👥 Player Management**\n"
+                "`/factorio kick <player> [reason]` – Kick a player\n"
+                "`/factorio ban <player> [reason]` – Ban a player\n"
+                "`/factorio unban <player>` – Unban a player\n"
+                "`/factorio mute <player>` – Mute a player from chat\n"
+                "`/factorio unmute <player>` – Unmute a player\n"
+                "`/factorio promote <player>` – Promote player to admin\n"
+                "`/factorio demote <player>` – Demote player from admin\n\n"
+                "**🔧 Server Management**\n"
+                "`/factorio broadcast <message>` – Send message to all players\n"
+                "`/factorio whisper <player> <message>` – Send private message\n"
+                "`/factorio save [name]` – Save the game\n"
+                "`/factorio whitelist <action> [player]` – Manage whitelist\n\n"
+                "**🎮 Game Control**\n"
+                "`/factorio clock [value]` – Show/set game time\n"
+                "`/factorio speed <value>` – Set game speed (0.1-10.0)\n"
+                "`/factorio research <technology>` – Force research tech\n\n"
+                "**🛠️ Advanced**\n"
+                "`/factorio rcon <command>` – Run raw RCON command\n"
+                "`/factorio help` – Show this help message\n\n"
+                "_Most commands require RCON to be enabled._"
+            )
+            await interaction.response.send_message(help_text, ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                embed=result.error_embed or EmbedBuilder.error_embed("Help command failed"),
+                ephemeral=True,
+            )
 
     # ========================================================================
     # Register the command group
