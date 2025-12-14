@@ -1,7 +1,7 @@
 """Factorio slash command group registration.
 
 All /factorio subcommands are defined in this single file to respect Discord's
-25 subcommand-per-group limit. Currently using 17/25 slots.
+25 subcommand-per-group limit. Currently using 25/25 slots.
 
 Command Breakdown:
 - Multi-Server Commands: 2/25 (servers, connect)
@@ -11,9 +11,8 @@ Command Breakdown:
 - Game Control: 3/25 (clock, speed, research)
 - Advanced: 2/25 (rcon, help)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TOTAL: 17/25 (8 slots available for future expansion)
+TOTAL: 25/25
 
-🔄 Phase 4 Status: 🌟 **ALL 17/17 COMMANDS REFACTORED TO DI + COMMAND PATTERN** 🌟
 """
 
 from typing import Any, List, Optional
