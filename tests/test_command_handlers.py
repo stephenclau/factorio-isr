@@ -556,7 +556,7 @@ class TestResearchCommandHandlerCoverageGaps:
         assert result.success is True
         mock_embed_builder.info_embed.assert_called()
         call_args = mock_embed_builder.info_embed.call_args
-        assert "reverted" in call_args[1]["message"].lower()
+        assert "undone" in call_args[1]["message"].lower()
 
     @pytest.mark.asyncio
     async def test_research_undo_single_technology_exception(
