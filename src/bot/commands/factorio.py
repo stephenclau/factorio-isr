@@ -203,13 +203,11 @@ connect_handler: Optional[ConnectCommandHandler] = None
 
 def _initialize_all_handlers(bot: Any) -> None:
     """Initialize all 22 command handlers with DI."""
-    global (
-        kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler,
-        save_handler, broadcast_handler, whisper_handler, whitelist_handler,
-        clock_handler, speed_handler, promote_handler, demote_handler,
-        players_handler, version_handler, seed_handler, admins_handler,
-        health_handler, rcon_handler, help_handler, servers_handler, connect_handler,
-    )
+    global kick_handler, ban_handler, unban_handler, mute_handler, unmute_handler
+    global save_handler, broadcast_handler, whisper_handler, whitelist_handler
+    global clock_handler, speed_handler, promote_handler, demote_handler
+    global players_handler, version_handler, seed_handler, admins_handler
+    global health_handler, rcon_handler, help_handler, servers_handler, connect_handler
 
     logger.info("initializing_all_handlers", count=22)
 
