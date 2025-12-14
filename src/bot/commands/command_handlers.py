@@ -2222,7 +2222,7 @@ class SpeedCommandHandler:
         value: float,
     ) -> CommandResult:
         """Execute speed command."""
-        logger.info("handler_invoked", handler="SpeedCommandHandler", user=interaction.user.name, speed=speed)
+        logger.info("handler_invoked", handler="SpeedCommandHandler", user=interaction.user.name, speed=value)
         logger.info(
             "handler_invoked",
             handler="SpeedCommandHandler",
