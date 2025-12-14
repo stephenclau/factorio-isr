@@ -66,6 +66,7 @@ from bot.commands.command_handlers import (
     ConnectCommandHandler,
     CommandResult,
 )
+from discord_interface import EmbedBuilder  # Import real EmbedBuilder
 
 
 # ════════════════════════════════════════════════════
@@ -109,37 +110,6 @@ class DummyRateLimiter:
         return (self.is_limited, self.retry_seconds if self.is_limited else None)
 
 
-class DummyEmbedBuilder:
-    """Minimal EmbedBuilder implementation."""
-
-    COLOR_WARNING = 0xFFA500
-    COLOR_SUCCESS = 0x00FF00
-    COLOR_INFO = 0x0099FF
-
-    @staticmethod
-    def error_embed(message: str) -> discord.Embed:
-        """Create error embed."""
-        return discord.Embed(
-            title="❌ Error",
-            description=message,
-            color=discord.Color.red(),
-        )
-
-    @staticmethod
-    def cooldown_embed(retry_seconds: int) -> discord.Embed:
-        """Create cooldown embed."""
-        return discord.Embed(
-            title="⏱️ Rate Limited",
-            description=f"Try again in {retry_seconds} seconds",
-            color=discord.Color.from_rgb(255, 165, 0),
-        )
-
-    @staticmethod
-    def info_embed(title: str, message: str) -> discord.Embed:
-        """Create info embed."""
-        return discord.Embed(title=title, description=message)
-
-
 class DummyRconMonitor:
     """Minimal RconMonitor implementation with uptime tracking."""
 
@@ -175,6 +145,7 @@ class DummyBot:
         self._connected = connected
         self.rcon_monitor = rcon_monitor
         self.server_manager = server_manager
+        self.user_context = None  # Required by BotType protocol
 
 
 # ════════════════════════════════════════════════════
@@ -225,7 +196,7 @@ class TestPlayersCommandHandler:
         handler = PlayersCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,  # Use real EmbedBuilder
         )
 
         result = await handler.execute(mock_interaction)
@@ -245,7 +216,7 @@ class TestPlayersCommandHandler:
         handler = PlayersCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -259,7 +230,7 @@ class TestPlayersCommandHandler:
         handler = PlayersCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=True, retry_seconds=30),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -274,7 +245,7 @@ class TestPlayersCommandHandler:
         handler = PlayersCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -297,7 +268,7 @@ class TestVersionCommandHandler:
         handler = VersionCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -311,7 +282,7 @@ class TestVersionCommandHandler:
         handler = VersionCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=True, retry_seconds=30),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -325,7 +296,7 @@ class TestVersionCommandHandler:
         handler = VersionCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -354,7 +325,7 @@ class TestSeedCommandHandler:
         handler = SeedCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -372,7 +343,7 @@ class TestSeedCommandHandler:
         handler = SeedCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=True, retry_seconds=30),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -386,7 +357,7 @@ class TestSeedCommandHandler:
         handler = SeedCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -420,7 +391,7 @@ class TestAdminsCommandHandler:
         handler = AdminsCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -437,7 +408,7 @@ class TestAdminsCommandHandler:
         handler = AdminsCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -451,7 +422,7 @@ class TestAdminsCommandHandler:
         handler = AdminsCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=True, retry_seconds=30),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -465,7 +436,7 @@ class TestAdminsCommandHandler:
         handler = AdminsCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction)
@@ -497,13 +468,14 @@ class TestHealthCommandHandler:
         handler = HealthCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             bot=bot,
         )
 
         result = await handler.execute(mock_interaction)
 
         assert result.success is True
+        assert result.embed is not None  # Null check for type safety
         assert "Health Check" in result.embed.title
         assert "Healthy" in str(result.embed.fields[0].value)
         assert "Connected" in str(result.embed.fields[1].value)
@@ -519,13 +491,14 @@ class TestHealthCommandHandler:
         handler = HealthCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=None),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             bot=bot,
         )
 
         result = await handler.execute(mock_interaction)
 
         assert result.success is True
+        assert result.embed is not None  # Null check for type safety
         assert "Disconnected" in str(result.embed.fields[0].value)
 
     @pytest.mark.asyncio
@@ -535,7 +508,7 @@ class TestHealthCommandHandler:
         handler = HealthCommandHandler(
             user_context_provider=DummyUserContext(),
             rate_limiter=DummyRateLimiter(is_limited=True, retry_seconds=30),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             bot=bot,
         )
 
@@ -567,13 +540,14 @@ class TestHealthCommandHandler:
         handler = HealthCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=MagicMock(is_connected=True)),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             bot=bot,
         )
 
         result = await handler.execute(mock_interaction)
 
         assert result.success is True
+        assert result.embed is not None  # Null check for type safety
         # Uptime field should contain time units (d, h, m)
         assert any("d" in str(f.value) or "h" in str(f.value) for f in result.embed.fields)
 
@@ -597,7 +571,7 @@ class TestRconCommandHandler:
         handler = RconCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction, command="/time set day")
@@ -613,7 +587,7 @@ class TestRconCommandHandler:
         handler = RconCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=True, retry_seconds=30),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction, command="/test")
@@ -627,7 +601,7 @@ class TestRconCommandHandler:
         handler = RconCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
             rate_limiter=DummyRateLimiter(is_limited=False),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
         )
 
         result = await handler.execute(mock_interaction, command="/invalid")
@@ -651,7 +625,7 @@ class TestHelpCommandHandler:
         - Static content
         - No RCON, rate limiter, or state inspection
         """
-        handler = HelpCommandHandler(embed_builder_type=DummyEmbedBuilder)
+        handler = HelpCommandHandler(embed_builder_type=EmbedBuilder)
 
         result = await handler.execute(mock_interaction)
 
@@ -675,13 +649,14 @@ class TestServersCommandHandler:
         """
         handler = ServersCommandHandler(
             user_context_provider=DummyUserContext(),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             server_manager=None,
         )
 
         result = await handler.execute(mock_interaction)
 
         assert result.success is True
+        assert result.embed is not None  # Add null check
         assert "Single-server mode" in result.embed.description
 
     @pytest.mark.asyncio
@@ -701,13 +676,14 @@ class TestServersCommandHandler:
 
         handler = ServersCommandHandler(
             user_context_provider=DummyUserContext(user_server="prod"),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             server_manager=server_manager,
         )
 
         result = await handler.execute(mock_interaction)
 
         assert result.success is True
+        assert result.embed is not None  # Add null check
         assert "Available Factorio Servers" in result.embed.title
         assert "prod" in str(result.embed.fields)
         assert "test" in str(result.embed.fields)
@@ -743,13 +719,14 @@ class TestConnectCommandHandler:
         user_context = DummyUserContext(user_server="prod")
         handler = ConnectCommandHandler(
             user_context_provider=user_context,
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             server_manager=server_manager,
         )
 
         result = await handler.execute(mock_interaction, server="test")
 
         assert result.success is True
+        assert result.embed is not None  # Add null check
         # Handler embeds config.name (a MagicMock), so check for "Connected to" + any name
         assert "Connected to" in result.embed.title
         assert user_context.get_user_server(mock_interaction.user.id) == "test"
@@ -769,7 +746,7 @@ class TestConnectCommandHandler:
 
         handler = ConnectCommandHandler(
             user_context_provider=DummyUserContext(),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             server_manager=server_manager,
         )
 
@@ -789,7 +766,7 @@ class TestConnectCommandHandler:
         """
         handler = ConnectCommandHandler(
             user_context_provider=DummyUserContext(),
-            embed_builder_type=DummyEmbedBuilder,
+            embed_builder_type=EmbedBuilder,
             server_manager=None,
         )
 
