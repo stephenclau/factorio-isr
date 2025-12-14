@@ -601,11 +601,16 @@ class SeedCommandHandler:
 
             embed = discord.Embed(
                 title=f"🌍 {server_name} Map Seed",
-                description=f"`{seed}`",
                 color=self.embed_builder.COLOR_INFO,
                 timestamp=discord.utils.utcnow(),
             )
-            embed.set_footer(text="Use this seed to generate the same map")
+            embed.add_field(name="Map Seed", value=f"`{seed}`", inline=False)
+            embed.add_field(
+                name="Usage",
+                value="Use this seed to generate the same map in a new game",
+                inline=False,
+            )
+            embed.set_footer(text="Factorio ISR")
             logger.info("seed_command_executed")
             return CommandResult(success=True, embed=embed, ephemeral=False)
 
@@ -2386,11 +2391,11 @@ class RconCommandHandler:
                 color=self.embed_builder.COLOR_SUCCESS,
                 timestamp=discord.utils.utcnow(),
             )
-            embed.add_field(name="Command", value=f"`{command}`", inline=False)
+            embed.add_field(name="Command", value=command, inline=False)
             if result:
                 result_text = result if len(result) < 1024 else result[:1021] + "..."
                 embed.add_field(
-                    name="Response", value=f"`{result_text}`", inline=False
+                    name="Response", value=result_text, inline=False
                 )
             embed.add_field(name="Server", value=server_name, inline=True)
             embed.set_footer(text="Dangerous operation - use with caution")
