@@ -343,7 +343,13 @@ class TestSeedCommandHandler:
 
     @pytest.mark.asyncio
     async def test_seed_happy_path(self, mock_interaction, mock_rcon_client):
-        """Test: seed command returns map seed."""
+        """Test: seed command returns map seed.
+        
+        Happy Path:
+        - RCON returns numeric seed
+        - Parse and validate as integer
+        - Display in embed field
+        """
         mock_rcon_client.execute.return_value = "1234567890"
         handler = SeedCommandHandler(
             user_context_provider=DummyUserContext(rcon_client=mock_rcon_client),
@@ -354,7 +360,11 @@ class TestSeedCommandHandler:
         result = await handler.execute(mock_interaction)
 
         assert result.success is True
-        assert "1234567890" in result.embed.description
+        assert result.embed is not None
+        # Seed is now in a field, not description
+        assert len(result.embed.fields) > 0
+        # Check first field contains the seed value
+        assert any("1234567890" in field.value for field in result.embed.fields)
 
     @pytest.mark.asyncio
     async def test_seed_rate_limited(self, mock_interaction, mock_rcon_client):
