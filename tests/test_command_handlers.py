@@ -26,6 +26,8 @@ operational excellence standards:
 - ✅ Coverage notes: docstrings reference line coverage
 - ✅ Error paths: exception handling validated
 - ✅ Edge cases: boundary conditions tested
+- ✅ Response defer: Both is_done() branches covered
+- ✅ Real EmbedBuilder: Used in exception tests for coverage
 
 Coverage Target: 91%+ | Type Safety: Pylance/mypy compliant | 
 Ops Excellence: Production-ready
@@ -36,10 +38,11 @@ Test Modules:
 - ResearchCommandHandler: undo, force resolution  
 - Player Management (Batch 1): kick, ban, unban, mute, unmute
 - Integration: DI pattern validation, type verification
+- Response Handling: defer() path coverage for both branches
 """
 
 from typing import Callable, Optional, Tuple, Dict, Any
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 from datetime import datetime, timezone, timedelta
 import discord
 import inspect
@@ -89,6 +92,7 @@ def mock_interaction() -> MagicMock:
         - Lines: response async methods (send_message, defer)
         - Lines: response.is_done() check before defer/send_message
         - Lines: followup.send() async calls
+        - Lines: Both branches of if not interaction.response.is_done()
         
     Notes:
         - is_done() returns False by default (allows defer/send_message)
@@ -100,6 +104,31 @@ def mock_interaction() -> MagicMock:
     interaction.response.send_message = AsyncMock()
     interaction.response.defer = AsyncMock()
     interaction.response.is_done = MagicMock(return_value=False)
+    interaction.followup.send = AsyncMock()
+    return interaction
+
+
+@pytest.fixture
+def mock_interaction_already_deferred() -> MagicMock:
+    """Create interaction mock with is_done()=True (already deferred).
+    
+    This fixture provides an interaction that has already had its response
+    deferred, testing the "skip defer" path.
+    
+    Returns:
+        MagicMock: Mock with is_done() returning True
+        
+    Coverage:
+        - Lines: if not interaction.response.is_done() → False branch
+        - Lines: Skip defer() call
+        - Assertion: defer() NOT called
+    """
+    interaction = MagicMock(spec=discord.Interaction)
+    interaction.user.id = 12345
+    interaction.user.name = "TestUser"
+    interaction.response.send_message = AsyncMock()
+    interaction.response.defer = AsyncMock()
+    interaction.response.is_done = MagicMock(return_value=True)
     interaction.followup.send = AsyncMock()
     return interaction
 
@@ -832,12 +861,17 @@ class TestResearchCommandHandlerCoverageGaps:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# BATCH 1 PLAYER MANAGEMENT TESTS
+# BATCH 1 PLAYER MANAGEMENT TESTS: Coverage Barrier Fixes
+# ════════════════════════════════════════════════════════════════════════════
+# KEY FIX: Use REAL EmbedBuilder class (not mock) so early return coverage works
 # ════════════════════════════════════════════════════════════════════════════
 
 
 class TestKickCommandHandlerCoverageGaps:
-    """Coverage gap tests for KickCommandHandler."""
+    """Coverage gap tests for KickCommandHandler.
+    
+    Uses REAL EmbedBuilder to trigger early return coverage path.
+    """
 
     @pytest.mark.asyncio
     async def test_kick_rcon_execute_exception(
@@ -845,9 +879,11 @@ class TestKickCommandHandlerCoverageGaps:
         mock_interaction: MagicMock,
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
-        mock_embed_builder: MagicMock,
     ) -> None:
-        """Coverage: RCON execute throws exception."""
+        """Coverage: RCON execute throws exception (early return path).
+        
+        KEY: Uses REAL EmbedBuilder so error_embed() line executes and gets covered.
+        """
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True,
             execute=AsyncMock(side_effect=Exception("RCON error: player not found")),
@@ -856,7 +892,7 @@ class TestKickCommandHandlerCoverageGaps:
         handler = KickCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # ✅ REAL class, not mock
         )
 
         result = await handler.execute(
@@ -864,11 +900,72 @@ class TestKickCommandHandlerCoverageGaps:
         )
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called()
+        assert result.error_embed is not None  # ✅ Now covered
+
+    @pytest.mark.asyncio
+    async def test_kick_response_defer_not_done(
+        self,
+        mock_interaction: MagicMock,
+        mock_user_context: MagicMock,
+        mock_cooldown: MagicMock,
+    ) -> None:
+        """Coverage: Response not yet deferred (should call defer).
+        
+        KEY: Tests `if not interaction.response.is_done()` → True branch
+        Validates defer() IS called.
+        """
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="OK")
+        )
+
+        handler = KickCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=EmbedBuilder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="TestPlayer", reason="Testing"
+        )
+        assert result.success is True
+        # Verify defer() WAS called because is_done() returned False
+        mock_interaction.response.defer.assert_called()  # ✅ Covers defer line
+
+    @pytest.mark.asyncio
+    async def test_kick_response_defer_already_done(
+        self,
+        mock_interaction_already_deferred: MagicMock,
+        mock_user_context: MagicMock,
+        mock_cooldown: MagicMock,
+    ) -> None:
+        """Coverage: Response already deferred (should skip defer).
+        
+        KEY: Tests `if not interaction.response.is_done()` → False branch
+        Validates defer() is NOT called.
+        """
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="OK")
+        )
+
+        handler = KickCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=EmbedBuilder,
+        )
+
+        result = await handler.execute(
+            mock_interaction_already_deferred, player="TestPlayer", reason="Testing"
+        )
+        assert result.success is True
+        # Verify defer() was NOT called because is_done() returned True
+        mock_interaction_already_deferred.response.defer.assert_not_called()  # ✅ Covers skip path
 
 
 class TestBanCommandHandlerCoverageGaps:
-    """Coverage gap tests for BanCommandHandler."""
+    """Coverage gap tests for BanCommandHandler.
+    
+    Uses REAL EmbedBuilder to trigger early return coverage path.
+    """
 
     @pytest.mark.asyncio
     async def test_ban_rcon_execute_exception(
@@ -876,9 +973,8 @@ class TestBanCommandHandlerCoverageGaps:
         mock_interaction: MagicMock,
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
-        mock_embed_builder: MagicMock,
     ) -> None:
-        """Coverage: RCON execute throws exception."""
+        """Coverage: RCON execute throws exception (early return path)."""
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True,
             execute=AsyncMock(side_effect=Exception("Lua script error")),
@@ -887,18 +983,45 @@ class TestBanCommandHandlerCoverageGaps:
         handler = BanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # ✅ REAL class
         )
 
         result = await handler.execute(
             mock_interaction, player="Hacker", reason="Cheating"
         )
         assert result.success is False
-        mock_embed_builder.error_embed.assert_called()
+        assert result.error_embed is not None  # ✅ Covered
+
+    @pytest.mark.asyncio
+    async def test_ban_response_defer_branch(
+        self,
+        mock_interaction: MagicMock,
+        mock_user_context: MagicMock,
+        mock_cooldown: MagicMock,
+    ) -> None:
+        """Coverage: Response defer path."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="OK")
+        )
+
+        handler = BanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=EmbedBuilder,
+        )
+
+        result = await handler.execute(
+            mock_interaction, player="BadPlayer", reason="Rule violation"
+        )
+        assert result.success is True
+        mock_interaction.response.defer.assert_called()  # ✅ Covers defer
 
 
 class TestUnbanCommandHandlerCoverageGaps:
-    """Coverage gap tests for UnbanCommandHandler."""
+    """Coverage gap tests for UnbanCommandHandler.
+    
+    Uses REAL EmbedBuilder to trigger early return coverage path.
+    """
 
     @pytest.mark.asyncio
     async def test_unban_rcon_execute_exception(
@@ -906,9 +1029,8 @@ class TestUnbanCommandHandlerCoverageGaps:
         mock_interaction: MagicMock,
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
-        mock_embed_builder: MagicMock,
     ) -> None:
-        """Coverage: RCON execute throws exception."""
+        """Coverage: RCON execute throws exception (early return path)."""
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True,
             execute=AsyncMock(side_effect=Exception("Player not in ban list")),
@@ -917,17 +1039,42 @@ class TestUnbanCommandHandlerCoverageGaps:
         handler = UnbanCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # ✅ REAL class
         )
 
         result = await handler.execute(mock_interaction, player="Innocent")
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called()
+        assert result.error_embed is not None  # ✅ Covered
+
+    @pytest.mark.asyncio
+    async def test_unban_response_defer_branch(
+        self,
+        mock_interaction: MagicMock,
+        mock_user_context: MagicMock,
+        mock_cooldown: MagicMock,
+    ) -> None:
+        """Coverage: Response defer path."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="OK")
+        )
+
+        handler = UnbanCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=EmbedBuilder,
+        )
+
+        result = await handler.execute(mock_interaction, player="ReformedPlayer")
+        assert result.success is True
+        mock_interaction.response.defer.assert_called()  # ✅ Covers defer
 
 
 class TestMuteCommandHandlerCoverageGaps:
-    """Coverage gap tests for MuteCommandHandler."""
+    """Coverage gap tests for MuteCommandHandler.
+    
+    Uses REAL EmbedBuilder to trigger early return coverage path.
+    """
 
     @pytest.mark.asyncio
     async def test_mute_rcon_execute_exception(
@@ -935,9 +1082,8 @@ class TestMuteCommandHandlerCoverageGaps:
         mock_interaction: MagicMock,
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
-        mock_embed_builder: MagicMock,
     ) -> None:
-        """Coverage: RCON execute throws exception."""
+        """Coverage: RCON execute throws exception (early return path)."""
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True,
             execute=AsyncMock(side_effect=Exception("Player offline")),
@@ -946,16 +1092,41 @@ class TestMuteCommandHandlerCoverageGaps:
         handler = MuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # ✅ REAL class
         )
 
         result = await handler.execute(mock_interaction, player="OfflinePlayer")
         assert result.success is False
-        mock_embed_builder.error_embed.assert_called()
+        assert result.error_embed is not None  # ✅ Covered
+
+    @pytest.mark.asyncio
+    async def test_mute_response_defer_branch(
+        self,
+        mock_interaction: MagicMock,
+        mock_user_context: MagicMock,
+        mock_cooldown: MagicMock,
+    ) -> None:
+        """Coverage: Response defer path."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="OK")
+        )
+
+        handler = MuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=EmbedBuilder,
+        )
+
+        result = await handler.execute(mock_interaction, player="SpammyPlayer")
+        assert result.success is True
+        mock_interaction.response.defer.assert_called()  # ✅ Covers defer
 
 
 class TestUnmuteCommandHandlerCoverageGaps:
-    """Coverage gap tests for UnmuteCommandHandler."""
+    """Coverage gap tests for UnmuteCommandHandler.
+    
+    Uses REAL EmbedBuilder to trigger early return coverage path.
+    """
 
     @pytest.mark.asyncio
     async def test_unmute_rcon_execute_exception(
@@ -963,9 +1134,8 @@ class TestUnmuteCommandHandlerCoverageGaps:
         mock_interaction: MagicMock,
         mock_user_context: MagicMock,
         mock_cooldown: MagicMock,
-        mock_embed_builder: MagicMock,
     ) -> None:
-        """Coverage: RCON execute throws exception."""
+        """Coverage: RCON execute throws exception (early return path)."""
         mock_user_context.get_rcon_for_user.return_value = MagicMock(
             is_connected=True,
             execute=AsyncMock(side_effect=Exception("Player not muted")),
@@ -974,13 +1144,35 @@ class TestUnmuteCommandHandlerCoverageGaps:
         handler = UnmuteCommandHandler(
             user_context_provider=mock_user_context,
             rate_limiter=mock_cooldown,
-            embed_builder_type=mock_embed_builder,
+            embed_builder_type=EmbedBuilder,  # ✅ REAL class
         )
 
         result = await handler.execute(mock_interaction, player="UnmutedPlayer")
         assert result.success is False
         assert result.ephemeral is True
-        mock_embed_builder.error_embed.assert_called()
+        assert result.error_embed is not None  # ✅ Covered
+
+    @pytest.mark.asyncio
+    async def test_unmute_response_defer_branch(
+        self,
+        mock_interaction: MagicMock,
+        mock_user_context: MagicMock,
+        mock_cooldown: MagicMock,
+    ) -> None:
+        """Coverage: Response defer path."""
+        mock_user_context.get_rcon_for_user.return_value = MagicMock(
+            is_connected=True, execute=AsyncMock(return_value="OK")
+        )
+
+        handler = UnmuteCommandHandler(
+            user_context_provider=mock_user_context,
+            rate_limiter=mock_cooldown,
+            embed_builder_type=EmbedBuilder,
+        )
+
+        result = await handler.execute(mock_interaction, player="QuietPlayer")
+        assert result.success is True
+        mock_interaction.response.defer.assert_called()  # ✅ Covers defer
 
 
 # ════════════════════════════════════════════════════════════════════════════
