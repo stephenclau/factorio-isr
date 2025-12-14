@@ -13,18 +13,18 @@
 #
 # SPDX-License-Identifier: AGPL-3.0-only OR Commercial
 
-"""틂 CRITICAL: Integration Tests for Factorio Command Closures
+"""🚨 CRITICAL: Integration Tests for Factorio Command Wrappers
 
-This file ACTUALLY EXECUTES the command closures to achieve REAL code coverage.
+This file ACTUALLY EXECUTES the command wrappers to achieve REAL code coverage.
 
 Why separate file?
-- factorio.py defines all 25 commands as closures INSIDE register_factorio_commands()
-- Unit tests cannot access closures without executing registration
-- This file registers commands and extracts/invokes each closure
-- Tests the ACTUAL command implementation, not mocks
+- factorio.py defines all commands as wrappers that delegate to handlers
+- Unit tests cannot access wrappers without executing registration
+- This file registers commands and extracts/invokes each wrapper
+- Tests the ACTUAL wrapper → handler → send_command_response flow
 
-Target: 70-80% coverage (880+ missed statements -> 150-200 executed)
-Approach: Integration testing with full Discord.py mocks
+Target: 70-80% coverage (wrapper delegation + handler calls)
+Approach: Integration testing with full Discord.py mocks + handler DI
 """
 
 import pytest
@@ -35,14 +35,14 @@ from discord import app_commands
 import sys
 from pathlib import Path
 
-# Import the registration function that creates all closures
+# Import the registration function that creates all wrappers
 from bot.commands.factorio import register_factorio_commands
 from utils.rate_limiting import QUERY_COOLDOWN, ADMIN_COOLDOWN, DANGER_COOLDOWN
 from discord_interface import EmbedBuilder
 
 
 class FactorioCommandIntegrationHelper:
-    """Helper to register commands, extract closures, and invoke them."""
+    """Helper to register commands, extract wrappers, and invoke them."""
 
     @staticmethod
     def create_full_bot_mock():
@@ -99,16 +99,16 @@ class FactorioCommandIntegrationHelper:
 
     @staticmethod
     def register_and_extract_command(bot_mock, command_name: str):
-        """Register commands and extract specific command closure.
+        """Register commands and extract specific command wrapper.
         
         Args:
             bot_mock: Mock bot instance
             command_name: Name of command to extract (e.g., "status")
             
         Returns:
-            The command closure function or None if not found
+            The command wrapper function or None if not found
         """
-        # CRITICAL: Call the registration function - this creates all 25 closures
+        # CRITICAL: Call the registration function - this creates all wrappers + initializes handlers
         register_factorio_commands(bot_mock)
         
         # bot.tree.add_command should have been called with the factorio_group
@@ -118,7 +118,7 @@ class FactorioCommandIntegrationHelper:
         # Extract the factorio_group from the call
         factorio_group = bot_mock.tree.add_command.call_args[0][0]
         
-        # factorio_group.commands contains all 25 command closures
+        # factorio_group.commands contains all command wrappers
         for cmd in factorio_group.commands:
             if cmd.name == command_name:
                 return cmd
@@ -126,12 +126,12 @@ class FactorioCommandIntegrationHelper:
         return None
 
 
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ════════════════════════════════════════════════════════════════════════════
 # INTEGRATION TEST: Multi-Server Commands
-# \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+# ════════════════════════════════════════════════════════════════════════════
 
 class TestServersCommandIntegration:
-    """Integration test: /factorio servers command closure execution."""
+    """Integration test: /factorio servers command wrapper execution."""
 
     @pytest.mark.asyncio
     async def test_servers_command_single_server_mode(
@@ -139,7 +139,7 @@ class TestServersCommandIntegration:
     ):
         """Test: servers command in single-server mode shows info message.
         
-        This test ACTUALLY EXECUTES the servers_command closure.
+        This test ACTUALLY EXECUTES the servers_command wrapper.
         """
         # Setup
         bot_mock = FactorioCommandIntegrationHelper.create_full_bot_mock()
@@ -148,21 +148,18 @@ class TestServersCommandIntegration:
         
         bot_mock.server_manager = None  # Single-server mode
         
-        # Register commands (creates all 25 closures)
-        register_factorio_commands(bot_mock)
-        
-        # Extract servers_command closure
+        # Register commands (creates all wrappers + initializes handlers)
         servers_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
             bot_mock, "servers"
         )
         
-        # Execute the ACTUAL closure
+        # Execute the ACTUAL wrapper
         if servers_cmd:
             await servers_cmd.callback(interaction_mock)
             
-            # Verify the closure executed and sent a response
-            assert interaction_mock.response.send_message.called or \
-                   interaction_mock.followup.send.called
+            # Verify the wrapper executed and sent a response
+            # ServersCommandHandler uses send_message (no defer)
+            assert interaction_mock.response.send_message.called
 
     @pytest.mark.asyncio
     async def test_servers_command_multi_server_mode(self):
@@ -183,25 +180,24 @@ class TestServersCommandIntegration:
         bot_mock.user_context.get_user_server.return_value = "main"
         
         # Register and execute
-        register_factorio_commands(bot_mock)
         servers_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
             bot_mock, "servers"
         )
         
         if servers_cmd:
             await servers_cmd.callback(interaction_mock)
-            assert interaction_mock.response.defer.called or \
-                   interaction_mock.followup.send.called
+            # ServersCommandHandler uses send_message (no defer) - result comes immediately
+            assert interaction_mock.response.send_message.called
 
 
 class TestStatusCommandIntegration:
-    """Integration test: /factorio status command closure execution."""
+    """Integration test: /factorio status command wrapper execution."""
 
     @pytest.mark.asyncio
     async def test_status_command_happy_path(self):
-        """Test: status command executes full closure with metrics.
+        """Test: status command executes wrapper with Phase 2 handler.
         
-        This ACTUALLY RUNS 200+ lines of status_command implementation.
+        This ACTUALLY RUNS the status_command wrapper → StatusCommandHandler.execute()
         """
         # Setup
         bot_mock = FactorioCommandIntegrationHelper.create_full_bot_mock()
@@ -231,12 +227,42 @@ class TestStatusCommandIntegration:
         bot_mock.server_manager = MagicMock()
         bot_mock.server_manager.get_metrics_engine.return_value = metrics_engine_mock
         
-        # Setup rate limiting
-        with patch('bot.commands.factorio.QUERY_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
+        # Mock Phase 2 handler import and send_command_response
+        with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
+             patch('bot.commands.factorio.send_command_response') as mock_send:
+            
+            # Create mock Phase 2 StatusCommandHandler
+            mock_status_handler_class = MagicMock()
+            mock_status_handler = MagicMock()
+            mock_status_handler.execute = AsyncMock(
+                return_value=MagicMock(
+                    success=True,
+                    embed=discord.Embed(title="Status"),
+                    error_embed=None,
+                    ephemeral=False,
+                    defer_before_send=True,
+                )
+            )
+            mock_status_handler_class.return_value = mock_status_handler
+            
+            # Return (StatusHandlerClass, EvolutionHandlerClass, ResearchHandlerClass)
+            mock_import.return_value = (mock_status_handler_class, None, None)
+            
+            # Mock send_command_response to call defer/followup
+            async def send_response(interaction, result):
+                if result.defer_before_send:
+                    await interaction.response.defer()
+                if result.embed:
+                    await interaction.followup.send(embed=result.embed)
+                elif result.error_embed:
+                    await interaction.followup.send(embed=result.error_embed, ephemeral=result.ephemeral)
+            
+            mock_send.side_effect = send_response
+            
+            # Reset rate limiter
+            QUERY_COOLDOWN.reset(interaction_mock.user.id)
             
             # Register and execute
-            register_factorio_commands(bot_mock)
             status_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
                 bot_mock, "status"
             )
@@ -244,18 +270,17 @@ class TestStatusCommandIntegration:
             if status_cmd:
                 await status_cmd.callback(interaction_mock)
                 
-                # Verify closure executed and produced output
+                # Verify wrapper → handler → send_command_response flow
                 assert interaction_mock.response.defer.called
-                assert interaction_mock.followup.send.called or \
-                       interaction_mock.response.send_message.called
+                assert interaction_mock.followup.send.called
 
 
 class TestPlayersCommandIntegration:
-    """Integration test: /factorio players command closure execution."""
+    """Integration test: /factorio players command wrapper execution."""
 
     @pytest.mark.asyncio
     async def test_players_command_execution(self):
-        """Test: players command ACTUALLY EXECUTES the closure."""
+        """Test: players command ACTUALLY EXECUTES the wrapper."""
         # Setup
         bot_mock = FactorioCommandIntegrationHelper.create_full_bot_mock()
         interaction_mock = FactorioCommandIntegrationHelper.create_full_interaction_mock()
@@ -269,22 +294,20 @@ class TestPlayersCommandIntegration:
         )
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        # Setup rate limiting
-        with patch('bot.commands.factorio.QUERY_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
+        # Reset rate limiter
+        QUERY_COOLDOWN.reset(interaction_mock.user.id)
+        
+        # Register and execute
+        players_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "players"
+        )
+        
+        if players_cmd:
+            await players_cmd.callback(interaction_mock)
             
-            # Register and execute
-            register_factorio_commands(bot_mock)
-            players_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "players"
-            )
-            
-            if players_cmd:
-                await players_cmd.callback(interaction_mock)
-                
-                # Verify execution
-                assert interaction_mock.response.defer.called
-                assert rcon_client_mock.execute.called  # RCON actually called!
+            # Verify execution
+            assert interaction_mock.response.defer.called
+            assert rcon_client_mock.execute.called  # RCON actually called!
 
 
 class TestVersionCommandIntegration:
@@ -303,17 +326,15 @@ class TestVersionCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="Version 1.1.99")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.QUERY_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
-            
-            register_factorio_commands(bot_mock)
-            version_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "version"
-            )
-            
-            if version_cmd:
-                await version_cmd.callback(interaction_mock)
-                assert rcon_client_mock.execute.called
+        QUERY_COOLDOWN.reset(interaction_mock.user.id)
+        
+        version_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "version"
+        )
+        
+        if version_cmd:
+            await version_cmd.callback(interaction_mock)
+            assert rcon_client_mock.execute.called
 
 
 class TestSaveCommandIntegration:
@@ -333,17 +354,15 @@ class TestSaveCommandIntegration:
         )
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
-            
-            register_factorio_commands(bot_mock)
-            save_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "save"
-            )
-            
-            if save_cmd:
-                await save_cmd.callback(interaction_mock)
-                assert rcon_client_mock.execute.called
+        ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+        
+        save_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "save"
+        )
+        
+        if save_cmd:
+            await save_cmd.callback(interaction_mock)
+            assert rcon_client_mock.execute.called
 
 
 class TestClockCommandIntegration:
@@ -363,18 +382,16 @@ class TestClockCommandIntegration:
         )
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
-            
-            register_factorio_commands(bot_mock)
-            clock_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "clock"
-            )
-            
-            if clock_cmd:
-                # Call with no value parameter (display mode)
-                await clock_cmd.callback(interaction_mock, value=None)
-                assert rcon_client_mock.execute.called
+        ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+        
+        clock_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "clock"
+        )
+        
+        if clock_cmd:
+            # Call with no value parameter (display mode)
+            await clock_cmd.callback(interaction_mock, value=None)
+            assert rcon_client_mock.execute.called
 
     @pytest.mark.asyncio
     async def test_clock_command_eternal_day(self):
@@ -388,25 +405,23 @@ class TestClockCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="☀️ Set to eternal day")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
-            
-            register_factorio_commands(bot_mock)
-            clock_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "clock"
-            )
-            
-            if clock_cmd:
-                await clock_cmd.callback(interaction_mock, value="eternal-day")
-                assert rcon_client_mock.execute.called
+        ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+        
+        clock_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "clock"
+        )
+        
+        if clock_cmd:
+            await clock_cmd.callback(interaction_mock, value="eternal-day")
+            assert rcon_client_mock.execute.called
 
 
 class TestResearchCommandIntegration:
-    """Integration test: /factorio research command (most complex: 4 modes)."""
+    """Integration test: /factorio research command (Phase 2 handler)."""
 
     @pytest.mark.asyncio
     async def test_research_command_display_status(self):
-        """Test: research command DISPLAYS status."""
+        """Test: research command DISPLAYS status via Phase 2 handler."""
         bot_mock = FactorioCommandIntegrationHelper.create_full_bot_mock()
         interaction_mock = FactorioCommandIntegrationHelper.create_full_interaction_mock()
         interaction_mock.client = bot_mock
@@ -416,22 +431,49 @@ class TestResearchCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="42/128")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
+        # Mock Phase 2 handler import and send_command_response
+        with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
+             patch('bot.commands.factorio.send_command_response') as mock_send:
             
-            register_factorio_commands(bot_mock)
+            mock_research_handler_class = MagicMock()
+            mock_research_handler = MagicMock()
+            mock_research_handler.execute = AsyncMock(
+                return_value=MagicMock(
+                    success=True,
+                    embed=discord.Embed(title="Research Status"),
+                    error_embed=None,
+                    ephemeral=False,
+                    defer_before_send=True,
+                )
+            )
+            mock_research_handler_class.return_value = mock_research_handler
+            
+            # Return (StatusHandlerClass, EvolutionHandlerClass, ResearchHandlerClass)
+            mock_import.return_value = (None, None, mock_research_handler_class)
+            
+            # Mock send_command_response
+            async def send_response(interaction, result):
+                if result.defer_before_send:
+                    await interaction.response.defer()
+                if result.embed:
+                    await interaction.followup.send(embed=result.embed)
+            
+            mock_send.side_effect = send_response
+            
+            ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+            
             research_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
                 bot_mock, "research"
             )
             
             if research_cmd:
-                # Call with no force/action (display mode)
                 await research_cmd.callback(interaction_mock, force=None, action=None, technology=None)
-                assert rcon_client_mock.execute.called
+                # Verify Phase 2 handler was called
+                assert mock_research_handler.execute.called
 
     @pytest.mark.asyncio
     async def test_research_command_research_all(self):
-        """Test: research command RESEARCHES ALL TECHNOLOGIES."""
+        """Test: research command RESEARCHES ALL via Phase 2 handler."""
         bot_mock = FactorioCommandIntegrationHelper.create_full_bot_mock()
         interaction_mock = FactorioCommandIntegrationHelper.create_full_interaction_mock()
         interaction_mock.client = bot_mock
@@ -441,17 +483,40 @@ class TestResearchCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="All technologies researched")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
+        with patch('bot.commands.factorio._import_phase2_handlers') as mock_import, \
+             patch('bot.commands.factorio.send_command_response') as mock_send:
             
-            register_factorio_commands(bot_mock)
+            mock_research_handler_class = MagicMock()
+            mock_research_handler = MagicMock()
+            mock_research_handler.execute = AsyncMock(
+                return_value=MagicMock(
+                    success=True,
+                    embed=discord.Embed(title="Research All"),
+                    error_embed=None,
+                    ephemeral=False,
+                    defer_before_send=True,
+                )
+            )
+            mock_research_handler_class.return_value = mock_research_handler
+            mock_import.return_value = (None, None, mock_research_handler_class)
+            
+            async def send_response(interaction, result):
+                if result.defer_before_send:
+                    await interaction.response.defer()
+                if result.embed:
+                    await interaction.followup.send(embed=result.embed)
+            
+            mock_send.side_effect = send_response
+            
+            ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+            
             research_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
                 bot_mock, "research"
             )
             
             if research_cmd:
                 await research_cmd.callback(interaction_mock, force=None, action="all", technology=None)
-                assert rcon_client_mock.execute.called
+                assert mock_research_handler.execute.called
 
 
 class TestWhitelistCommandIntegration:
@@ -469,17 +534,15 @@ class TestWhitelistCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="Player1\nPlayer2")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.ADMIN_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
-            
-            register_factorio_commands(bot_mock)
-            whitelist_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "whitelist"
-            )
-            
-            if whitelist_cmd:
-                await whitelist_cmd.callback(interaction_mock, action="list", player=None)
-                assert rcon_client_mock.execute.called
+        ADMIN_COOLDOWN.reset(interaction_mock.user.id)
+        
+        whitelist_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "whitelist"
+        )
+        
+        if whitelist_cmd:
+            await whitelist_cmd.callback(interaction_mock, action="list", player=None)
+            assert rcon_client_mock.execute.called
 
 
 class TestRconCommandIntegration:
@@ -497,17 +560,15 @@ class TestRconCommandIntegration:
         rcon_client_mock.execute = AsyncMock(return_value="Command executed")
         bot_mock.user_context.get_rcon_for_user.return_value = rcon_client_mock
         
-        with patch('bot.commands.factorio.DANGER_COOLDOWN') as mock_cooldown:
-            mock_cooldown.is_rate_limited.return_value = (False, 0)
-            
-            register_factorio_commands(bot_mock)
-            rcon_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
-                bot_mock, "rcon"
-            )
-            
-            if rcon_cmd:
-                await rcon_cmd.callback(interaction_mock, command="/sc game.print('test')")
-                assert rcon_client_mock.execute.called
+        DANGER_COOLDOWN.reset(interaction_mock.user.id)
+        
+        rcon_cmd = FactorioCommandIntegrationHelper.register_and_extract_command(
+            bot_mock, "rcon"
+        )
+        
+        if rcon_cmd:
+            await rcon_cmd.callback(interaction_mock, command="/sc game.print('test')")
+            assert rcon_client_mock.execute.called
 
 
 if __name__ == "__main__":
