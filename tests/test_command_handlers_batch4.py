@@ -51,7 +51,7 @@ Remaining Query & Info Command Handlers
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from typing import Optional, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import discord
 
 from bot.commands.command_handlers_batch4 import (
@@ -535,11 +535,17 @@ class TestHealthCommandHandler:
 
     @pytest.mark.asyncio
     async def test_health_with_uptime(self, mock_interaction):
-        """Test: health check displays uptime."""
+        """Test: health check displays uptime.
+        
+        Validates uptime calculation handles any date/time combination correctly.
+        Uses timedelta for proper date arithmetic (handles month/year boundaries).
+        """
         monitor = DummyRconMonitor()
-        # Simulate 2 days, 3 hours, 15 minutes of uptime
-        uptime_start = datetime.now(timezone.utc)
-        uptime_start = uptime_start.replace(day=uptime_start.day - 2, hour=uptime_start.hour - 3, minute=uptime_start.minute - 15)
+        # Simulate 2 days, 3 hours, 15 minutes of uptime (correct date arithmetic)
+        now = datetime.now(timezone.utc)
+        uptime_delta = timedelta(days=2, hours=3, minutes=15)
+        uptime_start = now - uptime_delta
+        
         monitor.rcon_server_states["main"] = {
             "last_connected": uptime_start
         }
