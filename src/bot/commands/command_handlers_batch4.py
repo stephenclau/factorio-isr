@@ -109,7 +109,7 @@ class PlayersCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -191,7 +191,7 @@ class VersionCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -255,7 +255,7 @@ class SeedCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -328,7 +328,7 @@ class AdminsCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -415,7 +415,7 @@ class HealthCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
@@ -506,7 +506,7 @@ class RconCommandHandler:
         if is_limited:
             return CommandResult(
                 success=False,
-                error_embed=self.embed_builder.cooldown_embed(retry),
+                error_embed=self.embed_builder.cooldown_embed(retry or 0),
                 ephemeral=True,
             )
 
