@@ -5,7 +5,7 @@ title: RCON Setup
 
 # 📡 RCON Configuration Guide
 
-Complete guide to setting up RCON (Remote Console) integration for real-time server statistics via the multi-server architecture.
+Complete guide to setting up RCON (Remote Console) integration for real-time server statistics and slash commands via the multi-server architecture.
 
 ## Table of Contents
 
@@ -27,18 +27,32 @@ RCON integration enables Factorio ISR to:
 - Get list of online players
 - Retrieve server time and game state
 - Post periodic server statistics to Discord
+- Execute server commands (save, seed, research status, etc.)
+- Provide 25+ slash commands in Discord
 
-**Stats are posted every 5 minutes by default per server.**
+**Default stats interval:** 300 seconds (5 minutes) per server
 
-### Why servers.yml?
+### Why Multi-Server?
 
-Factorio ISR now uses a **centralized multi-server architecture**. Instead of environment variables for individual RCON settings, all server configurations—including RCON—are stored in `config/servers.yml`. This approach:
+Factorio ISR uses a **centralized multi-server architecture**. Instead of environment variables for individual RCON settings, all server configurations live in `config/servers.yml`. This approach:
 
 ✅ Manages multiple servers with a single ISR instance  
 ✅ Keeps all server settings in one file  
 ✅ Supports per-server RCON passwords and intervals  
 ✅ Enables per-server Discord channels  
 ✅ Scales efficiently without multiple containers  
+
+### Real Talk: Performance
+
+RCON integration per server adds:
+- **Memory:** ~5MB per active RCON connection
+- **CPU:** <1% per server during stats collection
+- **Network:** ~1KB per stats query per server
+
+**Scaling reality:**
+- ✅ **1-5 servers:** Ideal use case, no issues
+- ⚠️ **10+ servers:** Monitor resource usage, consider increasing stats intervals
+- ⚠️ **100+ players per server:** Can impact query response time, test thoroughly
 
 ---
 
@@ -47,14 +61,14 @@ Factorio ISR now uses a **centralized multi-server architecture**. Instead of en
 - Factorio server(s) with RCON enabled
 - RCON password(s) configured on each Factorio server
 - Network connectivity between Factorio ISR and all Factorio servers
-- `rcon` Python package installed
-- `config/servers.yml` file configured
+- `rcon` Python package installed (included in `requirements.txt`)
+- `config/servers.yml` file configured (**mandatory**)
 
 ---
 
 ## Factorio Server Setup
 
-### Method 1: server-settings.json
+### Method 1: server-settings.json (Recommended)
 
 Edit your Factorio `server-settings.json`:
 
@@ -90,7 +104,7 @@ Start Factorio with RCON arguments:
 
 ### Restart Factorio Server
 
-After configuration, restart your Factorio server for changes to take effect.
+After configuration, **restart your Factorio server** for changes to take effect. RCON cannot be enabled on a running server.
 
 ---
 
@@ -102,15 +116,14 @@ Create `config/servers.yml`:
 
 ```yaml
 servers:
-  los_hermanos:
-    log_path: /factorio/logs/console.log
-    rcon:
-      host: localhost
-      port: 27015
-      password_file: .secrets/rcon_los_hermanos.txt
-      stats_interval: 300
-    discord:
-      event_channel_id: 123456789012345678
+  default:
+    name: My Factorio Server
+    log_path: /factorio/console.log
+    rcon_host: localhost
+    rcon_port: 27015
+    rcon_password: "${RCON_PASSWORD}"  # or hardcode for dev
+    event_channel_id: 123456789012345678
+    stats_interval: 300
 ```
 
 ### Multiple Servers Setup
@@ -119,35 +132,32 @@ Manage several Factorio servers with a single ISR instance:
 
 ```yaml
 servers:
-  production_server:
+  production:
+    name: Production Server
     log_path: /factorio/production/console.log
-    rcon:
-      host: factorio-prod.internal
-      port: 27015
-      password_file: .secrets/rcon_production.txt
-      stats_interval: 300
-    discord:
-      event_channel_id: 111111111111111111
+    rcon_host: factorio-prod.internal
+    rcon_port: 27015
+    rcon_password: "${RCON_PASSWORD_PROD}"
+    event_channel_id: 111111111111111111
+    stats_interval: 300
 
-  testing_server:
+  testing:
+    name: Testing Server
     log_path: /factorio/testing/console.log
-    rcon:
-      host: factorio-test.internal
-      port: 27015
-      password_file: .secrets/rcon_testing.txt
-      stats_interval: 600
-    discord:
-      event_channel_id: 222222222222222222
+    rcon_host: factorio-test.internal
+    rcon_port: 27015
+    rcon_password: "${RCON_PASSWORD_TEST}"
+    event_channel_id: 222222222222222222
+    stats_interval: 600  # Every 10 minutes
 
-  space_age_modpack:
+  space_age:
+    name: Space Age Modpack
     log_path: /factorio/space-age/console.log
-    rcon:
-      host: 192.168.1.50
-      port: 27015
-      password_file: .secrets/rcon_space_age.txt
-      stats_interval: 300
-    discord:
-      event_channel_id: 333333333333333333
+    rcon_host: 192.168.1.50
+    rcon_port: 27015
+    rcon_password: "${RCON_PASSWORD_SA}"
+    event_channel_id: 333333333333333333
+    enable_stats_collector: false  # Disable periodic stats
 ```
 
 ---
@@ -158,18 +168,20 @@ servers:
 
 ```yaml
 servers:
-  SERVER_NAME:              # Unique identifier for this server
+  SERVER_TAG:               # Unique identifier for this server
+    name: STRING            # Display name (optional, defaults to tag)
     log_path: STRING        # Path to Factorio console.log
     
-    rcon:                   # RCON configuration (optional)
-      enabled: BOOLEAN      # Enable RCON (default: true if section exists)
-      host: STRING          # Factorio server hostname/IP
-      port: INTEGER         # RCON port (default: 27015)
-      password_file: STRING # Path to file containing RCON password
-      stats_interval: INTEGER # Stats post interval in seconds (default: 300)
+    # RCON configuration (required for slash commands and stats)
+    rcon_host: STRING       # Factorio server hostname/IP
+    rcon_port: INTEGER      # RCON port (default: 27015)
+    rcon_password: STRING   # RCON password (supports ${ENV_VAR} expansion)
     
-    discord:                # Discord output settings
-      event_channel_id: INTEGER # Channel ID for events from this server
+    # Discord output settings
+    event_channel_id: INTEGER # Channel ID for events from this server
+    
+    # Stats configuration (optional)
+    stats_interval: INTEGER # Stats post interval in seconds (default: 300)
 ```
 
 ### Minimal Configuration
@@ -178,39 +190,12 @@ Bare minimum for one server:
 
 ```yaml
 servers:
-  my_server:
+  default:
     log_path: /factorio/console.log
-    rcon:
-      host: localhost
-      port: 27015
-      password_file: .secrets/rcon_password.txt
-    discord:
-      event_channel_id: 123456789012345678
-```
-
-### Advanced Configuration
-
-With custom stats interval and explicit enable flag:
-
-```yaml
-servers:
-  vanilla:
-    log_path: /data/vanilla/console.log
-    rcon:
-      enabled: true
-      host: vanilla.game.local
-      port: 27015
-      password_file: .secrets/vanilla_rcon.txt
-      stats_interval: 600  # Post every 10 minutes
-    discord:
-      event_channel_id: 123456789012345678
-
-  mods_only:
-    log_path: /data/mods/console.log
-    rcon:
-      enabled: false  # Disable RCON, log-only mode
-    discord:
-      event_channel_id: 987654321098765432
+    rcon_host: localhost
+    rcon_port: 27015
+    rcon_password: "password123"
+    event_channel_id: 123456789012345678
 ```
 
 ---
@@ -227,32 +212,35 @@ mkdir -p .secrets
 
 ```bash
 # Production server
-echo "prod-secure-password-123" > .secrets/rcon_production.txt
+echo "prod-secure-password-123" > .secrets/RCON_PASSWORD_PROD
 
 # Testing server
-echo "test-secure-password-456" > .secrets/rcon_testing.txt
+echo "test-secure-password-456" > .secrets/RCON_PASSWORD_TEST
 
 # Space Age modpack
-echo "space-secure-password-789" > .secrets/rcon_space_age.txt
+echo "space-secure-password-789" > .secrets/RCON_PASSWORD_SA
 
 # Secure all password files
-chmod 600 .secrets/rcon_*.txt
+chmod 600 .secrets/RCON_PASSWORD_*
 ```
 
 ### Reference in servers.yml
 
-Point to each password file in your configuration:
+Point to each password via environment variable expansion:
 
 ```yaml
 servers:
-  production_server:
-    rcon:
-      password_file: .secrets/rcon_production.txt
+  production:
+    rcon_password: "${RCON_PASSWORD_PROD}"
 
-  testing_server:
-    rcon:
-      password_file: .secrets/rcon_testing.txt
+  testing:
+    rcon_password: "${RCON_PASSWORD_TEST}"
 ```
+
+The application will:
+1. Check `/run/secrets/RCON_PASSWORD_PROD` (Docker secrets)
+2. Check environment variable `$RCON_PASSWORD_PROD`
+3. If both fail, use empty string (validation will fail at startup)
 
 ---
 
@@ -261,7 +249,7 @@ servers:
 ### Test from Command Line
 
 ```bash
-# Install rcon package
+# Install rcon package (if not already installed)
 pip install rcon
 
 # Test connection to specific server
@@ -291,9 +279,9 @@ LOG_LEVEL=debug python -m src.main
 Look for these log entries:
 
 ```json
-{"event": "server_initialized", "server": "los_hermanos", ...}
-{"event": "rcon_connected", "server": "los_hermanos", "host": "localhost", "port": 27015, ...}
-{"event": "stats_collector_started", "server": "los_hermanos", "interval": 300, ...}
+{"event": "server_initialized", "server": "default", ...}
+{"event": "rcon_connected", "server": "default", "host": "localhost", "port": 27015, ...}
+{"event": "stats_collector_started", "server": "default", "interval": 300, ...}
 ```
 
 ### Verify Stats Posting
@@ -301,13 +289,15 @@ Look for these log entries:
 Check your Discord channels - you should see stats like:
 
 ```
-📊 **Server Status** (los_hermanos)
+📊 **Server Status** (default)
 👥 Players Online: 3
-📝 Alice, Bob, Charlie
+📏 Alice, Bob, Charlie
 ⏰ Game Time: Day 42, 13:45
 📈 UPS: 59.8/60 ✅
 🧬 Evolution: 45.2%
 ```
+
+**First stats post:** Within 5 minutes of startup (default interval)
 
 ---
 
@@ -316,9 +306,9 @@ Check your Discord channels - you should see stats like:
 ### With Players Online
 
 ```
-📊 **Server Status** (production_server)
+📊 **Server Status** (production)
 👥 Players Online: 5
-📝 Alice, Bob, Charlie, Dave, Eve
+📏 Alice, Bob, Charlie, Dave, Eve
 ⏰ Game Time: Day 108, 08:30
 📈 UPS: 59.8/60 ✅
 🧬 Evolution: 45.2%
@@ -327,12 +317,31 @@ Check your Discord channels - you should see stats like:
 ### No Players Online
 
 ```
-📊 **Server Status** (testing_server)
+📊 **Server Status** (testing)
 👥 Players Online: 0
 ⏰ Game Time: Day 108, 08:35
 📈 UPS: 60.0/60 ✅
 🧬 Evolution: 0%
 ```
+
+---
+
+## Slash Commands Available
+
+Once RCON is configured, these Discord slash commands become available:
+
+| Command | Description | Example |
+|---------|-------------|----------|
+| `/stats [server]` | Current server stats (UPS, players, time, evolution) | `/stats server:production` |
+| `/players [server]` | List online players | `/players` |
+| `/time [server]` | Show in-game time | `/time server:testing` |
+| `/save [server]` | Trigger server save | `/save` |
+| `/seed [server]` | Show map seed | `/seed` |
+| `/version [server]` | Show Factorio version | `/version` |
+| `/research [server]` | Show current research | `/research` |
+| `/evolution [server]` | Show evolution factor | `/evolution` |
+
+**Note:** Bot supports 25+ commands total. This table shows the most commonly used. The `[server]` parameter is optional and defaults to the first configured server.
 
 ---
 
@@ -349,12 +358,12 @@ Check your Discord channels - you should see stats like:
 2. **Use strong passwords**
    ```bash
    # Generate secure password for each server
-   openssl rand -base64 32 > .secrets/rcon_myserver.txt
+   openssl rand -base64 32 > .secrets/RCON_PASSWORD_PROD
    ```
 
 3. **Restrict file permissions**
    ```bash
-   chmod 600 .secrets/rcon_*.txt
+   chmod 600 .secrets/RCON_PASSWORD_*
    chmod 600 config/servers.yml
    ```
 
@@ -363,14 +372,14 @@ Check your Discord channels - you should see stats like:
    services:
      factorio-isr:
        secrets:
-         - rcon_production_password
-         - rcon_testing_password
+         - RCON_PASSWORD_PROD
+         - RCON_PASSWORD_TEST
    
    secrets:
-     rcon_production_password:
-       file: .secrets/rcon_production.txt
-     rcon_testing_password:
-       file: .secrets/rcon_testing.txt
+     RCON_PASSWORD_PROD:
+       file: .secrets/RCON_PASSWORD_PROD
+     RCON_PASSWORD_TEST:
+       file: .secrets/RCON_PASSWORD_TEST
    ```
 
 ### 🔥 Firewall Configuration
@@ -387,7 +396,7 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
 - **Same machine:** Use `localhost` or `127.0.0.1`
 - **Local network:** Use private IP (e.g., `192.168.1.50`)
 - **Remote server:** Consider VPN or SSH tunnel for security
-- **Docker:** Use service names (e.g., `factorio-prod` if using docker-compose)
+- **Docker:** Use service names (e.g., `factorio-prod` if using docker-compose networks)
 
 ---
 
@@ -395,32 +404,35 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
 
 ### RCON Not Connecting
 
-**Symptom:** `{"event": "rcon_connection_failed", "server": "production_server", ...}` in logs
+**Symptom:** `{"event": "rcon_connection_failed", "server": "production", ...}` in logs
 
-**Solutions:**
+**What's actually happening:** Python RCON client cannot establish TCP connection to Factorio server on port 27015.
+
+**Solutions (try in order):**
 
 1. **Verify servers.yml RCON section exists**
    ```bash
-   grep -A 5 "rcon:" config/servers.yml
+   grep -A 5 "rcon_" config/servers.yml
    ```
 
 2. **Check password file is readable**
    ```bash
-   cat .secrets/rcon_production.txt
-   ls -la .secrets/rcon_*.txt
+   cat .secrets/RCON_PASSWORD_PROD
+   ls -la .secrets/RCON_PASSWORD_*
    ```
 
 3. **Verify Factorio RCON is running**
    ```bash
    telnet factorio-prod.internal 27015
    # Should connect (Ctrl+C to exit)
+   # If "Connection refused" = Factorio RCON not enabled
    ```
 
 4. **Test connection manually**
    ```bash
    python -c "
    from rcon.source import Client
-   with open('.secrets/rcon_production.txt') as f:
+   with open('.secrets/RCON_PASSWORD_PROD') as f:
        password = f.read().strip()
    try:
        with Client('factorio-prod.internal', 27015, passwd=password) as c:
@@ -430,17 +442,15 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
    "
    ```
 
-5. **Check server names match**
-   ```bash
-   # servers.yml must use the same name for log_path and rcon settings
-   grep "servers:" config/servers.yml -A 50
-   ```
+**Timeline:** Diagnosis typically takes 5-10 minutes if you follow these steps.
 
 ---
 
 ### Connection Refused
 
 **Error:** `ConnectionRefusedError: [Errno 111] Connection refused`
+
+**What's actually happening:** The TCP connection to port 27015 is being rejected. Either Factorio isn't running, RCON isn't enabled, or firewall is blocking.
 
 **Solutions:**
 
@@ -454,11 +464,12 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
    netstat -tlnp | grep 27015
    # or
    ss -tlnp | grep 27015
+   # Should show: LISTEN on port 27015
    ```
 
 3. **Verify correct host and port in servers.yml**
    ```bash
-   grep -A 3 "rcon:" config/servers.yml
+   grep -A 3 "rcon_" config/servers.yml
    ```
 
 4. **Check firewall**
@@ -473,11 +484,13 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
 
 **Error:** `Authentication failed` or `Invalid password`
 
+**What's actually happening:** RCON connected successfully, but password is wrong.
+
 **Solutions:**
 
 1. **Verify password file contains correct password**
    ```bash
-   cat .secrets/rcon_production.txt
+   cat .secrets/RCON_PASSWORD_PROD
    # Compare with Factorio server-settings.json
    grep rcon-password /path/to/factorio/data/server-settings.json
    ```
@@ -485,18 +498,19 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
 2. **Check for extra whitespace or newlines**
    ```bash
    # Show file with hidden characters
-   od -c .secrets/rcon_production.txt
+   od -c .secrets/RCON_PASSWORD_PROD
+   # Should not have trailing \n
    ```
 
 3. **Recreate password file without trailing newline**
    ```bash
-   echo -n "your-password" > .secrets/rcon_production.txt
+   echo -n "your-password" > .secrets/RCON_PASSWORD_PROD
    ```
 
 4. **Verify password_file path in servers.yml**
    ```bash
-   grep password_file config/servers.yml
-   # Path should be correct and file should exist
+   grep password config/servers.yml
+   # Path should use ${ENV_VAR} or be absolute
    ```
 
 ---
@@ -505,19 +519,19 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
 
 **Symptom:** RCON connected but no stats in Discord
 
+**What's actually happening:** Stats collector is disabled, interval hasn't elapsed, or Discord permissions missing.
+
 **Solutions:**
 
-1. **Check stats interval is reasonable**
+1. **Check stats interval is configured**
    ```bash
    grep stats_interval config/servers.yml
-   # Default is 300 (5 minutes), minimum 60
+   # Default: 300 seconds (5 minutes)
    ```
 
 2. **Wait for stats interval to elapse**
-   ```bash
-   # Stats are posted on a schedule, may need to wait
-   # Check logs for: stats_posted event
-   ```
+   - First stats post happens 5 minutes after startup (default)
+   - Check logs for: `{"event": "stats_posted", ...}`
 
 3. **Verify Discord channel is correct**
    ```bash
@@ -532,14 +546,15 @@ sudo ufw allow from 192.168.1.100 to any port 27015 proto tcp
 
 5. **Ensure bot has permission to post**
    - Bot must be in the server
-   - Bot must have "Send Messages" permission in the channel
-   - Check Discord bot permissions
+   - Bot must have "Send Messages" + "Embed Links" permission in the channel
 
 ---
 
 ### RCON Library Not Available
 
 **Error:** `RCON_AVAILABLE: False` or `rcon package not installed`
+
+**What's actually happening:** Python `rcon` package is not installed in the environment.
 
 **Solution:**
 
@@ -550,31 +565,10 @@ pip install rcon
 python -c "import rcon; print('✅ rcon installed')"
 ```
 
----
-
-### Wrong Server Name in logs
-
-**Error:** Stats posting to wrong channel, wrong server appearing in events
-
-**Solution:**
-
-Ensure server names in `servers.yml` are used consistently:
-
-```yaml
-servers:
-  production_server:     # This is the server name
-    log_path: /factorio/prod/console.log
-    rcon:
-      host: prod.example.com
-      password_file: .secrets/rcon_production.txt
-    discord:
-      event_channel_id: 123456789012345678
+**For Docker:** This should never happen if using the official image. If it does, rebuild:
+```bash
+docker-compose build --no-cache
 ```
-
-Each server name must be unique and consistent. It appears in:
-- Discord stats header: `📊 Server Status (production_server)`
-- Log output
-- Health checks and monitoring
 
 ---
 
@@ -585,47 +579,33 @@ Each server name must be unique and consistent. It appears in:
 ```yaml
 servers:
   busy_server:
-    rcon:
-      stats_interval: 600  # Post every 10 minutes
+    stats_interval: 600  # Post every 10 minutes
 
   quiet_server:
-    rcon:
-      stats_interval: 3600  # Post every hour
+    stats_interval: 3600  # Post every hour
 
   dev_server:
-    rcon:
-      stats_interval: 60  # Post every minute (dev only!)
+    stats_interval: 60  # Post every minute (dev only!)
 ```
 
-### Disable RCON Per Server
+**Recommendation:** 300 seconds (5 minutes) for most use cases. Lower values increase Discord API usage and can hit rate limits with many servers.
+
+### Disable Stats Per Server
 
 ```yaml
 servers:
   log_only:
     log_path: /factorio/logs/console.log
-    rcon:
-      enabled: false  # Fall back to log-only mode
-    discord:
-      event_channel_id: 123456789012345678
+    # No rcon_* fields = log-only mode
+    event_channel_id: 123456789012345678
+
+  stats_disabled:
+    rcon_host: localhost
+    rcon_port: 27015
+    rcon_password: "password"
+    event_channel_id: 987654321098765432
+    enable_stats_collector: false  # Explicit disable
 ```
-
----
-
-## Performance Considerations
-
-### Resource Usage
-
-RCON integration per server adds minimal overhead:
-- **Memory:** ~5MB per active RCON connection
-- **CPU:** <1% per server during stats collection
-- **Network:** ~1KB per stats query per server
-
-### Scaling
-
-- ✅ Single server: No issues
-- ✅ 2-5 servers: Excellent, ideal use case
-- ⚠️ 10+ servers: Monitor resource usage
-- ⚠️ 100+ players per server: Consider increasing stats interval
 
 ---
 
@@ -641,59 +621,26 @@ docker-compose logs factorio-isr | grep rcon
 docker-compose logs factorio-isr | grep stats_posted | tail -5
 ```
 
-### Automated Health Check Script
+### Health Check Endpoint
 
 ```bash
-#!/bin/bash
-# Check if stats are being posted for all configured servers
-
-SERVERS=$(grep "^  [a-z_]*:" config/servers.yml | sed 's/://g' | tr -d ' ')
-
-for server in $SERVERS; do
-    LAST_STAT=$(docker-compose logs factorio-isr | grep "stats_posted" | grep "$server" | tail -1)
-    
-    if [ -z "$LAST_STAT" ]; then
-        echo "⚠️ [$server] No recent stats - may be down"
-    else
-        echo "✅ [$server] Last stats posted: $LAST_STAT"
-    fi
-done
+curl http://localhost:8080/health
 ```
 
----
+**Response includes per-server RCON status:**
 
-## Migrating from Old Architecture
-
-If upgrading from single-server RCON env variables to multi-server `servers.yml`:
-
-### Old .env (Deprecated)
-```bash
-RCON_ENABLED=true
-RCON_HOST=localhost
-RCON_PORT=27015
-STATS_INTERVAL=300
+```json
+{
+  "status": "healthy",
+  "uptime_seconds": 3600,
+  "version": "2.1.0",
+  "servers": {
+    "production": "connected",
+    "testing": "connected",
+    "space_age": "log_only"
+  }
+}
 ```
-
-### New servers.yml (Current)
-```yaml
-servers:
-  default:
-    log_path: /factorio/console.log
-    rcon:
-      host: localhost
-      port: 27015
-      password_file: .secrets/rcon_password.txt
-      stats_interval: 300
-    discord:
-      event_channel_id: 123456789012345678
-```
-
-**Benefits of migration:**
-- Support multiple servers simultaneously
-- Per-server RCON configuration
-- Per-server Discord channels
-- Single ISR instance manages all servers
-- Easier to maintain and scale
 
 ---
 
@@ -709,13 +656,14 @@ servers:
 ## Support
 
 - **Issues:** [GitHub Issues](https://github.com/stephenclau/factorio-isr/issues)
-- **Documentation:** [Full Documentation](README.md)
+- **Documentation:** [Full Documentation](../README.md)
 
+---
 
 > **📄 Licensing Information**
 > 
 > This project is dual-licensed:
-> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[AGPL-3.0](../LICENSE)** – Open source use (free)
 > - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
 >
 > Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)
