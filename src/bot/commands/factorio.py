@@ -17,6 +17,7 @@ TOTAL: 25/25
 
 from typing import Any, List, Optional, Protocol
 from datetime import datetime, timezone
+import asyncio
 import discord
 from discord import app_commands
 import re
@@ -172,49 +173,47 @@ logger = structlog.get_logger()
 def _import_phase2_handlers() -> tuple[Any, Any, Any]:
     """
     Import Phase 2 handlers (StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler).
-    Tries multiple import paths and returns tuple of handlers or None values.
+    Guaranteed to return handler classes or log critical error with None values.
     """
-    StatusCommandHandler = None
-    ResearchCommandHandler = None
-    EvolutionCommandHandler = None
-    
     try:
         from .command_handlers import (
-            StatusCommandHandler as sh,
-            ResearchCommandHandler as rh,
-            EvolutionCommandHandler as eh,
+            StatusCommandHandler,
+            ResearchCommandHandler,
+            EvolutionCommandHandler,
         )
-        StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler = sh, rh, eh
-        logger.info("phase2_handlers_imported", path="relative")
+        logger.info("phase2_handlers_imported", path="relative_import", status="success")
         return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
     except (ImportError, AttributeError) as e:
-        logger.debug("phase2_import_failed_path1", error=str(e))
+        logger.critical(
+            "phase2_handlers_import_failed",
+            error=str(e),
+            attempted_import=".command_handlers",
+            status="CRITICAL",
+        )
     
     try:
         from bot.commands.command_handlers import (
-            StatusCommandHandler as sh,
-            ResearchCommandHandler as rh,
-            EvolutionCommandHandler as eh,
+            StatusCommandHandler,
+            ResearchCommandHandler,
+            EvolutionCommandHandler,
         )
-        StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler = sh, rh, eh
-        logger.info("phase2_handlers_imported", path="absolute_bot_commands")
+        logger.info("phase2_handlers_imported", path="absolute_bot_commands", status="success")
         return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
     except (ImportError, AttributeError) as e:
         logger.debug("phase2_import_failed_path2", error=str(e))
     
     try:
         from src.bot.commands.command_handlers import (  # type: ignore
-            StatusCommandHandler as sh,
-            ResearchCommandHandler as rh,
-            EvolutionCommandHandler as eh,
+            StatusCommandHandler,
+            ResearchCommandHandler,
+            EvolutionCommandHandler,
         )
-        StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler = sh, rh, eh
-        logger.info("phase2_handlers_imported", path="absolute_src_bot_commands")
+        logger.info("phase2_handlers_imported", path="absolute_src_bot_commands", status="success")
         return StatusCommandHandler, ResearchCommandHandler, EvolutionCommandHandler
     except (ImportError, AttributeError) as e:
         logger.debug("phase2_import_failed_path3", error=str(e))
     
-    logger.warning("phase2_handlers_not_available", status="will_use_fallback_embeds")
+    logger.warning("phase2_handlers_not_available", status="fallback_embeds_active")
     return None, None, None
 
 
@@ -482,14 +481,24 @@ def register_factorio_commands(bot: FactorioBot) -> None:
 
     @factorio_group.command(name="status", description="Show Factorio server status")
     async def status_command(interaction: discord.Interaction) -> None:
-        if not phase2_status_handler:
-            await interaction.response.send_message(
-                embed=EmbedBuilder.error_embed("Status handler not available (Phase 2 module not found)"),
-                ephemeral=True,
-            )
-            return
-        result = await phase2_status_handler.execute(interaction)
-        await send_command_response(interaction, result, defer_before_send=True)
+        try:
+            if not phase2_status_handler:
+                await interaction.response.send_message(
+                    embed=EmbedBuilder.error_embed(
+                        "Status handler not available. This is a bot configuration error.\n\n"
+                        "Contact bot administrators."
+                    ),
+                    ephemeral=True,
+                )
+                logger.error("status_command_failed_no_handler", user=interaction.user.name)
+                return
+            
+            result = await phase2_status_handler.execute(interaction)
+            await send_command_response(interaction, result, defer_before_send=True)
+        except Exception as e:
+            logger.error("status_command_exception", error=str(e), exc_info=True)
+            embed = EmbedBuilder.error_embed(f"Status command error: {str(e)}")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @factorio_group.command(name="players", description="List players currently online")
     async def players_command(interaction: discord.Interaction) -> None:
@@ -535,23 +544,25 @@ def register_factorio_commands(bot: FactorioBot) -> None:
         interaction: discord.Interaction,
         target: str,
     ) -> None:
-        """Show enemy evolution - Function-based implementation."""
-        await interaction.response.defer()
-
-        rcon_client = bot.get_rcon_for_user(interaction.user.id)
-        if rcon_client is None or not rcon_client.is_connected:
-            server_name = bot.get_server_display_name(interaction.user.id)
-            embed = EmbedBuilder.error_embed(
-                f"RCON not available for {server_name}.\n\n"
-                "Use `/factorio servers` to see available servers."
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        raw = target.strip()
-        lower = raw.lower()
+        """Show enemy evolution with guaranteed response handling and timeout protection."""
+        await interaction.response.defer(ephemeral=False)
+        
+        RCON_TIMEOUT = 10.0
 
         try:
+            rcon_client = bot.get_rcon_for_user(interaction.user.id)
+            if rcon_client is None or not rcon_client.is_connected:
+                server_name = bot.get_server_display_name(interaction.user.id)
+                embed = EmbedBuilder.error_embed(
+                    f"RCON not available for {server_name}.\n\n"
+                    "Use `/factorio servers` to see available servers."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            raw = target.strip()
+            lower = raw.lower()
+
             if lower == "all":
                 lua = (
                     "/sc "
@@ -575,7 +586,21 @@ def register_factorio_commands(bot: FactorioBot) -> None:
                     "  rcon.print(line); "
                     "end"
                 )
-                resp = await rcon_client.execute(lua)
+                
+                try:
+                    resp = await asyncio.wait_for(
+                        rcon_client.execute(lua),
+                        timeout=RCON_TIMEOUT
+                    )
+                except asyncio.TimeoutError:
+                    embed = EmbedBuilder.error_embed(
+                        "Evolution query timed out. Server may be unresponsive or very slow.\n\n"
+                        "Try again in a few moments."
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    logger.warning("evolution_aggregate_timeout", target="all")
+                    return
+                
                 lines = [ln.strip() for ln in resp.splitlines() if ln.strip()]
                 agg_line = next((ln for ln in lines if ln.startswith("AGG:")), None)
                 per_surface = [ln for ln in lines if not ln.startswith("AGG:")]
@@ -623,7 +648,21 @@ def register_factorio_commands(bot: FactorioBot) -> None:
                 "local evo = game.forces['enemy'].get_evolution_factor(s); "
                 "rcon.print(string.format('%.2f%%', evo * 100))"
             )
-            resp = await rcon_client.execute(lua)
+            
+            try:
+                resp = await asyncio.wait_for(
+                    rcon_client.execute(lua),
+                    timeout=RCON_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                embed = EmbedBuilder.error_embed(
+                    f"Evolution query for surface `{surface}` timed out.\n\n"
+                    "Server may be unresponsive or very slow. Try again in a few moments."
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                logger.warning("evolution_single_timeout", surface=surface)
+                return
+            
             resp_str = resp.strip()
 
             if resp_str == "SURFACE_NOT_FOUND":
@@ -655,13 +694,12 @@ def register_factorio_commands(bot: FactorioBot) -> None:
             )
 
         except Exception as e:
-            embed = EmbedBuilder.error_embed(f"Failed to get evolution: {str(e)}")
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            logger.error(
-                "evolution_command_failed",
-                error=str(e),
-                target=target,
+            logger.error("evolution_command_failed", error=str(e), target=target, exc_info=True)
+            embed = EmbedBuilder.error_embed(
+                f"Failed to get evolution: {str(e)}\n\n"
+                "This may indicate a server connectivity issue. Try again shortly."
             )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     @factorio_group.command(name="admins", description="List server administrators")
     async def admins_command(interaction: discord.Interaction) -> None:
