@@ -2337,7 +2337,6 @@ class ResearchCommandHandler:
             embed = self.embed_builder.cooldown_embed(int(retry or 0))
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
-            embed = self.embed_builder.cooldown_embed(int(retry or 0))
             return CommandResult(
                 success=False,
                 embed=embed,
