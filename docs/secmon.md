@@ -1,180 +1,280 @@
 ---
 layout: default
-title: Security Guide
+title: Security Monitor
 ---
 
-# 🛡️ Security Guide
+# 🛡️ Security Monitor
 
-Comprehensive guide for securing your Factorio ISR installation, covering implemented security features, threat models, and hardening practices.
+Automated detection and response to malicious patterns in Factorio events.
 
-## ⚠️ Implementation Status
+## ✅ Implementation Status
 
-**CURRENT STATE:** Security features are **partially implemented**. This document describes:
-
-1. ✅ **Implemented features** (ReDoS protection, input sanitization, rate limiting)
-2. 🚧 **Planned features** (Security Monitor module, `secmon.yml` configuration)
+**CURRENT STATE:** Security Monitor is **fully implemented** in `src/security_monitor.py`.
 
 **What exists today:**
-- ReDoS protection in `event_parser.py` (regex timeouts, validation)
-- Input sanitization in `event_handler.py` (Discord message escaping)
-- Rate limiting in `utils/rate_limiting.py` (QUERY_COOLDOWN, ADMIN_COOLDOWN, etc.)
-- Docker security best practices (read-only mounts, secrets isolation)
+- ✅ `SecurityMonitor` class with pattern detection
+- ✅ Auto-ban on critical violations
+- ✅ Rate limiting per player
+- ✅ Infraction logging (JSONL format)
+- ✅ Banned players persistence
+- ✅ Example `config/secmon.yml` reference
 
-**What doesn't exist yet:**
-- `security_monitor.py` module
-- `config/secmon.yml` configuration file
-- Auto-ban policies
-- Dedicated security alerts channel
+**Current limitation:**
+- ⚠️ **`config/secmon.yml` is NOT loaded by the code yet**
+- Patterns and rate limits are **hardcoded** in `src/security_monitor.py`
+- To customize, you must modify the source code directly
 
 ---
 
 ## Table of Contents
-- [Implementation Status](#implementation-status)
-- [Current Security Features](#current-security-features)
-- [Threat Model](#threat-model)
-- [Hardening Measures](#hardening-measures)
-- [Planned Security Monitor](#planned-security-monitor)
-- [Best Practices](#best-practices)
+- [How It Works](#how-it-works)
+- [Malicious Patterns](#malicious-patterns)
+- [Rate Limiting](#rate-limiting)
+- [Infraction Logging](#infraction-logging)
+- [Banned Players](#banned-players)
+- [Configuration](#configuration)
+- [Usage Examples](#usage-examples)
+- [Roadmap](#roadmap)
 
 ---
 
-## Current Security Features
+## How It Works
 
-### 1. ReDoS Mitigation (Regex Denial of Service)
+The `SecurityMonitor` class inspects all Factorio events for dangerous patterns:
 
-**Implemented in:** `src/event_parser.py`
+1. **Pattern matching**: Regex-based detection of code injection, path traversal, command injection
+2. **Severity assessment**: `critical`, `high`, or `medium`
+3. **Auto-ban**: If `auto_ban: true`, player is immediately banned
+4. **Infraction logging**: All violations logged to `config/infractions.jsonl`
+5. **Persistence**: Banned players stored in `config/server-banlist.json`
 
-User-supplied regex patterns in YAML files can be crafted to hang the CPU (catastrophic backtracking).
+**Code location:** `src/security_monitor.py`
 
-**Mitigations:**
-- **Timeouts**: All regex compilations and matches have a strict 300ms timeout
-- **Validation**: Patterns are checked at load time for obvious catastrophic backtracking risks
-- **Fail-safe**: If timeout is exceeded, pattern is disabled and logged
+---
 
-**Example protection:**
+## Malicious Patterns
+
+### Hardcoded Pattern Categories
+
+#### **1. Code Injection** (Severity: `critical`, Auto-ban: ✅)
+
+Detects Python code execution attempts:
+
 ```python
-# Malicious pattern that would cause ReDoS
-pattern: '(a+)+b'
+patterns = [
+    r"eval\s*\(",
+    r"exec\s*\(",
+    r"__import__\s*\(",
+    r"compile\s*\(",
+    r"ast\.literal_eval",
+    r"subprocess.*shell\s*=\s*True",
+    r"os\.system\s*\(",
+    r"importlib\.import_module",
+]
+```
 
-# Result: Detected at load time, pattern disabled
-logger.error("redos_risk_detected", pattern=pattern)
+**Example violation:**
+```
+[CHAT] alice: Check this out: eval("malicious code")
+```
+
+**Result:** Alice is **immediately banned**.
+
+---
+
+#### **2. Path Traversal** (Severity: `high`, Auto-ban: ❌)
+
+Detects directory traversal attempts:
+
+```python
+patterns = [
+    r"\.\./",
+    r"\.\.\\",
+    r"/etc/passwd",
+    r"/proc/self",
+]
+```
+
+**Example violation:**
+```
+[CHAT] bob: Load file: ../../etc/passwd
+```
+
+**Result:** Logged as infraction, **NOT auto-banned** (high severity, not critical).
+
+---
+
+#### **3. Command Injection** (Severity: `critical`, Auto-ban: ✅)
+
+Detects shell command injection:
+
+```python
+patterns = [
+    r"&&\s*[a-z]+",
+    r";\s*rm\s+-rf",
+    r"\|\s*sh",
+    r"`.*`",
+    r"\$\(.*\)",
+]
+```
+
+**Example violation:**
+```
+[CHAT] eve: Run this: && rm -rf /
+```
+
+**Result:** Eve is **immediately banned**.
+
+---
+
+## Rate Limiting
+
+### Hardcoded Rate Limits
+
+Rate limits prevent spam and abuse:
+
+| Action Type | Max Events | Time Window | Description |
+|-------------|-----------|-------------|-------------|
+| `mention_admin` | 5 | 60s | Player mentions admin role |
+| `mention_everyone` | 1 | 300s (5min) | Player mentions `@everyone` |
+| `chat_message` | 20 | 60s | General chat messages |
+
+**Implementation:**
+```python
+self.rate_limits = {
+    "mention_admin": RateLimit(
+        max_events=5,
+        time_window_seconds=60,
+        action_type="mention_admin",
+    ),
+    "mention_everyone": RateLimit(
+        max_events=1,
+        time_window_seconds=300,
+        action_type="mention_everyone",
+    ),
+    "chat_message": RateLimit(
+        max_events=20,
+        time_window_seconds=60,
+        action_type="chat_message",
+    ),
+}
+```
+
+**Usage:**
+```python
+allowed, reason = security_monitor.check_rate_limit("mention_admin", "alice")
+if not allowed:
+    logger.warning("rate_limit_exceeded", player="alice", reason=reason)
 ```
 
 ---
 
-### 2. Input Sanitization
+## Infraction Logging
 
-**Implemented in:** `src/bot/event_handler.py`
+### JSONL Append-Only Log
 
-In-game chat is treated as untrusted input.
+All violations are logged to `config/infractions.jsonl`:
 
-**Mitigations:**
-- **Discord escaping**: All output is escaped to prevent formatting injection
-- **Mention whitelisting**: Raw mentions (e.g., `<@12345>`) are escaped unless in `mentions.yml`
-- **Link validation**: URLs are not auto-embedded (Discord handles this)
+**File location:** `./config/infractions.jsonl` (created automatically)
 
-**Example:**
+**Format:** One JSON object per line (JSONL)
+
+**Example infraction:**
+```json
+{
+  "player_name": "alice",
+  "timestamp": "2025-12-15T00:00:00.123456",
+  "pattern_type": "code_injection",
+  "matched_pattern": "eval\\s*\\(",
+  "raw_text": "[CHAT] alice: eval(\"malicious\")",
+  "severity": "critical",
+  "auto_banned": true,
+  "metadata": {
+    "match": "eval(",
+    "description": "Attempted code injection"
+  }
+}
+```
+
+### Retrieving Infractions
+
 ```python
-# Input from Factorio chat
-message = "Check this out: <@everyone> FREE ITEMS"
+# Get all infractions (last 100)
+infractions = security_monitor.get_infractions(limit=100)
 
-# Output to Discord (escaped)
-message = "Check this out: \<@everyone\> FREE ITEMS"
+# Get infractions for specific player
+alice_infractions = security_monitor.get_infractions(player_name="alice")
 ```
 
 ---
 
-### 3. Rate Limiting
+## Banned Players
 
-**Implemented in:** `src/utils/rate_limiting.py`
+### Ban List File
 
-**Limits:**
-- `QUERY_COOLDOWN = 10` seconds (e.g., `/stats`, `/players`)
-- `ADMIN_COOLDOWN = 5` seconds (e.g., `/kick`, `/ban`)
-- `DANGER_COOLDOWN = 1` second (emergency commands)
+**Default location:** `./config/server-banlist.json`
 
-**Protection:**
-- Prevents command spam
-- Throttles expensive RCON queries
-- Avoids Discord rate limits
+**Override via environment:**
+```bash
+export FACTORIO_ISR_BANLIST_DIR=/path/to/banlist/dir
+# Results in: /path/to/banlist/dir/server-banlist.json
+```
 
----
+**Format:**
+```json
+{
+  "banned_players": ["alice", "eve"],
+  "last_updated": "2025-12-15T00:00:00.123456"
+}
+```
 
-## Threat Model
+### Ban Management
 
-Factorio ISR bridges a game server (which accepts user input) and Discord (a public platform). This creates several attack vectors we mitigate:
+```python
+# Ban a player
+security_monitor.ban_player("alice", reason="Code injection attempt")
 
-| Threat | Vector | Mitigation | Status |
-|--------|--------|-----------|--------|
-| **ReDoS** | Malicious YAML patterns | Regex timeouts (300ms), validation | ✅ Implemented |
-| **Log Injection** | Fake console messages | Input sanitization, strict pattern anchoring | ✅ Implemented |
-| **Role Escalation** | `@everyone` spam | `mentions.yml` whitelist, runtime escaping | ✅ Implemented |
-| **Command Injection** | RCON commands | Hardcoded command list, role-based access | ✅ Implemented |
-| **Config Tampering** | Modified YAML | Docker read-only mounts, secrets isolation | ✅ Best practice |
-| **Auto-ban Policies** | Security violations | Planned `security_monitor.py` | 🚧 Planned |
-| **Audit Logging** | Security events | Planned dedicated channel | 🚧 Planned |
+# Unban a player
+unbanned = security_monitor.unban_player("alice")  # Returns True if was banned
 
----
+# Check if banned
+is_banned = security_monitor.is_banned("alice")  # Returns bool
+```
 
-## Hardening Measures
-
-### 1. ReDoS Mitigation Details
-
-**Problem:** User-supplied regex can hang CPU
-
-**Solution:**
-- Strict 300ms timeout per regex match
-- Pattern validation at load time
-- Disabled patterns are logged but don't crash the app
-
-**Code:** See `src/event_parser.py` → `_compile_pattern()`
+**Persistence:** Ban list is automatically saved to disk after every ban/unban operation.
 
 ---
 
-### 2. Strict YAML Validation
+## Configuration
 
-**Problem:** Malformed YAML can cause crashes
+### Current State (December 2025)
 
-**Solution:**
-- Schema enforcement (all YAML files validated)
-- Path locking (patterns only from `/app/patterns`)
-- Directory traversal blocked (`../` rejected)
+**⚠️ `config/secmon.yml` exists but is NOT loaded by the code.**
 
-**Code:** See `src/config.py` → `load_servers_config()`
+The file serves as a **reference example** only. To customize patterns or rate limits, you must:
 
----
+1. Edit `src/security_monitor.py` directly
+2. Modify `MALICIOUS_PATTERNS` dict (line ~30)
+3. Modify `self.rate_limits` dict (line ~150)
 
-### 3. Input Sanitization Details
-
-**Problem:** Factorio chat is untrusted
-
-**Solution:**
-- All Discord output is escaped
-- Mentions are whitelisted via `mentions.yml`
-- Raw HTML/markdown is neutralized
-
-**Code:** See `src/bot/event_handler.py` → `_resolve_mentions()`
-
----
-
-## Planned Security Monitor
-
-**Status:** 🚧 **NOT IMPLEMENTED YET**
-
-The Security Monitor (`security_monitor.py`) will inspect events for risky patterns and apply policies defined in `config/secmon.yml`.
-
-### Planned File Format (`config/secmon.yml`)
+### Example `config/secmon.yml` (Reference Only)
 
 ```yaml
 security:
   enabled: true
-  alert_channel_id: 999888777666555444  # Discord channel for security alerts
+  alert_channel: "security-alerts"
 
   patterns:
     code_injection:
       enabled: true
       auto_ban: true
       severity: critical
+
+    path_traversal:
+      enabled: true
+      auto_ban: false
+      severity: high
+
     command_injection:
       enabled: true
       auto_ban: true
@@ -184,35 +284,103 @@ security:
     mention_admin:
       max_events: 5
       time_window_seconds: 60
+
     mention_everyone:
       max_events: 1
       time_window_seconds: 300
+
+    chat_message:
+      max_events: 20
+      time_window_seconds: 60
 ```
 
-### Planned Features
+**Future work:** Load this file dynamically to allow runtime configuration without code changes.
 
-- 🚧 Auto-ban on security violations
-- 🚧 Dedicated security alerts channel
-- 🚧 Pattern-based threat detection
-- 🚧 Configurable severity levels
-- 🚧 Rate limit enforcement per user
+---
+
+## Usage Examples
+
+### Example 1: Initialize SecurityMonitor
+
+```python
+from pathlib import Path
+from security_monitor import SecurityMonitor
+
+monitor = SecurityMonitor(
+    infractions_file=Path("config/infractions.jsonl"),
+    banned_players_file=Path("config/server-banlist.json"),
+)
+```
+
+### Example 2: Check for Malicious Patterns
+
+```python
+# Check player chat message
+text = "[CHAT] alice: eval('malicious code')"
+infraction = monitor.check_malicious_pattern(text, player_name="alice")
+
+if infraction:
+    print(f"Violation detected: {infraction.pattern_type}")
+    print(f"Auto-banned: {infraction.auto_banned}")
+```
+
+### Example 3: Check Rate Limit
+
+```python
+allowed, reason = monitor.check_rate_limit("mention_admin", "bob")
+
+if not allowed:
+    print(f"Rate limit exceeded: {reason}")
+else:
+    # Allow action
+    send_mention_to_discord(...)
+```
+
+### Example 4: View Infractions
+
+```python
+# Get last 10 infractions
+recent = monitor.get_infractions(limit=10)
+
+for infraction in recent:
+    print(f"{infraction['timestamp']}: {infraction['player_name']} - {infraction['pattern_type']}")
+```
+
+---
+
+## Roadmap
+
+### Planned Enhancements
+
+- [ ] **Load `config/secmon.yml` dynamically** (highest priority)
+- [ ] **Discord alerts channel** for security violations
+- [ ] **Configurable severity levels** per pattern
+- [ ] **Whitelist support** (trusted players exempt from auto-ban)
+- [ ] **Temporary bans** (auto-expire after N hours)
+- [ ] **IP-based bans** (requires RCON integration)
+
+### Contributing
+
+Interested in implementing dynamic config loading? See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+**Suggested approach:**
+1. Add YAML loader in `security_monitor.py`
+2. Override `MALICIOUS_PATTERNS` if `config/secmon.yml` exists
+3. Override `self.rate_limits` with user-defined values
+4. Add schema validation for safety
 
 ---
 
 ## Best Practices
 
-### 1. Docker Security
+### Docker Security
 
-**Read-Only Mounts:**
 ```yaml
 volumes:
-  - ./config:/app/config:ro
+  - ./config:/app/config  # Read-write for infractions.jsonl and server-banlist.json
   - ./patterns:/app/patterns:ro
   - /factorio/logs:/factorio:ro
-```
 
-**Secrets Isolation:**
-```yaml
 secrets:
   DISCORD_BOT_TOKEN:
     file: .secrets/DISCORD_BOT_TOKEN.txt
@@ -220,58 +388,26 @@ secrets:
     file: .secrets/RCON_PASSWORD
 ```
 
-### 2. Discord Bot Permissions
+### Monitoring
 
-**Least Privilege:**
-- ✅ Send Messages
-- ✅ Embed Links
-- ✅ Use Slash Commands
-- ❌ **NOT** Administrator
-- ❌ **NOT** Manage Server
-
-### 3. RCON Security
-
-**Strong Passwords:**
-- Minimum 16 characters
-- Use password manager to generate
-- Rotate if staff changes
-
-**Network Isolation:**
-- Bind RCON to `127.0.0.1` if bot is on same host
-- Use firewall rules to restrict RCON port access
-
-### 4. Monitoring
-
-**Enable structured logging:**
 ```bash
-LOG_LEVEL=info
-LOG_FORMAT=json
-```
+# Watch for security events
+docker logs factorio-isr | grep malicious_pattern_detected
 
-**Watch for security events:**
-```bash
-docker logs factorio-isr | grep -E "redos_risk|rate_limit_exceeded|unauthorized"
+# Tail infractions log
+tail -f config/infractions.jsonl
+
+# View banned players
+cat config/server-banlist.json | jq '.banned_players'
 ```
 
 ---
 
 ## Next Steps
 
-- See [Configuration](configuration.md) for all security-related environment variables
-- See [Deployment](DEPLOYMENT.md) for production security checklist
-- See [Troubleshooting](TROUBLESHOOTING.md) for diagnosing security issues
-
----
-
-## Contributing
-
-Interested in implementing the Security Monitor? See [CONTRIBUTING.md](../CONTRIBUTING.md) or open an issue on GitHub.
-
-**Priority:**
-- Implement `security_monitor.py` module
-- Design `secmon.yml` schema
-- Add auto-ban policies
-- Create security alerts channel integration
+- ✅ [Threat Model](ARCHITECTURE.md#security) – Security architecture overview
+- ✅ [Configuration](configuration.md) – Environment variables
+- ✅ [Deployment](DEPLOYMENT.md) – Production hardening checklist
 
 ---
 
