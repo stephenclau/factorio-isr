@@ -274,7 +274,7 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 
 **AI-Assisted Development:** This project uses AI-assisted coding tools (Claude, GitHub Copilot) to accelerate development while maintaining rigorous quality standards:
 
-- **91%+ test coverage target** – All code paths validated
+- **80%+ test coverage target** – All code paths validated
 - **Strict type checking** – mypy in strict mode
 - **Security scanning** – OSV and Trivy CVE checks
 - **Human oversight** – All architectural decisions human-driven
