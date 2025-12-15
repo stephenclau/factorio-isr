@@ -236,7 +236,7 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 
 ---
 
-## 🛨️ Production Deployment
+## 🚁️ Production Deployment
 
 ### Pre-Flight Checklist
 
@@ -267,6 +267,20 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 - Contact: `licensing@laudiversified.com`
 
 **See also:** [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md)
+
+---
+
+## 🛠️ Development & Transparency
+
+**AI-Assisted Development:** This project uses AI-assisted coding tools (Claude, GitHub Copilot) to accelerate development while maintaining rigorous quality standards:
+
+- **91%+ test coverage target** – All code paths validated
+- **Strict type checking** – mypy in strict mode
+- **Security scanning** – OSV and Trivy CVE checks
+- **Human oversight** – All architectural decisions human-driven
+- **Code review** – Manual review of critical paths
+
+**Transparency Commitment:** AI suggestions are treated as proposals, not final implementations. All generated code undergoes testing, validation, and human review before merging. Design decisions, architecture, and quality standards remain human-controlled.
 
 ---
 
