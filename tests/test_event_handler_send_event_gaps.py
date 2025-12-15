@@ -28,7 +28,7 @@ Total: 26 new tests targeting exact missing statements
 
 import pytest
 import sys
-from unittest.mock import Mock, MagicMock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock, patch
 from typing import Optional, Any, Dict, List
 
 try:
