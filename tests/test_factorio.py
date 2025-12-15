@@ -36,7 +36,6 @@ from unittest.mock import MagicMock, AsyncMock, Mock, patch, call
 from typing import Any, Callable, Optional, Tuple
 import discord
 from datetime import datetime
-import sys
 import logging
 
 # ════════════════════════════════════════════════════════════════════════════

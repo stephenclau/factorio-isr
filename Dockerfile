@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Install runtime dependencies including gosu
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl ca-certificates gosu && \
+    apt-get install -y --no-install-recommends curl=8.14.1 ca-certificates gosu=1.17 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -50,6 +50,8 @@ COPY --chown=factorio-isr:factorio-isr patterns/ ./patterns/
 COPY --chown=factorio-isr:factorio-isr config/ ./config/
 
 EXPOSE 8080
+
+USER factorio-isr
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1

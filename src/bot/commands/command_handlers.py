@@ -46,7 +46,7 @@ This approach provides:
     ✅ Type safety via Protocol/ABC
 """
 
-from typing import Any, ClassVar, Dict, List, Optional, Protocol
+from typing import Any, ClassVar, Dict, Optional, Protocol
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import re

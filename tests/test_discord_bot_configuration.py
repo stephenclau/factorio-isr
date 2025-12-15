@@ -29,7 +29,6 @@ Coverage targets:
 Total: 8 tests covering configuration code paths.
 """
 
-import pytest
 from typing import Optional, Dict, Any
 from unittest.mock import Mock, AsyncMock, MagicMock
 import discord
@@ -37,6 +36,7 @@ import discord
 try:
     from discord_bot import DiscordBot
 except ImportError:
+    from src.discord_bot import DiscordBot
     pass
 
 
@@ -327,6 +327,7 @@ class TestConfigurationIntegration:
         assert bot.server_manager is manager
         
         # Clear them
+        
         bot.set_event_channel(None)
         bot.set_server_manager(None)
         

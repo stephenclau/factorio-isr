@@ -31,7 +31,7 @@ import asyncio
 import pytest
 from datetime import timedelta
 from typing import Any, Dict
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch, MagicMock
 import discord
 
 try:

@@ -43,9 +43,9 @@ try:
     from discord_interface import EmbedBuilder
     from bot.user_context import UserContextManager
     from bot.helpers import PresenceManager
-    from bot.event_handler import EventHandler
     from bot.rcon_health_monitor import RconHealthMonitor
 except ImportError:
+    from src.discord_bot import DiscordBot
     pass
 
 

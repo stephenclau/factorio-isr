@@ -27,7 +27,7 @@ Total: 60+ tests covering 79% -> 93%+ coverage.
 import pytest
 import sys
 from typing import Any, Optional
-from unittest.mock import Mock, AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
 import discord
 
 try:

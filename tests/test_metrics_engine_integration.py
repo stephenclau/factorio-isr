@@ -28,7 +28,7 @@ Target Coverage: 95%+ for metrics integration layer
 
 import asyncio
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 from pathlib import Path

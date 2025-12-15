@@ -13,7 +13,7 @@ jobs:
     
     strategy:
       matrix:
-        python-version: ['3.14.2']
+        python-version: ['3.14']
     
     steps:
     - name: Checkout code
@@ -43,9 +43,9 @@ jobs:
         pytest --cov=src --cov-report=xml --cov-report=term-missing
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@671740ac38dd9b0130fbe1cec585b89eea48d3de  # v5.5.2
       with:
-        file: ./coverage.xml
+        files: ./coverage.xml
         flags: unittests
         name: codecov-factorio-isr
         fail_ci_if_error: false

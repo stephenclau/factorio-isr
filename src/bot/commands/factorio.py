@@ -16,11 +16,8 @@ TOTAL: 25/25
 """
 
 from typing import Any, List, Optional, Protocol, runtime_checkable
-from datetime import datetime, timezone
-import asyncio
 import discord
 from discord import app_commands
-import re
 import structlog
 
 try:

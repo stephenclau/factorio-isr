@@ -32,7 +32,6 @@ Total: 15 tests covering 50+ lines of lifecycle code.
 import asyncio
 import pytest
 from datetime import datetime, timezone
-from typing import Any, Optional
 from unittest.mock import Mock, AsyncMock, patch, MagicMock, call
 import discord
 from discord import app_commands
@@ -40,10 +39,10 @@ from discord import app_commands
 try:
     from discord_bot import DiscordBot, DiscordBotFactory
     from bot.user_context import UserContextManager
-    from bot.helpers import PresenceManager
     from bot.event_handler import EventHandler
     from bot.rcon_health_monitor import RconHealthMonitor
 except ImportError:
+    from src.discord_bot import DiscordBot, DiscordBotFactory
     pass
 
 

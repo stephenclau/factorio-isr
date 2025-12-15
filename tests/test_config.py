@@ -33,7 +33,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Optional, Any
 from unittest.mock import patch, MagicMock, mock_open
 
 import pytest
