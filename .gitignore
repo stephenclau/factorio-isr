@@ -9,6 +9,7 @@ env/
 ENV/
 *.egg-info
 .deprecated/*
+
 .env
 
 # IDE
@@ -16,6 +17,7 @@ ENV/
 .idea/
 *.swp
 *.swo
+scripts/
 
 # Secrets
 .secrets/
@@ -23,6 +25,7 @@ ENV/
 
 # Logs
 *.log
+logs/
 
 # Test coverage
 .coverage
@@ -33,6 +36,7 @@ codecov.*
 
 # Docker
 *.dockerignore
+
 
 # Add to .gitignore
 patterns/*.test.yml
