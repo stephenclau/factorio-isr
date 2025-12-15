@@ -4,13 +4,13 @@
 ![Docker Image Version](https://img.shields.io/docker/v/slautomaton/factorio-isr?arch=amd64&style=flat-square&logo=docker&label=Image%20Version)
 ![Docker Image Size](https://img.shields.io/docker/image-size/slautomaton/factorio-isr?arch=amd64&style=flat-square&logo=docker&label=Image%20Size)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg?style=flat-square&Lable=Release)](https://www.python.org/downloads/) 
-![GitHub Release](https://img.shields.io/github/v/release/stephenclau/factorio-isr?include_prereleases&sort=semver&display_name=tag&style=flat-square&logo=github&label=Release&cacheSeconds=1200&link=https%3A%2F%2Fgithub.com%2Fstephenclau%2Ffactorio-isr%2Freleases%2Ftag%2Fv2.1.7) 
+![GitHub Release](https://img.shields.io/github/v/release/stephenclau/factorio-isr?include_prereleases&sort=semver&display_name=tag&style=flat-square&logo=github&label=Release&cacheSeconds=1200&link=https%3A%2F%2Fgithub.com%2Fstephenclau%2Ffactorio-isr%2Freleases%2Ftag%2Fv2.1.7) \
 ![GitHub last commit](https://img.shields.io/github/last-commit/stephenclau/factorio-isr?style=flat-square&logo=github&label=Last%20Commit) 
-![Codecov](https://img.shields.io/codecov/c/github/stephenclau/factorio-isr?style=flat-square&label=CodeCov&color=orange&link=https%3A%2F%2Fapp.codecov.io%2Fgh%2Fstephenclau%2Ffactorio-isr)
-![GitHub License](https://img.shields.io/github/license/stephenclau/factorio-isr?style=flat-square&logo=github&label=License&link=https%3A%2F%2Fgithub.com%2Fstephenclau%2Ffactorio-isr%2Fblob%2Fmain%2FLICENSE) 
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/01.yml?style=flat-square&logo=github&label=Build) 
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/02.yml?style=flat-square&logo=google&label=OSV%20Scan%20Check)
 ![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/03.yml?style=flat-square&logo=trivy&label=Trivy%20CVE)
+![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/stephenclau/factorio-isr/04.yml?style=flat-square&logo=github&label=Build) 
+![Codecov](https://img.shields.io/codecov/c/github/stephenclau/factorio-isr?style=flat-square&label=CodeCov&color=#0BDA51&link=https%3A%2F%2Fapp.codecov.io%2Fgh%2Fstephenclau%2Ffactorio-isr) \
+![GitHub License](https://img.shields.io/github/license/stephenclau/factorio-isr?style=flat-square&color=orange&logo=github&label=License&link=https%3A%2F%2Fgithub.com%2Fstephenclau%2Ffactorio-isr%2Fblob%2Fmain%2FLICENSE) 
 
 **Enterprise-grade multi-server Discord integration for Factorio.** Real-time event streaming, UPS monitoring, RCON control, and 80%+ test coverage. Deploy on Docker, Kubernetes, or self-host.
 
@@ -23,7 +23,7 @@ Factorio ISR is a **production-ready system** that bridges Factorio servers and 
 - **🔄 Event Streaming** – Real-time JOIN/LEAVE/CHAT/DEATH events to Discord
 - **📊 Server Metrics** – UPS, evolution, player count, uptime monitoring
 - **⚠️ Intelligent Alerts** – Low-UPS warnings with configurable thresholds and cooldowns
-- **🎮 Discord Commands** – 25 slash commands for server management & info
+- **🎮 Discord Commands** – 25 slash commands for Factorio server management & info from within Discord
 - **🖥️ Multi-Server** – A Single ISR instance monitors 1–N Factorio servers
 - **🔐 Enterprise Security** – AGPL-3.0 dual licensing, regex ReDoS protection, input sanitization
 - **✅ Proven Quality** – 1000+ tests, 80%+ coverage, production deployments
