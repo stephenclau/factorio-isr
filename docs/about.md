@@ -3,41 +3,74 @@ layout: default
 title: About
 ---
 
-# About
+# About Factorio ISR
 
-The Factorio ISR project is now a pretty sophisticated, multi-phase Factorio–Discord control plane with production-ready monitoring, metrics, and bot UX woven together into one coherent system.
+Factorio ISR is a production-ready Discord integration for Factorio servers with multi-server support, RCON monitoring, and async architecture.
 
-## Core capabilities
-***Discord integration is first-class:*** A fully async DiscordBot with proper login/connect lifecycle, robust connectbot/disconnectbot semantics, and a working integration test that proves real-token connectivity to Discord.​
+## What It Actually Does
 
-***Unified control surface:*** The bot exposes a single top-level factorio slash command implemented as an appcommands.Group, giving you subcommands like ping, status, players, help, ban, kick, unban, save, and rcon as the canonical entry point into server control.
+**Discord Integration:** Async Discord bot with proper connection/disconnection lifecycle, event sending with rate limiting, and embed/plaintext fallback support.
 
-## Server monitoring & metrics
-***UPS-aware stats pipeline:*** The RCON side now includes a RconStatsCollector and UPSCalculator that sample tick deltas to compute accurate UPS, enrich periodic stats snapshots, and push them to Discord with both embed and plaintext fallbacks.​
+**Slash Commands:** Discrete slash commands (`/stats`, `/players`, `/time`, `/save`, etc.) for server control and queries. Each command operates independently—no unified command group.
 
-***Smart performance alerting:*** A RconAlertMonitor runs per server, with configurable intervals, thresholds, consecutive-sample logic, and cooldowns; it raises low-UPS alerts and recovery notifications using structured embeds and sensible throttling.
+**Multi-Server Support:** Single bot instance monitors multiple Factorio servers simultaneously, with per-server RCON connections, Discord channels, and configuration.
 
-## Multi‑server & configuration
-***ServerManager orchestration:*** ServerManager now manages RCON clients, stats collectors, and alert monitors per server, with helpers like get_alert_states and stop_all to cleanly coordinate shutdown.​
+## Server Monitoring & Metrics
 
-***Richer servers.yml / config:*** ServerConfig has grown into a real tuning panel: per-server flags for collect_ups, collect_evolution, enable_alerts, polling intervals, UPS warning/recovery thresholds, and alert cooldowns, all with backwards-compatible defaults.
+**UPS-Aware Stats Pipeline:** `RconStatsCollector` and `UPSCalculator` sample RCON tick deltas to compute accurate UPS metrics. Periodic stats snapshots are posted to Discord with embed formatting and plaintext fallbacks.
 
+**Performance Alerting:** `RconAlertMonitor` runs per server with configurable thresholds, consecutive-sample logic, and cooldowns. Raises low-UPS alerts and recovery notifications using structured embeds.
 
-## Discord UX and command syncing
-Slash commands that feel “native”: The bot uses appcommands.Group("factorio", ...) so users type factorio status, factorio players, factorio help, factorio ban, etc., matching the mental model of “Factorio is the root verb, everything else is an action”.​
+**RCON Health Monitoring:** `RconHealthMonitor` tracks RCON connection status per server and posts alerts on connection/disconnection events (configurable modes: `transition` or `interval`).
 
-Better command visibility & logging: Command sync now logs both global and per‑guild trees, including a true count of leaf subcommands, so logs tell you “one factorio group with N leaves” instead of pretending nothing is registered.
+## Multi-Server Architecture
 
-## Test coverage & reliability
-***High‑coverage pytest suites:*** There are large, strongly-typed test modules for the Discord bot, RCON client, log tailer, and new polling/alert code, pushing coverage into the 90%+ territory and exercising async paths, error handling, and lifecycle edges.​
+**ServerManager Orchestration:** `ServerManager` coordinates RCON clients, stats collectors, alert monitors, and log tailers per server. Provides helpers like `get_alert_states()` and `stop_all()` for lifecycle management.
 
-***Integration-ready, not just unit‑ready:*** The test harness includes a real-bot integration path (token validity checks, connection timeout diagnostics) so production failures look familiar and debuggable rather than mysterious.
+**Rich Per-Server Configuration:** `servers.yml` provides per-server tuning:
+- `enable_ups_stat`, `enable_evolution_stat` - Toggle specific metrics
+- `stats_interval` - Polling frequency (default: 300s)
+- `enable_alerts` - Enable/disable UPS alerts
+- `ups_warning_threshold`, `ups_recovery_threshold` - Alert thresholds
+- `alert_check_interval`, `alert_samples_required` - Alert sensitivity
+- `alert_cooldown` - Throttle repeat alerts
+- `rcon_status_alert_mode` - RCON health alert mode (`transition` or `interval`)
+- `rcon_status_alert_interval` - Interval for periodic RCON health alerts
 
+## Modular Refactored Architecture (Phase 6.0/7.0)
+
+**Separation of Concerns:** The bot delegates responsibilities to specialized modules:
+- `bot.user_context`: Per-user server context management
+- `bot.helpers`: Utilities (presence, uptime formatting, channel sending)
+- `bot.event_handler`: Event sending with mention resolution
+- `bot.rcon_health_monitor`: RCON status monitoring and notifications
+- `bot.presence_manager`: Bot presence updates ("Watching X/Y servers online")
+- `bot.commands.factorio`: All `/factorio*` slash command implementations
+
+**Public API Preserved:** The `DiscordBot` class maintains backward compatibility while internal implementation uses modular components.
+
+## Test Coverage & Reliability
+
+**High-Coverage pytest Suites:** Test modules for Discord bot, RCON client, log tailer, stats collector, and alert monitor. Tests cover async paths, error handling, and lifecycle edges.
+
+**Unit & Integration:** Tests include both unit-level mocking and integration-style scenarios (e.g., RCON connection validation, command error handling).
+
+## Current Limitations
+
+**No Unified Command Group:** Slash commands are discrete (`/stats`, `/players`) rather than grouped under `/factorio <subcommand>`. This is intentional for Discord UX simplicity.
+
+**No Login System:** Bot uses standard Discord token authentication. No separate user login/auth system.
+
+**No Web Dashboard:** Configuration is file-based (`servers.yml`, `mentions.yml`). No web UI for management.
+
+**RCON Required for Commands:** Most slash commands require RCON to be configured per server. Log-only servers support event monitoring but not interactive commands.
+
+---
 
 > **📄 Licensing Information**
 > 
 > This project is dual-licensed:
-> - **[AGPL-3.0](LICENSE)** – Open source use (free)
+> - **[AGPL-3.0](../LICENSE)** – Open source use (free)
 > - **[Commercial License](LICENSE-COMMERCIAL.md)** – Proprietary use
 >
 > Questions? See our [Licensing Guide](LICENSING.md) or email [licensing@laudiversified.com](mailto:licensing@laudiversified.com)
