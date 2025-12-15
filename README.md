@@ -18,7 +18,7 @@
 
 ## 🎯 What is Factorio ISR?
 
-Factorio ISR is a **production-ready system** that bridges Factorio servers and Discord:
+Factorio ISR is a tool that bridges Factorio servers and Discord:
 
 - **🔄 Event Streaming** – Real-time JOIN/LEAVE/CHAT/DEATH events to Discord
 - **📊 Server Metrics** – UPS, evolution, player count, uptime monitoring
@@ -26,7 +26,7 @@ Factorio ISR is a **production-ready system** that bridges Factorio servers and 
 - **🎮 Discord Commands** – 25 slash commands for Factorio server management & info from within Discord
 - **🖥️ Multi-Server** – A Single ISR instance monitors 1–N Factorio servers
 - **🔐 Enterprise Security** – AGPL-3.0 dual licensing, regex ReDoS protection, input sanitization
-- **✅ Proven Quality** – 1000+ tests, 80%+ coverage, production deployments
+- **✅ Quality Focused** – 1000+ tests, 80%+ coverage, production deployments
 
 ---
 
@@ -48,7 +48,7 @@ Factorio ISR is a **production-ready system** that bridges Factorio servers and 
 | **Structured logging (JSON)** | ✅ Stable | Free | Included |
 | **Docker support** | ✅ Production | Free | Included |
 | **Kubernetes ready** | ✅ Production | Free | Included |
-| **High test coverage (91%+)** | ✅ Stable | Free | Included |
+| **High test coverage (80%+)** | ✅ Stable | Free | Included |
 
 ### Event Types Supported
 
@@ -141,7 +141,7 @@ Complete step-by-step guide covering:
 
 ---
 
-## 🏥 Health Monitoring
+## 🏥 Cursory Health Monitoring (next cycle of dev)
 
 ISR exposes HTTP `/health` endpoint for orchestration:
 
@@ -254,7 +254,7 @@ For full command list: See [**RCON_SETUP.md**](docs/RCON_SETUP.md).
 
 ---
 
-## 🔐 Security & Licensing
+## 🔐 License
 
 ### AGPL-3.0 (Open Source)
 ✅ **Free for:** Self-hosting, learning, open-source projects
