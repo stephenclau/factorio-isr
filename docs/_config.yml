@@ -19,7 +19,7 @@ gh_edit_branch: "main"
 gh_edit_view_mode: "edit"
 
 # Footer content
-footer_content: "Copyright &copy; 2025. Distributed under the <a href=\"https://github.com/stephenclau/factorio-isr/blob/main/LICENSE\">AGPL 3.0 License</a>."
+footer_content: "Copyright &copy; 2025. Distributed under the <a href=\"https://github.com/stephenclau/factorio-isr/blob/main/LICENSE\">MIT</a>."
 
 # Aux links (top-right navigation)
 aux_links:
