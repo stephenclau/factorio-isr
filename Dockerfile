@@ -26,7 +26,7 @@ WORKDIR /app
 
 # Install runtime dependencies including gosu
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends curl=8.14.1 ca-certificates gosu=1.17 && \
+    apt-get install -y --no-install-recommends curl ca-certificates gosu && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
