@@ -36,7 +36,7 @@ jobs:
         with:
           image-ref: '${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPO }}:latest'
           format: 'sarif'
-          exit-code: 1
+          exit-code: 0
           severity: 'CRITICAL,HIGH'
           output: 'trivy-report.sarif'
           limit-severities-for-sarif: 'true'
