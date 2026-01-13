@@ -12,7 +12,10 @@
 ![Codecov](https://img.shields.io/codecov/c/github/stephenclau/factorio-isr?style=flat-square&label=CodeCov&color=#0BDA51&link=https%3A%2F%2Fapp.codecov.io%2Fgh%2Fstephenclau%2Ffactorio-isr) \
 ![GitHub License](https://img.shields.io/github/license/stephenclau/factorio-isr?style=flat-square&color=orange&logo=github&label=License&link=https%3A%2F%2Fgithub.com%2Fstephenclau%2Ffactorio-isr%2Fblob%2Fmain%2FLICENSE) 
 
-**Enterprise-grade multi-server Discord integration for Factorio.** Real-time event streaming, UPS monitoring, RCON control, and 80%+ test coverage. Deploy on Docker, Kubernetes, or self-host.
+
+**(as of 1/13/2026)- Use `2.1.7` as stable. Tag `latest` may not always work.** \
+\
+**Multi-server Discord integration for Factorio.** Real-time event streaming, UPS monitoring, RCON control, and 80%+ test coverage. Deploy on Docker, Kubernetes, or self-host.
 
 ---
 
