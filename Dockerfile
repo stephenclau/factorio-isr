@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.14-slim AS builder
+FROM dhi.io/python:3-debian13-sfw-ent-dev AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
@@ -11,7 +11,7 @@ RUN pip install --user --no-cache-dir --upgrade pip && \
     pip install --user --no-cache-dir -r requirements.txt
 
 # Runtime stage
-FROM python:3.14-slim
+FROM dhi.io/python:3-debian13-sfw-ent-dev
 
 LABEL org.opencontainers.image.title="Factorio ISR"
 LABEL org.opencontainers.image.description="Real-time Factorio server event monitoring with Discord integration"
